@@ -16,6 +16,8 @@ type Handlers = {
   onSources: (sources: LiveSource[]) => void;
   onBrainChanged: () => void;
   onError: (message: string) => void;
+  /** Tools that run in the page itself (navigation, reading the screen). */
+  clientTools?: Record<string, (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>>;
 };
 
 // Captures mic audio as Float32 frames on the audio thread.
@@ -278,6 +280,8 @@ export class LiveVoice {
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       return j;
     };
+    const client = this.h.clientTools?.[name];
+    if (client) return await client(args);
     if (name === "search_brain") {
       type Hit = { source_type: string; title: string; content: string; parent_id: string; similarity: number };
       const hits = (await post("/api/search", { query: String(args.query ?? ""), limit: 8 })) as Hit[];

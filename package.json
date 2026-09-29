@@ -11,6 +11,7 @@
   "dependencies": {
     "@google/genai": "^2.24.0",
     "@gsap/react": "^2.1.2",
+    "@react-pdf/renderer": "^4.9.0",
     "@supabase/supabase-js": "^2.117.2",
     "gsap": "^3.15.0",
     "lucide-react": "^1.48.0",

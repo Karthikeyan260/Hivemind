@@ -18,7 +18,8 @@ import type { GalaxyScene, Telemetry } from "@/components/galaxy/scene";
 import { cx, RichText } from "@/components/ui";
 import { api, type Brain as BrainT, type HiveEvent, type Source, streamHivemind, useFetch } from "@/lib/client-api";
 import { isMuted, setMuted, sfx } from "@/lib/sfx";
-import { LiveVoice, type LiveState } from "@/lib/live";
+import { useVoice } from "@/components/voice/provider";
+import type { LiveState } from "@/lib/live";
 import { SentenceStream, Speaker } from "@/lib/voice";
 
 gsap.registerPlugin(useGSAP);
@@ -40,6 +41,7 @@ type MobileTab = "console" | "operator" | "log";
 const NAV = [
   { href: "/", label: "Overview" },
   { href: "/projects", label: "Projects" },
+  { href: "/career", label: "Career" },
   { href: "/memories", label: "Memories" },
   { href: "/notes", label: "Notes" },
   { href: "/documents", label: "Documents" },
@@ -84,9 +86,8 @@ function Bridge() {
   const [booted, setBooted] = useState(false);
   const [galleryOnly, setGalleryOnly] = useState(false);
   const speakerRef = useRef<Speaker | null>(null);
-  const liveRef = useRef<LiveVoice | null>(null);
+  const voice = useVoice();
   const liveTurnOpen = useRef(false);
-  const liveConvId = useRef<string | null>(null);
   const [speaking, setSpeaking] = useState(false);
   const [speakAll, setSpeakAll] = useState(false);
   const [tab, setTab] = useState<MobileTab>("console");
@@ -169,11 +170,11 @@ function Bridge() {
       const message = text.trim();
       if (!message || state !== "idle") return;
       // In a live conversation, typed text goes into the same real-time session.
-      if (liveRef.current?.active) {
+      if (voice.on) {
         setInput("");
         liveTurnOpen.current = true;
         setTurns((t) => [...t, { q: message, a: "", streaming: true, intent: "LIVE" }]);
-        liveRef.current.sendText(message);
+        voice.sendText(message);
         return;
       }
       setInput("");
@@ -228,23 +229,21 @@ function Bridge() {
         inputRef.current?.focus();
       }
     },
-    [state, conversationId, focus, brain, galaxy, getSpeaker, speakAll],
+    [state, conversationId, focus, brain, galaxy, getSpeaker, speakAll, voice],
   );
 
-  /* ───── Live voice: real-time, hands-free conversation (Gemini Live) ───── */
-  const [liveState, setLiveState] = useState<LiveState>("off");
-  const [liveError, setLiveError] = useState<string | null>(null);
-  const liveOn = liveState !== "off";
+  /* ───── Live voice: the site-wide Gemini Live session, mirrored into this console ───── */
+  const liveState: LiveState = voice.state;
+  const liveError = voice.error;
+  const liveOn = voice.on;
 
-  const getLive = useCallback(() => {
-    if (liveRef.current) return liveRef.current;
+  useEffect(() => {
     const patchLast = (fn: (t: Turn) => Turn) => setTurns((all) => (all.length ? [...all.slice(0, -1), fn(all[all.length - 1])] : all));
     const openTurn = (q: string) => {
       liveTurnOpen.current = true;
       setTurns((all) => [...all, { q, a: "", streaming: true, intent: "LIVE" }]);
     };
-    liveRef.current = new LiveVoice({
-      onState: setLiveState,
+    return voice.subscribe({
       onUserText: (text) => {
         setTab("console");
         if (!liveTurnOpen.current) openTurn(text);
@@ -257,25 +256,7 @@ function Bridge() {
       onTurnEnd: (interrupted) => {
         if (!liveTurnOpen.current) return;
         liveTurnOpen.current = false;
-        setTurns((all) => {
-          const last = all[all.length - 1];
-          if (!last) return all;
-          const done = { ...last, streaming: false, a: interrupted && last.a ? `${last.a.trim()} …` : last.a };
-          // Keep the exchange in chat history.
-          if (done.q || done.a) {
-            void fetch("/api/live/log", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ conversation_id: liveConvId.current, user: done.q, assistant: done.a, sources: done.sources }),
-            })
-              .then((r) => r.json())
-              .then((j: { conversation_id?: string }) => {
-                if (j.conversation_id) liveConvId.current = j.conversation_id;
-              })
-              .catch(() => {});
-          }
-          return [...all.slice(0, -1), done];
-        });
+        patchLast((t) => ({ ...t, streaming: false, a: interrupted && t.a ? `${t.a.trim()} …` : t.a }));
       },
       onSources: (sources) => {
         patchLast((t) => ({ ...t, sources }));
@@ -286,23 +267,14 @@ function Bridge() {
         brain.reload();
         galaxy.reload();
       },
-      onError: (msg) => setLiveError(msg),
     });
-    return liveRef.current;
-  }, [brain, galaxy]);
+  }, [voice.subscribe, brain, galaxy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleLive = useCallback(() => {
     speakerRef.current?.stop();
-    const live = getLive();
-    if (live.active) {
-      live.stop();
-      return;
-    }
-    setLiveError(null);
-    liveConvId.current = null;
-    sfx.lock();
-    void live.start();
-  }, [getLive]);
+    if (!voice.on) sfx.lock();
+    voice.toggle();
+  }, [voice]);
 
   // The reactor follows the actual loudness of the voice (live conversation or spoken replies).
   useEffect(() => {
@@ -316,15 +288,13 @@ function Bridge() {
     }
     let raf = 0;
     const tick = () => {
-      const level = liveOn ? (liveRef.current?.level() ?? 0) : (speakerRef.current?.level() ?? 0);
+      const level = liveOn ? voice.level() : (speakerRef.current?.level() ?? 0);
       sceneRef.current?.setVoiceLevel(level);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [speaking, liveOn]);
-
-  useEffect(() => () => liveRef.current?.stop(), []);
+  }, [speaking, liveOn, voice]);
 
   useEffect(() => {
     try {
@@ -334,19 +304,6 @@ function Bridge() {
     return () => speakerRef.current?.stop();
   }, []);
 
-  // Space (outside text fields) starts / ends the live conversation.
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      const typing = ["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName);
-      if (e.code === "Space" && !typing && !e.repeat) {
-        e.preventDefault();
-        toggleLive();
-      }
-    };
-    window.addEventListener("keydown", down);
-    return () => window.removeEventListener("keydown", down);
-  }, [toggleLive]);
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA";
@@ -355,7 +312,7 @@ function Bridge() {
         inputRef.current?.focus();
       } else if (e.key === "Escape") {
         speakerRef.current?.stop();
-        liveRef.current?.stop();
+        voice.stop();
         setGalleryOnly(false);
         setSelected(null);
         focusProject(null);
@@ -365,7 +322,7 @@ function Bridge() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [focusProject]);
+  }, [focusProject, voice]);
 
   async function brainAction(key: string, body: object) {
     setBusyAction(key);

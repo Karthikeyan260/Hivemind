@@ -20,6 +20,9 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
   return data as T;
 }
 
+/** Fired when the brain changes outside the page's own actions (e.g. by voice). */
+export const BRAIN_CHANGED = "hivemind:brain-changed";
+
 export function useFetch<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +44,13 @@ export function useFetch<T>(path: string | null) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount
     reload();
+  }, [reload]);
+
+  // Voice can change the brain from any page (remember / create project): refresh when it does.
+  useEffect(() => {
+    const on = () => void reload();
+    window.addEventListener(BRAIN_CHANGED, on);
+    return () => window.removeEventListener(BRAIN_CHANGED, on);
   }, [reload]);
 
   return { data, error, loading, reload, setData };

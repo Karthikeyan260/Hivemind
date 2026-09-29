@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, FileText, FolderKanban, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
+import { Brain, Briefcase, FileText, FolderKanban, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cx } from "@/components/ui";
@@ -9,6 +9,7 @@ const NAV = [
   { label: "HIVEMIND", href: "/", icon: Sparkles },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Memories", href: "/memories", icon: Brain },
+  { label: "Career", href: "/career", icon: Briefcase },
   { label: "Notes", href: "/notes", icon: StickyNote },
   { label: "Documents", href: "/documents", icon: FileText },
   { label: "Sources", href: "/sources", icon: Radar },
