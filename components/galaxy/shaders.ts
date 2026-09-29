@@ -146,12 +146,26 @@ export const FLOW_FRAG = /* glsl */ `
   }
 `;
 
-/** Film pass: radial chromatic aberration, grain, vignette. */
+/**
+ * Film pass: screen-space light shafts from the reactor, radial chromatic aberration,
+ * grain and vignette. uSun is the reactor's screen position; uSunOn fades rays when it is off-screen.
+ */
 export const CINEMA = {
-  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uAberration: { value: 0.0016 } },
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uAberration: { value: 0.0016 },
+    uSun: { value: [0.5, 0.5] },
+    uSunOn: { value: 1 },
+    uRays: { value: 0.35 },
+    uAspect: { value: 1.6 },
+    uSamples: { value: 28 },
+    uGrain: { value: 0.018 },
+  },
   vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse; uniform float uTime; uniform float uAberration;
+    uniform vec2 uSun; uniform float uSunOn; uniform float uRays; uniform float uAspect; uniform float uSamples; uniform float uGrain;
     varying vec2 vUv;
     float rand(vec2 co) { return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453); }
     void main() {
@@ -159,9 +173,51 @@ export const CINEMA = {
       float d = length(dir);
       vec2 off = dir * d * uAberration * 6.0;
       vec3 col = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);
+
+      // Light shafts: march toward the reactor, accumulating bright samples with decay.
+      if (uSunOn > 0.01) {
+        vec2 delta = (vUv - uSun) / uSamples;
+        vec2 p = vUv - delta * rand(vUv + fract(uTime)) * 0.9;
+        float decay = 1.0;
+        vec3 rays = vec3(0.0);
+        for (int i = 0; i < 32; i++) {
+          if (float(i) >= uSamples) break;
+          p -= delta;
+          vec3 s = texture2D(tDiffuse, p).rgb;
+          float lum = max(dot(s, vec3(0.299, 0.587, 0.114)) - 0.72, 0.0);
+          rays += s * lum * decay;
+          decay *= 0.94;
+        }
+        vec2 sd = (vUv - uSun) * vec2(uAspect, 1.0);
+        float falloff = exp(-dot(sd, sd) * 3.5);
+        col += rays * (uRays / uSamples) * uSunOn * (0.08 + falloff) * vec3(1.0, 0.86, 0.66);
+      }
+
       col *= smoothstep(0.95, 0.25, d * 1.05);
-      col += (rand(vUv * 900.0 + fract(uTime) * 37.0) - 0.5) * 0.018;
+      col += (rand(vUv * 900.0 + fract(uTime) * 37.0) - 0.5) * uGrain;
       gl_FragColor = vec4(col, 1.0);
     }
   `,
 };
+
+/** Planetary rings: banded dust lit by the reactor, with gaps and soft edges. */
+export const RING_VERT = /* glsl */ `
+  varying vec3 vLocal; varying vec3 vWorld;
+  void main() { vLocal = position; vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }
+`;
+export const RING_FRAG = /* glsl */ `
+  uniform vec3 uColor; uniform float uInner; uniform float uOuter; uniform float uSeed;
+  varying vec3 vLocal; varying vec3 vWorld;
+  ${NOISE}
+  void main() {
+    float r = length(vLocal.xy);
+    float x = (r - uInner) / (uOuter - uInner);
+    if (x < 0.0 || x > 1.0) discard;
+    float bands = 0.5 + 0.5 * noise(vec3(x * 38.0, uSeed, 0.0));
+    bands *= 0.75 + 0.25 * sin(x * 90.0 + uSeed);
+    float gaps = smoothstep(0.03, 0.08, abs(x - 0.62)) * smoothstep(0.01, 0.04, abs(x - 0.3));
+    float edge = smoothstep(0.0, 0.1, x) * smoothstep(1.0, 0.82, x);
+    float a = bands * gaps * edge * 0.75;
+    gl_FragColor = vec4(uColor * (0.8 + bands * 0.6), a);
+  }
+`;

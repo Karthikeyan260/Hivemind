@@ -400,13 +400,52 @@ body {
 .bridge {
   perspective: 1600px;
 }
-.lean-left {
-  transform: rotateY(calc(9deg + var(--mx, 0) * 3deg)) rotateX(calc(var(--my, 0) * -2deg));
-  transform-origin: left center;
+@media (min-width: 1024px) {
+  .lean-left {
+    transform: rotateY(calc(9deg + var(--mx, 0) * 3deg)) rotateX(calc(var(--my, 0) * -2deg));
+    transform-origin: left center;
+  }
+  .lean-right {
+    transform: rotateY(calc(-9deg + var(--mx, 0) * 3deg)) rotateX(calc(var(--my, 0) * -2deg));
+    transform-origin: right center;
+  }
 }
-.lean-right {
-  transform: rotateY(calc(-9deg + var(--mx, 0) * 3deg)) rotateX(calc(var(--my, 0) * -2deg));
-  transform-origin: right center;
+@media (max-width: 1023px) {
+  .galaxy-label {
+    font-size: 9px;
+    padding: 1px 5px;
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+.sheet-up {
+  animation: sheet-up 380ms var(--ease-out) both;
+}
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* Custom targeting cursor replaces the system one (fine pointers only; text fields keep an I-beam). */
+@media (pointer: fine) {
+  html.hud-cursor .bridge,
+  html.hud-cursor .bridge * {
+    cursor: none !important;
+  }
+  html.hud-cursor .bridge input {
+    cursor: text !important;
+  }
+}
+
+/* Compass tape */
+.compass-tape {
+  mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
 }
 .lean-left,
 .lean-right {
@@ -552,4 +591,11 @@ body {
 * {
   scrollbar-color: oklch(0.35 0.02 245) transparent;
   scrollbar-width: thin;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

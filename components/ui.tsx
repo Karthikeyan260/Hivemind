@@ -117,9 +117,21 @@ export function RichText({ text, sources, caret }: { text: string; sources?: { n
     s
       // "[3], [6]" → "[3, 6]" so adjacent citations render as one group
       .replace(/\]\s*,\s*\[(?=\d)/g, ", ")
-      .split(/(\*\*[^*]+\*\*|(?<![*\w])\*[^*\s][^*]*\*(?![*\w])|\[\d+(?:,\s*\d+)*\])/g)
+      .split(/(\*\*[^*]+\*\*|(?<![*\w])\*[^*\s][^*]*\*(?![*\w])|\[[^\]]+\]\(https?:\/\/[^)\s]+\)|`[^`]+`|\[\d+(?:,\s*\d+)*\])/g)
       .map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) return <strong key={key + i} className="font-semibold text-fg">{part.slice(2, -2)}</strong>;
+      // Only http(s) links are rendered as anchors, so model output can't inject javascript: URLs.
+      const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+      if (link) {
+        return (
+          <a key={key + i} href={link[2]} target="_blank" rel="noreferrer noopener" className="text-data underline decoration-data/40 underline-offset-2 hover:decoration-data">
+            {link[1]}
+          </a>
+        );
+      }
+      if (/^`[^`]+`$/.test(part)) {
+        return <code key={key + i} className="rounded-sm bg-data/10 px-1 font-mono text-[0.88em] text-data">{part.slice(1, -1)}</code>;
+      }
       if (/^\*[^*].*\*$/.test(part)) return <em key={key + i} className="text-fg">{part.slice(1, -1)}</em>;
       const cite = part.match(/^\[(\d+(?:,\s*\d+)*)\]$/);
       if (cite) {

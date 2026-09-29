@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Core } from "@/components/core";
 
 const KEY = "hivemind-booted";
 
 /** Cinematic boot log shown once per browser session, then fades away. */
-export function Boot({ lines, ready }: { lines: string[]; ready: boolean }) {
+export function Boot({ lines, ready, onDone }: { lines: string[]; ready: boolean; onDone?: () => void }) {
+  const doneRef = useRef(onDone);
+  useEffect(() => {
+    doneRef.current = onDone;
+  });
   const [show, setShow] = useState(true);
   const [count, setCount] = useState(0);
   const [leaving, setLeaving] = useState(false);
@@ -16,6 +20,7 @@ export function Boot({ lines, ready }: { lines: string[]; ready: boolean }) {
       if (sessionStorage.getItem(KEY) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- skip boot on repeat visits
         setShow(false);
+        doneRef.current?.();
       }
     } catch {}
   }, []);
@@ -31,6 +36,7 @@ export function Boot({ lines, ready }: { lines: string[]; ready: boolean }) {
     const a = setTimeout(() => setLeaving(true), 450);
     const b = setTimeout(() => {
       setShow(false);
+      doneRef.current?.();
       try {
         sessionStorage.setItem(KEY, "1");
       } catch {}

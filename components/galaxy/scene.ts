@@ -1,19 +1,33 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Lensflare, LensflareElement } from "three/addons/objects/Lensflare.js";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import {
-  CINEMA,
+  BlendFunction,
+  BloomEffect,
+  ChromaticAberrationEffect,
+  DepthOfFieldEffect,
+  EffectComposer,
+  EffectPass,
+  GodRaysEffect,
+  KernelSize,
+  NoiseEffect,
+  RenderPass,
+  SMAAEffect,
+  SMAAPreset,
+  ToneMappingEffect,
+  ToneMappingMode,
+  VignetteEffect,
+} from "postprocessing";
+import { FlowField } from "./flow";
+import {
   FLOW_FRAG,
   FLOW_VERT,
   HALO_FRAG,
   HALO_VERT,
   PLANET_FRAG,
   PLANET_VERT,
+  RING_FRAG,
+  RING_VERT,
   PLASMA_FRAG,
   PLASMA_VERT,
   SKY_FRAG,
@@ -25,7 +39,7 @@ import {
 export type SceneState = "idle" | "thinking" | "answering";
 export type GNode = { id: string; kind: "memory" | "note" | "document"; title: string; project_id: string | null; weight: number; subtype: string | null; href: string };
 export type GProject = { id: string; name: string; status: string; cluster: string | null };
-export type Telemetry = { fps: number; distance: number; locked: number; nodes: number };
+export type Telemetry = { fps: number; distance: number; locked: number; nodes: number; heading: number; pitch: number };
 
 type Callbacks = {
   onHover: (node: GNode | null, x: number, y: number) => void;
@@ -121,9 +135,20 @@ export class GalaxyScene {
   private scene = new THREE.Scene();
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
-  private composer: EffectComposer;
-  private bloom: UnrealBloomPass;
-  private cinema: ShaderPass;
+  private composer!: EffectComposer;
+  private bloom!: BloomEffect;
+  private godRays!: GodRaysEffect;
+  private dof: DepthOfFieldEffect | null = null;
+  private chroma!: ChromaticAberrationEffect;
+  private focusPoint = new THREE.Vector3();
+  private focusOn = 0;
+  private flow: FlowField | null = null;
+  private crystals: THREE.InstancedMesh | null = null;
+  private crystalLit: THREE.InstancedBufferAttribute | null = null;
+  private crystalSpin = new Float32Array();
+  private dummy = new THREE.Object3D();
+  private plane = new THREE.Plane();
+  private mouseWorld = new THREE.Vector3();
   private timer = new THREE.Timer();
   private raf = 0;
   private disposed = false;
@@ -174,6 +199,11 @@ export class GalaxyScene {
   private fps = 60;
   private tmp = new THREE.Vector3();
   private orbitTime = 0;
+  private mobile: boolean;
+  private motes!: THREE.Points;
+  private moteBase = new Float32Array();
+  private meteors: { line: THREE.Line; mat: THREE.ShaderMaterial; from: THREE.Vector3; dir: THREE.Vector3; t: number }[] = [];
+  private meteorClock = 3;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -182,10 +212,12 @@ export class GalaxyScene {
     private cb: Callbacks,
   ) {
     this.reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.9;
+    // Phones and small tablets get a lighter render path.
+    this.mobile = window.matchMedia("(max-width: 820px)").matches || (navigator.maxTouchPoints > 0 && window.innerWidth < 1100);
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.mobile, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.mobile ? 1.25 : 1.75));
+    // Tone mapping happens in the effect stack (HDR until the end).
+    this.renderer.toneMapping = THREE.NoToneMapping;
 
     this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 3000);
     this.camera.position.copy(this.reduced ? HOME : new THREE.Vector3(40, 260, 1100));
@@ -199,17 +231,20 @@ export class GalaxyScene {
     this.controls.autoRotateSpeed = 0.3;
     this.controls.addEventListener("start", () => (this.fly = null));
 
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.85, 0.6, 0.2);
-    this.composer.addPass(this.bloom);
-    this.cinema = new ShaderPass(CINEMA);
-    this.composer.addPass(this.cinema);
-    this.composer.addPass(new OutputPass());
-
     this.buildSpace();
     this.buildCore();
     this.scene.add(this.world);
+    this.scene.add(new THREE.AmbientLight(0x6a86a8, 0.35));
+    this.buildEffects();
+
+    if (!this.reduced) {
+      try {
+        this.flow = new FlowField(this.renderer, this.mobile ? 96 : 192, this.renderer.getPixelRatio());
+        this.scene.add(this.flow.points);
+      } catch (err) {
+        console.warn("particle flow disabled:", err);
+      }
+    }
 
     this.beamGeo = new THREE.BufferGeometry();
     this.beamGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(MAX_BEAMS * 6), 3));
@@ -241,6 +276,44 @@ export class GalaxyScene {
 
   // ───────────── build ─────────────
 
+  /**
+   * Cinematic post stack (pmndrs/postprocessing merges compatible effects into single passes):
+   * depth of field → volumetric god rays + mipmap bloom → ACES → vignette → lens fringing + film grain.
+   */
+  private buildEffects() {
+    // No MSAA: Lensflare copies the framebuffer, which is invalid on multisampled targets.
+    // Anti-aliasing comes from SMAA at the end of the stack instead.
+    this.composer = new EffectComposer(this.renderer, { frameBufferType: THREE.HalfFloatType });
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+    if (!this.mobile) {
+      this.dof = new DepthOfFieldEffect(this.camera, { worldFocusDistance: 150, worldFocusRange: 70, bokehScale: 0, resolutionScale: 0.5 });
+      this.composer.addPass(new EffectPass(this.camera, this.dof));
+    }
+
+    this.godRays = new GodRaysEffect(this.camera, this.plasma, {
+      samples: this.mobile ? 30 : 60,
+      density: 0.95,
+      decay: 0.93,
+      weight: 0.32,
+      exposure: 0.52,
+      clampMax: 1,
+      blur: true,
+      resolutionScale: this.mobile ? 0.35 : 0.5,
+    });
+    // Mipmap bloom renders black on some Intel/ANGLE (D3D11) GPUs, so use the kernel blur.
+    this.bloom = new BloomEffect({ mipmapBlur: false, kernelSize: KernelSize.LARGE, luminanceThreshold: 0.32, luminanceSmoothing: 0.25, intensity: 1.05 });
+    const vignette = new VignetteEffect({ darkness: 0.62, offset: 0.26 });
+    const tone = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
+    this.composer.addPass(new EffectPass(this.camera, this.godRays, this.bloom, tone, vignette));
+
+    this.chroma = new ChromaticAberrationEffect({ offset: new THREE.Vector2(0.0007, 0.0007), radialModulation: true, modulationOffset: 0.25 });
+    const noise = new NoiseEffect({ blendFunction: BlendFunction.OVERLAY, premultiply: true });
+    noise.blendMode.opacity.value = this.mobile ? 0.12 : 0.22;
+    this.composer.addPass(new EffectPass(this.camera, this.chroma, noise));
+    if (!this.mobile) this.composer.addPass(new EffectPass(this.camera, new SMAAEffect({ preset: SMAAPreset.HIGH })));
+  }
+
   private buildSpace() {
     this.sky = new THREE.Mesh(
       new THREE.SphereGeometry(1400, 48, 24),
@@ -270,7 +343,9 @@ export class GalaxyScene {
         new THREE.PointsMaterial({ size, map: this.tex.glow, vertexColors: true, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending }),
       );
     };
-    this.dust = layer(3200, 260, 1100, 2.2, 0.55, "far");
+    this.dust = layer(this.mobile ? 1400 : 3200, 260, 1100, this.mobile ? 2.8 : 2.2, 0.55, "far");
+    this.buildMotes();
+    this.buildMeteors();
     this.scene.add(this.dust, layer(260, 160, 420, 3.6, 0.8, "near"));
 
     const m = 520;
@@ -340,8 +415,10 @@ export class GalaxyScene {
       flare.addElement(new LensflareElement(this.tex.glow, 170, 0, C.amber.clone().multiplyScalar(0.55)));
       flare.addElement(new LensflareElement(this.tex.hex, 50, 0.45, new THREE.Color("#8fd3ea").multiplyScalar(0.3)));
       flare.addElement(new LensflareElement(this.tex.hex, 80, 0.66, new THREE.Color("#f0b45a").multiplyScalar(0.3)));
-      flare.addElement(new LensflareElement(this.tex.glow, 36, 0.82, new THREE.Color("#b59cff").multiplyScalar(0.4)));
-      flare.addElement(new LensflareElement(this.tex.hex, 120, 1, new THREE.Color("#8fd3ea").multiplyScalar(0.25)));
+      if (!this.mobile) {
+        flare.addElement(new LensflareElement(this.tex.glow, 36, 0.82, new THREE.Color("#b59cff").multiplyScalar(0.4)));
+        flare.addElement(new LensflareElement(this.tex.hex, 120, 1, new THREE.Color("#8fd3ea").multiplyScalar(0.25)));
+      }
       light.add(flare);
     }
     core.add(light);
@@ -409,6 +486,26 @@ export class GalaxyScene {
       );
       atmo.position.copy(v);
       this.world.add(atmo);
+
+      if (rnd() < 0.4) {
+        const inner = radius * 1.5;
+        const outer = radius * 2.7;
+        const rings = new THREE.Mesh(
+          new THREE.RingGeometry(inner, outer, 128, 1),
+          new THREE.ShaderMaterial({
+            vertexShader: RING_VERT,
+            fragmentShader: RING_FRAG,
+            uniforms: { uColor: { value: new THREE.Color(b).lerp(new THREE.Color("#fff1d6"), 0.35) }, uInner: { value: inner }, uOuter: { value: outer }, uSeed: { value: rnd() * 40 } },
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+          }),
+        );
+        rings.position.copy(v);
+        rings.rotation.set(Math.PI / 2 - 0.45 + rnd() * 0.3, rnd() * 0.5, 0);
+        this.world.add(rings);
+      }
 
       // Faint orbital plane where this project's memories circle.
       const orbitRing = new THREE.Mesh(
@@ -484,6 +581,7 @@ export class GalaxyScene {
       }),
     );
     this.world.add(this.stars);
+    this.buildCrystals(nodes);
 
     // Tethers: moon → its planet, pulses flowing inward.
     const linked = nodes.map((nd, i) => (nd.project_id && this.hubPos.has(nd.project_id) ? i : -1)).filter((i) => i >= 0);
@@ -508,6 +606,62 @@ export class GalaxyScene {
       this.warped = true;
       if (!this.reduced) this.flyTo(HOME.clone(), new THREE.Vector3(), 3.4, true);
     }
+  }
+
+  /**
+   * Knowledge as physical crystal shards (one instanced draw call). They are lit by the reactor,
+   * write depth so depth-of-field can focus on them, and glow in their kind colour when locked.
+   */
+  private buildCrystals(nodes: GNode[]) {
+    if (this.crystals) {
+      this.world.remove(this.crystals);
+      this.crystals.geometry.dispose();
+      (this.crystals.material as THREE.Material).dispose();
+    }
+    const n = nodes.length;
+    if (!n) {
+      this.crystals = null;
+      return;
+    }
+    const geo = new THREE.OctahedronGeometry(1, 0);
+    geo.scale(0.7, 1.25, 0.7);
+    this.crystalLit = new THREE.InstancedBufferAttribute(new Float32Array(n), 1);
+    geo.setAttribute("aLit", this.crystalLit);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.18, metalness: 0.55, flatShading: true });
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nattribute float aLit;\nvarying vec3 vGlow;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\n#ifdef USE_INSTANCING_COLOR\n vGlow = instanceColor * (0.28 + aLit * 3.2);\n#else\n vGlow = vec3(0.3);\n#endif");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nvarying vec3 vGlow;")
+        .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vGlow;");
+    };
+    const mesh = new THREE.InstancedMesh(geo, mat, n);
+    this.crystalSpin = new Float32Array(n * 3);
+    nodes.forEach((node, i) => {
+      const rnd = seeded(node.id + "c");
+      mesh.setColorAt(i, KIND_COLOR[node.kind]);
+      this.crystalSpin.set([rnd() * 6.28, 0.3 + rnd() * 0.9, 0.55 + node.weight * 0.075], i * 3);
+    });
+    mesh.frustumCulled = false;
+    this.crystals = mesh;
+    this.world.add(mesh);
+    this.writeCrystals(0);
+  }
+
+  private writeCrystals(t: number) {
+    if (!this.crystals) return;
+    for (let i = 0; i < this.crystals.count; i++) {
+      const [phase, speed, scale] = [this.crystalSpin[i * 3], this.crystalSpin[i * 3 + 1], this.crystalSpin[i * 3 + 2]];
+      this.dummy.position.set(this.starPos[i * 3], this.starPos[i * 3 + 1], this.starPos[i * 3 + 2]);
+      this.dummy.rotation.set(phase + t * speed * 0.6, phase * 2 + t * speed, 0);
+      this.dummy.scale.setScalar(scale * (1 + (this.starLit[i] ?? 0) * 0.6));
+      this.dummy.updateMatrix();
+      this.crystals.setMatrixAt(i, this.dummy.matrix);
+      if (this.crystalLit) this.crystalLit.setX(i, this.starLit[i] ?? 0);
+    }
+    this.crystals.instanceMatrix.needsUpdate = true;
+    if (this.crystalLit) this.crystalLit.needsUpdate = true;
   }
 
   private writeStarPositions() {
@@ -562,18 +716,21 @@ export class GalaxyScene {
     });
     this.dimTarget = this.beamIdx.length ? 0.32 : 0.95;
     this.syncBeamSparks();
+    this.flow?.setTargets(this.beamIdx.map((i) => this.nodePos(i)));
     if (!this.beamIdx.length) return;
     const centroid = new THREE.Vector3();
     for (const i of this.beamIdx) centroid.add(this.nodePos(i, this.tmp));
     centroid.divideScalar(this.beamIdx.length);
     const dir = centroid.lengthSq() > 1 ? centroid.clone().normalize() : this.camera.position.clone().normalize();
-    this.flyTo(dir.multiplyScalar(Math.max(90, centroid.length() + 80)).add(new THREE.Vector3(0, 20, 0)), centroid.multiplyScalar(0.4), 2);
+    // Keep a respectful distance from the reactor so the shot frames the knowledge, not the glare.
+    this.flyTo(dir.multiplyScalar(Math.max(115, centroid.length() + 85)).add(new THREE.Vector3(0, 22, 0)), centroid.multiplyScalar(0.55), 2.2);
   }
 
   clearHighlight() {
     this.starLitTarget.fill(0);
     this.beamIdx = [];
     this.syncBeamSparks();
+    this.flow?.setTargets([]);
     this.dimTarget = this.focusedProject ? 0.35 : 0.95;
   }
 
@@ -623,7 +780,118 @@ export class GalaxyScene {
   }
 
   telemetry(): Telemetry {
-    return { fps: Math.round(this.fps), distance: Math.round(this.camera.position.distanceTo(this.controls.target)), locked: this.beamIdx.length, nodes: this.nodes.length };
+    const off = this.camera.position.clone().sub(this.controls.target);
+    const len = Math.max(off.length(), 0.001);
+    return {
+      fps: Math.round(this.fps),
+      distance: Math.round(len),
+      locked: this.beamIdx.length,
+      nodes: this.nodes.length,
+      heading: Math.round((THREE.MathUtils.radToDeg(Math.atan2(off.x, off.z)) + 360) % 360),
+      pitch: Math.round(THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(off.y / len, -1, 1)))),
+    };
+  }
+
+  // ───────────── atmosphere extras ─────────────
+
+  /**
+   * Autofocus: the lens racks focus onto what matters (selected star → locked sources → focused
+   * planet) and opens up to full sharpness when nothing is targeted.
+   */
+  private updateFocus(dt: number) {
+    let has = true;
+    const sel = this.selectedId ? this.nodes.findIndex((n) => n.id === this.selectedId) : -1;
+    if (sel >= 0) this.nodePos(sel, this.tmp);
+    else if (this.beamIdx.length) {
+      this.tmp.set(0, 0, 0);
+      const v = new THREE.Vector3();
+      for (const i of this.beamIdx) this.tmp.add(this.nodePos(i, v));
+      this.tmp.divideScalar(this.beamIdx.length);
+    } else if (this.focusedProject && this.hubPos.has(this.focusedProject)) this.tmp.copy(this.hubPos.get(this.focusedProject)!);
+    else has = false;
+
+    if (has) this.focusPoint.lerp(this.tmp, Math.min(1, dt * 3));
+    this.focusOn += ((has ? 1 : 0) - this.focusOn) * Math.min(1, dt * 1.8);
+    if (this.dof) {
+      this.dof.target = this.focusPoint;
+      this.dof.bokehScale = this.focusOn * 3.2;
+    }
+    if (this.beamIdx.length) this.flow?.updateTargets(this.beamIdx.map((i) => this.nodePos(i)));
+  }
+
+  /** Close dust wrapped around the camera: parallax gives a sense of scale and speed. */
+  private buildMotes() {
+    const n = this.mobile ? 120 : 260;
+    this.moteBase = new Float32Array(n * 3);
+    const rnd = seeded("motes");
+    for (let i = 0; i < n * 3; i++) this.moteBase[i] = (rnd() - 0.5) * 140;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    this.motes = new THREE.Points(
+      g,
+      new THREE.PointsMaterial({ size: 0.9, map: this.tex.glow, color: C.ice, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }),
+    );
+    this.motes.frustumCulled = false;
+    this.scene.add(this.motes);
+  }
+
+  private updateMotes() {
+    const arr = (this.motes.geometry.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
+    const c = this.camera.position;
+    const cc = [c.x, c.y, c.z];
+    for (let i = 0; i < arr.length; i++) {
+      const k = i % 3;
+      arr[i] = cc[k] + ((((this.moteBase[i] - cc[k] + 70) % 140) + 140) % 140) - 70;
+    }
+    this.motes.geometry.getAttribute("position").needsUpdate = true;
+  }
+
+  /** Occasional shooting stars streaking through the far field. */
+  private buildMeteors() {
+    for (let i = 0; i < 3; i++) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+      g.setAttribute("aT", new THREE.BufferAttribute(new Float32Array([0, 1]), 1));
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: "attribute float aT; varying float vT; void main(){ vT = aT; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+        fragmentShader: "uniform float uFade; varying float vT; void main(){ gl_FragColor = vec4(vec3(1.0, 0.93, 0.8), vT * vT * uFade); }",
+        uniforms: { uFade: { value: 0 } },
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const line = new THREE.Line(g, mat);
+      line.frustumCulled = false;
+      this.scene.add(line);
+      this.meteors.push({ line, mat, from: new THREE.Vector3(), dir: new THREE.Vector3(), t: 1 });
+    }
+  }
+
+  private updateMeteors(dt: number) {
+    if (this.reduced) return;
+    this.meteorClock -= dt;
+    if (this.meteorClock <= 0) {
+      this.meteorClock = 3 + Math.random() * 6;
+      const m = this.meteors.find((x) => x.t >= 1);
+      if (m) {
+        const th = Math.random() * Math.PI * 2;
+        m.from.set(Math.cos(th) * 420, 60 + Math.random() * 220, Math.sin(th) * 420);
+        m.dir.set(-Math.sin(th), -0.35 - Math.random() * 0.3, Math.cos(th)).normalize();
+        m.t = 0;
+      }
+    }
+    for (const m of this.meteors) {
+      if (m.t >= 1) {
+        m.mat.uniforms.uFade.value = 0;
+        continue;
+      }
+      m.t = Math.min(1, m.t + dt / 1.1);
+      const head = this.tmp.copy(m.from).addScaledVector(m.dir, m.t * 520);
+      const arr = (m.line.geometry.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
+      arr.set([head.x - m.dir.x * 70, head.y - m.dir.y * 70, head.z - m.dir.z * 70, head.x, head.y, head.z]);
+      m.line.geometry.getAttribute("position").needsUpdate = true;
+      m.mat.uniforms.uFade.value = Math.sin(m.t * Math.PI) * 0.9;
+    }
   }
 
   resize() {
@@ -632,7 +900,6 @@ export class GalaxyScene {
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
-    this.bloom.resolution.set(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -647,9 +914,27 @@ export class GalaxyScene {
   private onPointerLeave = () => {
     this.pointer.set(9, 9);
     this.hovered = null;
+    this.flow?.setMouse(null);
     this.cb.onHover(null, 0, 0);
   };
-  private onClick = () => {
+
+  /** Index of the knowledge crystal under the pointer (bigger tolerance on touch). */
+  private hitNode(): number | null {
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    if (this.crystals) {
+      const id = this.raycaster.intersectObject(this.crystals)[0]?.instanceId;
+      if (id != null) return id;
+    }
+    if (!this.stars) return null;
+    this.raycaster.params.Points = { threshold: this.mobile ? 3.5 : 1.8 };
+    return this.raycaster.intersectObject(this.stars)[0]?.index ?? null;
+  }
+  private onClick = (e: MouseEvent) => {
+    // Touch screens have no hover, so pick at the tap position first.
+    const r = this.canvas.getBoundingClientRect();
+    this.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    const idx = this.hitNode();
+    if (idx != null) this.hovered = idx;
     if (this.hovered != null) {
       this.cb.onSelectNode(this.nodes[this.hovered]);
       return;
@@ -666,10 +951,14 @@ export class GalaxyScene {
   };
 
   private pick(x: number, y: number) {
-    if (!this.stars) return;
-    this.raycaster.setFromCamera(this.pointer, this.camera);
-    this.raycaster.params.Points = { threshold: 1.8 };
-    const idx = this.raycaster.intersectObject(this.stars)[0]?.index ?? null;
+    // The cursor's position on a plane through the orbit target pushes the particle flow.
+    if (this.flow) {
+      this.camera.getWorldDirection(this.tmp);
+      this.plane.setFromNormalAndCoplanarPoint(this.tmp, this.controls.target);
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      this.flow.setMouse(this.raycaster.ray.intersectPlane(this.plane, this.mouseWorld));
+    }
+    const idx = this.hitNode();
     if (idx !== this.hovered) {
       this.hovered = idx;
       this.canvas.style.cursor = idx != null ? "pointer" : "";
@@ -710,7 +999,10 @@ export class GalaxyScene {
       this.writeStarPositions();
       this.stars.geometry.getAttribute("position").needsUpdate = true;
       this.writeLinks();
+      this.writeCrystals(this.reduced ? 0 : t);
     }
+    this.flow?.update(dt, t, this.energy);
+    this.updateFocus(dt);
 
     // Shaders & core
     this.sky.material.uniforms.uTime.value = t;
@@ -728,10 +1020,15 @@ export class GalaxyScene {
     });
     const pulse = 1 + Math.sin(t * (2 + this.energy * 6)) * (0.03 + this.energy * 0.08);
     this.plasma.scale.setScalar(pulse);
-    this.bloom.strength = 0.8 + this.energy * 0.25 + warpStress * 0.8;
-    this.cinema.uniforms.uTime.value = t;
-    this.cinema.uniforms.uAberration.value = 0.0016 + this.energy * 0.0005 + warpStress * 0.02;
+    // Up close the reactor fills the frame, so rays and bloom back off with proximity.
+    const near = THREE.MathUtils.smoothstep(this.camera.position.length(), 35, 170);
+    this.bloom.intensity = (0.55 + near * 0.5) + this.energy * 0.3 * near + warpStress * 1.2;
+    const ab = 0.0006 + this.energy * 0.0004 + warpStress * 0.012;
+    this.chroma.offset.set(ab, ab);
+    this.godRays.godRaysMaterial.uniforms.weight.value = (0.08 + near * 0.24) + this.energy * 0.14 * near;
     if (!this.reduced) this.dust.rotation.y += dt * 0.003;
+    this.updateMotes();
+    this.updateMeteors(dt);
 
     // Sonar pulses while thinking
     this.sonarClock += dt;
@@ -813,15 +1110,28 @@ export class GalaxyScene {
   private updateOverlays() {
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
-    for (const [id, el] of this.labels) {
-      const p = this.hubPos.get(id);
-      if (!p) continue;
-      const s = this.toScreen(p, w, h);
-      const dist = this.camera.position.distanceTo(p);
-      const fade = s.behind ? 0 : Math.max(0.3, Math.min(1, 280 / dist - 0.15));
+    // Labels: nearest planets claim screen space first; any label that would collide with one
+    // already placed is hidden (the focused sector always wins), so text never piles up.
+    const entries = [...this.labels.entries()]
+      .map(([id, el]) => {
+        const p = this.hubPos.get(id)!;
+        return { id, el, p, s: this.toScreen(p, w, h), dist: this.camera.position.distanceTo(p) };
+      })
+      .filter((e) => e.p)
+      .sort((a, z) => (a.id === this.focusedProject ? -1 : z.id === this.focusedProject ? 1 : a.dist - z.dist));
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    for (const { id, el, s, dist } of entries) {
+      const lw = el.offsetWidth || 120;
+      const lh = el.offsetHeight || 18;
+      const rect = { x: s.x - lw / 2 - 4, y: s.y + 18 - 2, w: lw + 8, h: lh + 4 };
+      const offscreen = s.behind || s.x < 0 || s.x > w || s.y < 0 || s.y > h - 40;
+      const clash = placed.some((r) => rect.x < r.x + r.w && rect.x + rect.w > r.x && rect.y < r.y + r.h && rect.y + rect.h > r.y);
+      const visible = !offscreen && (!clash || id === this.focusedProject);
+      if (visible) placed.push(rect);
+      const fade = Math.max(0.35, Math.min(1, 280 / dist - 0.15));
       el.style.transform = `translate(${s.x}px, ${s.y}px) translate(-50%, 18px)`;
-      el.style.opacity = String(this.focusedProject && this.focusedProject !== id ? fade * 0.3 : fade);
-      el.style.pointerEvents = s.behind ? "none" : "auto";
+      el.style.opacity = visible ? String(this.focusedProject && this.focusedProject !== id ? fade * 0.3 : fade) : "0";
+      el.style.pointerEvents = visible ? "auto" : "none";
     }
 
     // Reticles: selected, hovered, then locked sources.
@@ -874,6 +1184,7 @@ export class GalaxyScene {
     });
     this.tex.glow.dispose();
     this.tex.hex.dispose();
+    this.flow?.dispose();
     this.composer.dispose();
     this.renderer.dispose();
   }
