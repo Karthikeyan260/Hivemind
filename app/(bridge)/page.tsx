@@ -2,7 +2,7 @@
 
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { ArrowUp, Crosshair, Plus, RefreshCw, Undo2, Volume2, VolumeX, Wand2, X } from "lucide-react";
+import { ArrowUp, Crosshair, Eye, EyeOff, Plus, RefreshCw, Undo2, Volume2, VolumeX, Wand2, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -80,6 +80,7 @@ function Bridge() {
   const [hover, setHover] = useState<{ node: GNode; x: number; y: number } | null>(null);
   const [selected, setSelected] = useState<GNode | null>(null);
   const [booted, setBooted] = useState(false);
+  const [galleryOnly, setGalleryOnly] = useState(false);
   const [tab, setTab] = useState<MobileTab>("console");
   const [muted, setMutedState] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -209,6 +210,7 @@ function Bridge() {
         e.preventDefault();
         inputRef.current?.focus();
       } else if (e.key === "Escape") {
+        setGalleryOnly(false);
         setSelected(null);
         focusProject(null);
         sceneRef.current?.clearHighlight();
@@ -548,7 +550,13 @@ function Bridge() {
         </aside>
 
         {/* Stage */}
-        <section className="in-stage relative order-1 min-h-0 overflow-hidden border border-line bg-bg lg:order-none" aria-label="Knowledge galaxy">
+        <section
+          className={cx(
+            "in-stage order-1 min-h-0 overflow-hidden bg-bg lg:order-none",
+            galleryOnly ? "fixed inset-0 z-40" : "relative border border-line",
+          )}
+          aria-label="Knowledge galaxy"
+        >
           <Galaxy
             onReady={(s) => {
               sceneRef.current = s;
@@ -572,9 +580,21 @@ function Bridge() {
             <span className="font-mono text-[10.5px] tracking-[0.22em] text-data">NEURAL MAP</span>
             <span className="font-mono text-[10px] tracking-widest text-faint">{galaxy.data ? `${galaxy.data.nodes.length} NODES · ${galaxy.data.projects.length} SECTORS` : "…"}</span>
           </div>
-          <div className="pointer-events-none absolute right-4 top-2 hidden md:block">
+          <div className="pointer-events-none absolute left-1/2 top-2 hidden -translate-x-1/2 md:block">
             <Compass read={readTelemetry} />
           </div>
+          <button
+            onClick={() => setGalleryOnly((v) => !v)}
+            aria-pressed={galleryOnly}
+            aria-label={galleryOnly ? "Show panels" : "View the galaxy only"}
+            title={galleryOnly ? "Show panels (Esc)" : "View the galaxy only"}
+            className={cx(
+              "absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center border transition-colors",
+              galleryOnly ? "border-core bg-core/15 text-core" : "border-line bg-bg/60 text-soft hover:border-data hover:text-data",
+            )}
+          >
+            {galleryOnly ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
           {focus && (
             <button
               onClick={() => focusProject(null)}
@@ -612,7 +632,7 @@ function Bridge() {
           )}
 
           {/* Sector strip */}
-          <div className="absolute inset-x-0 bottom-0 border-t border-line bg-sunken/85">
+          <div className={cx("absolute inset-x-0 bottom-0 border-t border-line bg-sunken/85", galleryOnly && "hidden")}>
             <div className="no-scrollbar flex items-center gap-1 overflow-x-auto px-3 py-2">
               <span className="mr-1 shrink-0 font-mono text-[10px] tracking-[0.2em] text-faint">SECTORS</span>
               {b?.projects.map((p) => (
@@ -680,7 +700,8 @@ function Bridge() {
         </div>
       )}
 
-      {(brain.error || galaxy.error) && (
+      {/* Only when data can't load at all; a failed background refresh keeps the last good data. */}
+      {((brain.error && !brain.data) || (galaxy.error && !galaxy.data)) && (
         <div className="absolute left-1/2 top-16 z-30 -translate-x-1/2 border border-alert/50 bg-bg/90 px-3 py-2 font-mono text-[11px] text-alert">
           LINK FAILURE: {brain.error ?? galaxy.error}
         </div>
