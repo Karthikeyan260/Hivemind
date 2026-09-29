@@ -2,7 +2,7 @@
 
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { ArrowUp, Crosshair, Eye, EyeOff, Plus, RefreshCw, Undo2, Volume2, VolumeX, Wand2, X } from "lucide-react";
+import { AudioLines, ArrowUp, Crosshair, Eye, EyeOff, Mic, Plus, Square, RefreshCw, Undo2, Volume2, VolumeX, Wand2, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +18,8 @@ import type { GalaxyScene, Telemetry } from "@/components/galaxy/scene";
 import { cx, RichText } from "@/components/ui";
 import { api, type Brain as BrainT, type HiveEvent, type Source, streamHivemind, useFetch } from "@/lib/client-api";
 import { isMuted, setMuted, sfx } from "@/lib/sfx";
+import { LiveVoice, type LiveState } from "@/lib/live";
+import { SentenceStream, Speaker } from "@/lib/voice";
 
 gsap.registerPlugin(useGSAP);
 
@@ -81,6 +83,12 @@ function Bridge() {
   const [selected, setSelected] = useState<GNode | null>(null);
   const [booted, setBooted] = useState(false);
   const [galleryOnly, setGalleryOnly] = useState(false);
+  const speakerRef = useRef<Speaker | null>(null);
+  const liveRef = useRef<LiveVoice | null>(null);
+  const liveTurnOpen = useRef(false);
+  const liveConvId = useRef<string | null>(null);
+  const [speaking, setSpeaking] = useState(false);
+  const [speakAll, setSpeakAll] = useState(false);
   const [tab, setTab] = useState<MobileTab>("console");
   const [muted, setMutedState] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -118,9 +126,6 @@ function Bridge() {
     if (sceneReady && galaxy.data) sceneRef.current?.setData(galaxy.data.nodes, galaxy.data.projects);
   }, [sceneReady, galaxy.data]);
 
-  useEffect(() => {
-    sceneRef.current?.setState(state);
-  }, [state]);
 
   useEffect(() => {
     sceneRef.current?.setSelected(selected?.id ?? null);
@@ -151,15 +156,36 @@ function Bridge() {
     if (p) sfx.lock();
   }, []);
 
+  const getSpeaker = useCallback(() => {
+    if (!speakerRef.current) {
+      speakerRef.current = new Speaker();
+      speakerRef.current.onSpeakingChange = setSpeaking;
+    }
+    return speakerRef.current;
+  }, []);
+
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, opts: { spoken?: boolean } = {}) => {
       const message = text.trim();
       if (!message || state !== "idle") return;
+      // In a live conversation, typed text goes into the same real-time session.
+      if (liveRef.current?.active) {
+        setInput("");
+        liveTurnOpen.current = true;
+        setTurns((t) => [...t, { q: message, a: "", streaming: true, intent: "LIVE" }]);
+        liveRef.current.sendText(message);
+        return;
+      }
       setInput("");
       setSelected(null);
       setTab("console");
       setState("thinking");
       sfx.send();
+      const speaker = getSpeaker();
+      speaker.stop();
+      // Reply out loud when you asked by voice (or when "always speak" is on).
+      const stream = opts.spoken || speakAll ? new SentenceStream((chunk) => speaker.speak(chunk)) : null;
+      if (stream) speaker.unlock();
       setTurns((t) => [...t, { q: message, a: "", streaming: true }]);
       const patch = (fn: (t: Turn) => Turn) => setTurns((all) => [...all.slice(0, -1), fn(all[all.length - 1])]);
       let changed = false;
@@ -177,6 +203,7 @@ function Bridge() {
           } else if (e.type === "delta") {
             setState("answering");
             patch((t) => ({ ...t, a: t.a + e.text }));
+            stream?.push(e.text);
           } else if (e.type === "action") {
             patch((t) => ({ ...t, actions: [...(t.actions ?? []), { label: e.label, href: e.href }] }));
           } else if (e.type === "done") {
@@ -191,6 +218,7 @@ function Bridge() {
         patch((t) => ({ ...t, error: true, a: err instanceof Error ? err.message : "Something went wrong." }));
         sfx.error();
       } finally {
+        stream?.flush();
         patch((t) => ({ ...t, streaming: false }));
         setState("idle");
         if (changed) {
@@ -200,8 +228,124 @@ function Bridge() {
         inputRef.current?.focus();
       }
     },
-    [state, conversationId, focus, brain, galaxy],
+    [state, conversationId, focus, brain, galaxy, getSpeaker, speakAll],
   );
+
+  /* ───── Live voice: real-time, hands-free conversation (Gemini Live) ───── */
+  const [liveState, setLiveState] = useState<LiveState>("off");
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const liveOn = liveState !== "off";
+
+  const getLive = useCallback(() => {
+    if (liveRef.current) return liveRef.current;
+    const patchLast = (fn: (t: Turn) => Turn) => setTurns((all) => (all.length ? [...all.slice(0, -1), fn(all[all.length - 1])] : all));
+    const openTurn = (q: string) => {
+      liveTurnOpen.current = true;
+      setTurns((all) => [...all, { q, a: "", streaming: true, intent: "LIVE" }]);
+    };
+    liveRef.current = new LiveVoice({
+      onState: setLiveState,
+      onUserText: (text) => {
+        setTab("console");
+        if (!liveTurnOpen.current) openTurn(text);
+        else patchLast((t) => (t.a ? t : { ...t, q: text }));
+      },
+      onModelText: (delta) => {
+        if (!liveTurnOpen.current) openTurn("");
+        patchLast((t) => ({ ...t, a: t.a + delta }));
+      },
+      onTurnEnd: (interrupted) => {
+        if (!liveTurnOpen.current) return;
+        liveTurnOpen.current = false;
+        setTurns((all) => {
+          const last = all[all.length - 1];
+          if (!last) return all;
+          const done = { ...last, streaming: false, a: interrupted && last.a ? `${last.a.trim()} …` : last.a };
+          // Keep the exchange in chat history.
+          if (done.q || done.a) {
+            void fetch("/api/live/log", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ conversation_id: liveConvId.current, user: done.q, assistant: done.a, sources: done.sources }),
+            })
+              .then((r) => r.json())
+              .then((j: { conversation_id?: string }) => {
+                if (j.conversation_id) liveConvId.current = j.conversation_id;
+              })
+              .catch(() => {});
+          }
+          return [...all.slice(0, -1), done];
+        });
+      },
+      onSources: (sources) => {
+        patchLast((t) => ({ ...t, sources }));
+        const ids = sources.map((s) => idFromHref(s.href)).filter(Boolean);
+        if (ids.length) sceneRef.current?.highlight(ids);
+      },
+      onBrainChanged: () => {
+        brain.reload();
+        galaxy.reload();
+      },
+      onError: (msg) => setLiveError(msg),
+    });
+    return liveRef.current;
+  }, [brain, galaxy]);
+
+  const toggleLive = useCallback(() => {
+    speakerRef.current?.stop();
+    const live = getLive();
+    if (live.active) {
+      live.stop();
+      return;
+    }
+    setLiveError(null);
+    liveConvId.current = null;
+    sfx.lock();
+    void live.start();
+  }, [getLive]);
+
+  // The reactor follows the actual loudness of the voice (live conversation or spoken replies).
+  useEffect(() => {
+    sceneRef.current?.setState(liveState === "thinking" ? "thinking" : liveState === "speaking" ? "answering" : state);
+  }, [liveState, state]);
+
+  useEffect(() => {
+    if (!speaking && !liveOn) {
+      sceneRef.current?.setVoiceLevel(0);
+      return;
+    }
+    let raf = 0;
+    const tick = () => {
+      const level = liveOn ? (liveRef.current?.level() ?? 0) : (speakerRef.current?.level() ?? 0);
+      sceneRef.current?.setVoiceLevel(level);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [speaking, liveOn]);
+
+  useEffect(() => () => liveRef.current?.stop(), []);
+
+  useEffect(() => {
+    try {
+       
+      setSpeakAll(localStorage.getItem("hivemind-speak-all") === "1");
+    } catch {}
+    return () => speakerRef.current?.stop();
+  }, []);
+
+  // Space (outside text fields) starts / ends the live conversation.
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      const typing = ["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName);
+      if (e.code === "Space" && !typing && !e.repeat) {
+        e.preventDefault();
+        toggleLive();
+      }
+    };
+    window.addEventListener("keydown", down);
+    return () => window.removeEventListener("keydown", down);
+  }, [toggleLive]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -210,6 +354,8 @@ function Bridge() {
         e.preventDefault();
         inputRef.current?.focus();
       } else if (e.key === "Escape") {
+        speakerRef.current?.stop();
+        liveRef.current?.stop();
         setGalleryOnly(false);
         setSelected(null);
         focusProject(null);
@@ -257,7 +403,18 @@ function Bridge() {
     `Loading operator profile${b?.profile ? `: ${b.profile.name.toUpperCase()}` : ""}`,
     "ALL SYSTEMS ONLINE",
   ];
-  const statusText = state === "thinking" ? "SCANNING LATTICE" : state === "answering" ? "TRANSMITTING" : focus ? `SECTOR · ${focus.name.toUpperCase()}` : "STANDING BY";
+  const LIVE_STATUS: Record<LiveState, string> = { off: "", connecting: "LIVE · CONNECTING", listening: "LIVE · LISTENING", thinking: "LIVE · THINKING", speaking: "LIVE · SPEAKING" };
+  const statusText = liveOn
+    ? LIVE_STATUS[liveState]
+    : state === "thinking"
+      ? "SCANNING LATTICE"
+      : state === "answering"
+        ? "TRANSMITTING"
+        : speaking
+          ? "SPEAKING"
+          : focus
+            ? `SECTOR · ${focus.name.toUpperCase()}`
+            : "STANDING BY";
   const firstName = b?.profile?.name?.split(" ")[0];
   const suggestions = [
     "Brief me on who I am",
@@ -460,21 +617,74 @@ function Bridge() {
           </button>
         )}
         <div className={cx("flex items-center gap-2 border bg-sunken/80 px-3 py-1.5 transition-colors", state !== "idle" ? "border-core/60" : "border-line focus-within:border-data")}>
-          <span className={cx("font-mono text-sm", state !== "idle" ? "animate-pulse text-core" : "text-data")}>▸</span>
+          <span className={cx("font-mono text-sm", state !== "idle" || liveOn ? "animate-pulse text-core" : "text-data")}>▸</span>
           <input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={state === "idle" ? "Speak to HIVEMIND…" : "Processing…"}
+            placeholder={
+              liveState === "connecting"
+                ? "Connecting…"
+                : liveOn
+                  ? "Live: just talk, or type here…"
+                  : state === "idle"
+                    ? "Speak to HIVEMIND…"
+                    : "Processing…"
+            }
             aria-label="Message HIVEMIND"
             disabled={state !== "idle"}
             className="min-w-0 flex-1 bg-transparent py-1.5 text-[14px] text-fg outline-none placeholder:text-faint"
           />
-          <button type="submit" disabled={state !== "idle" || !input.trim()} aria-label="Send" className="flex h-8 w-8 shrink-0 items-center justify-center bg-core text-core-ink transition-opacity disabled:opacity-25">
+          {speaking && (
+            <button
+              type="button"
+              onClick={() => speakerRef.current?.stop()}
+              aria-label="Stop speaking"
+              title="Stop speaking (Esc)"
+              className="flex h-8 w-8 shrink-0 items-center justify-center border border-core/60 text-core hover:bg-core/10"
+            >
+              <Square size={12} fill="currentColor" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={toggleLive}
+            disabled={state !== "idle" && !liveOn}
+            aria-label={liveOn ? "End live conversation" : "Start live voice conversation"}
+            aria-pressed={liveOn}
+            title={liveOn ? "End conversation (Space / Esc)" : "Talk to HIVEMIND hands-free (Space)"}
+            className={cx(
+              "relative flex h-8 shrink-0 items-center justify-center gap-1.5 border px-2 transition-colors disabled:opacity-25",
+              liveOn ? "border-alert bg-alert/15 text-alert" : "w-8 border-line text-soft hover:border-data hover:text-data",
+            )}
+          >
+            {liveOn && <span className="absolute inset-0 animate-ping border border-alert/50" aria-hidden />}
+            <Mic size={15} />
+            {liveOn && <span className="font-mono text-[10px] tracking-widest">LIVE</span>}
+          </button>
+          <button type="submit" disabled={(state !== "idle" && !liveOn) || !input.trim() || liveState === "connecting"} aria-label="Send" className="flex h-8 w-8 shrink-0 items-center justify-center bg-core text-core-ink transition-opacity disabled:opacity-25">
             <ArrowUp size={16} strokeWidth={2.4} />
           </button>
         </div>
-        <div className="mt-1.5 hidden font-mono text-[9.5px] tracking-widest text-faint lg:block">/ TO FOCUS · ESC RESETS VIEW</div>
+        {liveError && <p className="mt-1.5 text-xs text-alert">{liveError}</p>}
+        <div className="mt-1.5 flex items-center justify-between gap-3 font-mono text-[9.5px] tracking-widest text-faint">
+          <span className="hidden truncate xl:inline">{liveOn ? "TALK ANY TIME · INTERRUPT FREELY · SPACE ENDS" : "SPACE = LIVE VOICE · ESC STOPS"}</span>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !speakAll;
+              setSpeakAll(next);
+              try {
+                localStorage.setItem("hivemind-speak-all", next ? "1" : "0");
+              } catch {}
+            }}
+            aria-pressed={speakAll}
+            title={speakAll ? "HIVEMIND speaks every reply" : "HIVEMIND speaks only when you ask by voice"}
+            className={cx("ml-auto flex items-center gap-1.5 hover:text-core", speakAll ? "text-core" : "text-faint")}
+          >
+            <AudioLines size={12} /> VOICE: {speakAll ? "ALWAYS" : "WHEN SPOKEN TO"}
+          </button>
+        </div>
       </form>
     </Holo>
   );

@@ -199,6 +199,8 @@ export class GalaxyScene {
   private fps = 60;
   private tmp = new THREE.Vector3();
   private orbitTime = 0;
+  private voice = 0;
+  private voiceTarget = 0;
   private mobile: boolean;
   private motes!: THREE.Points;
   private moteBase = new Float32Array();
@@ -703,6 +705,11 @@ export class GalaxyScene {
     } else if (!this.beamIdx.length && !this.focusedProject) this.dimTarget = 0.95;
   }
 
+  /** Loudness (0..1) of HIVEMIND's voice right now; the reactor swells and flares with it. */
+  setVoiceLevel(level: number) {
+    this.voiceTarget = level;
+  }
+
   setSelected(id: string | null) {
     this.selectedId = id;
   }
@@ -1001,14 +1008,16 @@ export class GalaxyScene {
       this.writeLinks();
       this.writeCrystals(this.reduced ? 0 : t);
     }
-    this.flow?.update(dt, t, this.energy);
+    // Fast attack, slower release, like a VU meter.
+    this.voice += (this.voiceTarget - this.voice) * Math.min(1, dt * (this.voiceTarget > this.voice ? 22 : 8));
+    this.flow?.update(dt, t, Math.max(this.energy, this.voice * 0.7));
     this.updateFocus(dt);
 
     // Shaders & core
     this.sky.material.uniforms.uTime.value = t;
     this.plasma.material.uniforms.uTime.value = t;
     this.plasma.material.uniforms.uEnergy.value = this.energy;
-    this.corona.material.uniforms.uIntensity.value = 1.1 + this.energy * 0.6 + Math.sin(t * 2) * 0.1;
+    this.corona.material.uniforms.uIntensity.value = 1.1 + this.energy * 0.6 + this.voice * 2.2 + Math.sin(t * 2) * 0.1;
     for (const m of this.flowMats) m.uniforms.uTime.value = t * (1 + this.energy * 2);
     for (const p of this.planets) {
       p.mesh.material.uniforms.uTime.value = t;
@@ -1019,10 +1028,10 @@ export class GalaxyScene {
       r.rotation.z += dt * (0.12 + i * 0.06) * spin * (i % 2 ? -1 : 1);
     });
     const pulse = 1 + Math.sin(t * (2 + this.energy * 6)) * (0.03 + this.energy * 0.08);
-    this.plasma.scale.setScalar(pulse);
+    this.plasma.scale.setScalar(pulse + this.voice * 0.35);
     // Up close the reactor fills the frame, so rays and bloom back off with proximity.
     const near = THREE.MathUtils.smoothstep(this.camera.position.length(), 35, 170);
-    this.bloom.intensity = (0.55 + near * 0.5) + this.energy * 0.3 * near + warpStress * 1.2;
+    this.bloom.intensity = (0.55 + near * 0.5) + this.energy * 0.3 * near + this.voice * 0.6 * near + warpStress * 1.2;
     const ab = 0.0006 + this.energy * 0.0004 + warpStress * 0.012;
     this.chroma.offset.set(ab, ab);
     this.godRays.godRaysMaterial.uniforms.weight.value = (0.08 + near * 0.24) + this.energy * 0.14 * near;
