@@ -1,0 +1,555 @@
+@import "tailwindcss";
+
+/*
+  HIVEMIND HUD. Scene: Karthikeyan at his laptop in the evening, lights low, talking to his own AI.
+  Palette roles: core = amber (the AI itself, primary actions), data = ice (readouts, links, citations),
+  alert = red, ok = green. Neutrals are graphite tinted toward blue.
+*/
+:root {
+  --bg: oklch(0.155 0.012 250);
+  --bg-raised: oklch(0.185 0.014 250);
+  --bg-sunken: oklch(0.135 0.01 250);
+  --line: oklch(0.32 0.02 245 / 0.55);
+  --line-strong: oklch(0.45 0.03 240 / 0.7);
+  --fg: oklch(0.94 0.008 240);
+  --soft: oklch(0.72 0.02 240);
+  --faint: oklch(0.55 0.02 240);
+  --core: oklch(0.8 0.14 72);
+  --core-ink: oklch(0.2 0.03 70);
+  --data: oklch(0.84 0.085 215);
+  --alert: oklch(0.7 0.18 25);
+  --ok: oklch(0.8 0.14 150);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-raised: var(--bg-raised);
+  --color-sunken: var(--bg-sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-soft: var(--soft);
+  --color-faint: var(--faint);
+  --color-core: var(--core);
+  --color-core-ink: var(--core-ink);
+  --color-data: var(--data);
+  --color-alert: var(--alert);
+  --color-ok: var(--ok);
+  /* legacy aliases used by secondary pages */
+  --color-panel: var(--bg-raised);
+  --color-muted: var(--bg-sunken);
+  --color-accent: var(--core);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+::selection {
+  background: oklch(0.8 0.14 72 / 0.35);
+}
+
+/* Faint measurement grid behind the console: reads as instrument, not decoration. */
+.hud-grid {
+  background-image:
+    linear-gradient(oklch(0.84 0.085 215 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.84 0.085 215 / 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Bracketed frame: four L-corners instead of a boxed card. */
+@layer components {
+  /* Only background-image/size/position, so utilities like bg-sunken still set the fill. */
+  .hud-frame {
+    position: relative;
+    --c: var(--line-strong);
+    --s: 10px;
+    --g: linear-gradient(var(--c), var(--c));
+    background-image: var(--g), var(--g), var(--g), var(--g), var(--g), var(--g), var(--g), var(--g);
+    background-size:
+      var(--s) 1px, 1px var(--s), var(--s) 1px, 1px var(--s),
+      var(--s) 1px, 1px var(--s), var(--s) 1px, 1px var(--s);
+    background-position:
+      top left, top left, top right, top right,
+      bottom left, bottom left, bottom right, bottom right;
+    background-repeat: no-repeat;
+  }
+  .hud-frame[data-active="true"] {
+    --c: var(--core);
+  }
+}
+
+.hud-label {
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ───── Core ───── */
+@keyframes core-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes core-breathe {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+@keyframes core-boot {
+  from {
+    opacity: 0;
+    transform: scale(0.55) rotate(-60deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+@keyframes core-tick-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes core-cell {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+@keyframes core-halo {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+.core .core-ring,
+.core .core-glow,
+.core .core-nucleus,
+.core .core-halo {
+  transform-origin: 100px 100px;
+}
+/* boot */
+.core .core-ring--a {
+  animation: core-boot 900ms var(--ease-out) both, core-spin 48s linear 900ms infinite;
+}
+.core .core-ring--b {
+  animation: core-boot 1100ms var(--ease-out) 120ms both, core-spin 70s linear 1200ms infinite reverse;
+}
+.core .core-ticks line {
+  animation: core-tick-in 300ms var(--ease-out) both;
+}
+.core .core-nucleus {
+  animation: core-boot 700ms var(--ease-out) 250ms both;
+}
+.core .core-sweep {
+  opacity: 0;
+  transition: opacity 250ms var(--ease-out);
+}
+.core .core-halo {
+  animation: core-halo 5s ease-in-out infinite;
+}
+/* thinking: fast rings, radar sweep, cells flicker */
+.core[data-state="thinking"] .core-ring--a {
+  animation: core-spin 1.4s linear infinite;
+}
+.core[data-state="thinking"] .core-ring--b {
+  animation: core-spin 2.2s linear infinite reverse;
+}
+.core[data-state="thinking"] .core-sweep {
+  opacity: 1;
+  animation: core-spin 1.1s linear infinite;
+}
+.core[data-state="thinking"] .core-cell {
+  animation: core-cell 700ms ease-in-out infinite;
+}
+/* answering: steady orbit, core breathes */
+.core[data-state="answering"] .core-ring--a {
+  animation: core-spin 6s linear infinite;
+}
+.core[data-state="thinking"] .core-glow,
+.core[data-state="answering"] .core-glow {
+  animation: core-breathe 1.3s ease-in-out infinite;
+}
+.core[data-state="thinking"] .core-halo,
+.core[data-state="answering"] .core-halo {
+  animation-duration: 1.3s;
+}
+
+/* ───── Bridge (galaxy + HUD) ───── */
+.galaxy-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: oklch(0.88 0.08 75);
+  padding: 2px 7px;
+  border: 1px solid oklch(0.8 0.14 72 / 0.28);
+  background: oklch(0.155 0.012 250 / 0.55);
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, background-color 150ms, opacity 300ms;
+  will-change: transform;
+}
+.galaxy-label:hover,
+.galaxy-label[data-active="true"] {
+  color: var(--core-ink);
+  background: var(--core);
+  border-color: var(--core);
+}
+.galaxy-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.galaxy-label em {
+  font-style: normal;
+  color: var(--data);
+  opacity: 0.8;
+}
+.galaxy-label:hover em,
+.galaxy-label[data-active="true"] em {
+  color: var(--core-ink);
+}
+/* A leader line from label up to its planet. */
+.galaxy-label::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 1px;
+  height: 12px;
+  background: linear-gradient(to top, oklch(0.8 0.14 72 / 0.5), transparent);
+}
+
+/* Targeting reticles tracking stars in 3D. */
+.reticle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transition: opacity 200ms;
+  will-change: transform;
+}
+.reticle > i {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--data);
+}
+.reticle > i:nth-child(1) { left: -13px; top: -13px; border-right: 0; border-bottom: 0; }
+.reticle > i:nth-child(2) { right: -13px; top: -13px; border-left: 0; border-bottom: 0; }
+.reticle > i:nth-child(3) { left: -13px; bottom: -13px; border-right: 0; border-top: 0; }
+.reticle > i:nth-child(4) { right: -13px; bottom: -13px; border-left: 0; border-top: 0; }
+.reticle > b {
+  position: absolute;
+  left: 16px;
+  top: -20px;
+  font: 600 9px/1 var(--font-geist-mono);
+  letter-spacing: 0.12em;
+  color: var(--core);
+  white-space: nowrap;
+}
+@keyframes lock-in {
+  from { transform: rotate(45deg) scale(2.6); opacity: 0; }
+  to { transform: rotate(0) scale(1); opacity: 1; }
+}
+@keyframes lock-spin {
+  to { transform: rotate(360deg); }
+}
+.reticle[data-kind="lock"] > i { border-color: var(--core); }
+.reticle[data-kind] > i,
+.reticle[data-kind] > b {
+  animation: lock-in 450ms var(--ease-out) both;
+}
+.reticle[data-kind="lock"] {
+  filter: drop-shadow(0 0 4px oklch(0.8 0.14 72 / 0.8));
+}
+.reticle[data-kind="sel"] > i {
+  border-color: var(--core);
+  width: 10px;
+  height: 10px;
+}
+.reticle[data-kind="sel"] {
+  animation: none;
+}
+.reticle[data-kind="sel"]::after {
+  content: "";
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  width: 44px;
+  height: 44px;
+  border: 1px dashed oklch(0.8 0.14 72 / 0.6);
+  border-radius: 50%;
+  animation: lock-spin 6s linear infinite;
+}
+
+/* Hologram projection-on: RGB-split slices that settle. */
+@keyframes holo-glitch {
+  0% { opacity: 0; clip-path: inset(48% 0 48% 0); filter: drop-shadow(-4px 0 0 oklch(0.7 0.18 25 / 0.8)) drop-shadow(4px 0 0 oklch(0.84 0.085 215 / 0.8)); }
+  30% { opacity: 1; clip-path: inset(10% 0 30% 0); transform: translateX(-3px); }
+  45% { clip-path: inset(40% 0 5% 0); transform: translateX(4px); }
+  60% { clip-path: inset(0 0 0 0); transform: translateX(-1px); filter: drop-shadow(-2px 0 0 oklch(0.7 0.18 25 / 0.5)) drop-shadow(2px 0 0 oklch(0.84 0.085 215 / 0.5)); }
+  100% { clip-path: inset(0 0 0 0); transform: none; filter: none; }
+}
+.holo-glitch {
+  animation: holo-glitch 650ms steps(1, end) both, holo-open 520ms var(--ease-out) both;
+}
+/* Light sweep that crosses a panel once when it appears. */
+.holo-in {
+  position: relative;
+}
+.holo-in::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, oklch(0.84 0.085 215 / 0.09) 50%, transparent 65%);
+  transform: translateX(-100%);
+  animation: holo-sheen 1600ms var(--ease-out) 200ms both;
+}
+@keyframes holo-sheen {
+  to { transform: translateX(100%); }
+}
+
+/* Telemetry bars */
+@keyframes eq {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+.eq > span {
+  display: inline-block;
+  width: 2px;
+  height: 10px;
+  margin-right: 1.5px;
+  background: var(--data);
+  transform-origin: bottom;
+  animation: eq 1.1s ease-in-out infinite;
+}
+
+.holo {
+  --cut: 14px;
+  --edge: oklch(0.84 0.085 215 / 0.45);
+  position: relative;
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  background: var(--edge);
+  padding: 1px;
+}
+.holo > .holo-in {
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  background:
+    repeating-linear-gradient(0deg, oklch(0.84 0.085 215 / 0.025) 0 1px, transparent 1px 3px),
+    linear-gradient(160deg, oklch(0.22 0.025 235 / 0.82), oklch(0.14 0.015 250 / 0.9));
+  height: 100%;
+}
+.holo[data-tone="core"] {
+  --edge: oklch(0.8 0.14 72 / 0.6);
+}
+.holo-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--data);
+}
+.holo-title::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+/* Side panels lean toward the center like curved glass and follow the mouse. */
+.bridge {
+  perspective: 1600px;
+}
+.lean-left {
+  transform: rotateY(calc(9deg + var(--mx, 0) * 3deg)) rotateX(calc(var(--my, 0) * -2deg));
+  transform-origin: left center;
+}
+.lean-right {
+  transform: rotateY(calc(-9deg + var(--mx, 0) * 3deg)) rotateX(calc(var(--my, 0) * -2deg));
+  transform-origin: right center;
+}
+.lean-left,
+.lean-right {
+  transition: transform 400ms var(--ease-out);
+}
+
+@keyframes boot-line {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes boot-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+@keyframes holo-open {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scaleY(0.6);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+.holo-open {
+  animation: holo-open 520ms var(--ease-out) both;
+  transform-origin: bottom center;
+}
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.55; }
+  94% { opacity: 1; }
+  96% { opacity: 0.7; }
+}
+.flicker {
+  animation: flicker 6s linear infinite;
+}
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* ───── Entrances ───── */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes scan-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+.rise-in {
+  animation: rise-in 420ms var(--ease-out) both;
+}
+.scan-in {
+  animation: scan-in 700ms var(--ease-out) both;
+}
+.stagger > * {
+  animation: rise-in 480ms var(--ease-out) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 40ms; }
+.stagger > *:nth-child(2) { animation-delay: 110ms; }
+.stagger > *:nth-child(3) { animation-delay: 180ms; }
+.stagger > *:nth-child(4) { animation-delay: 250ms; }
+.stagger > *:nth-child(5) { animation-delay: 320ms; }
+.stagger > *:nth-child(6) { animation-delay: 390ms; }
+.stagger > *:nth-child(n + 7) { animation-delay: 450ms; }
+
+/* A thin amber scan line that sweeps a frame once when it appears. */
+@keyframes sweep-line {
+  from {
+    transform: translateY(0);
+    opacity: 0.9;
+  }
+  to {
+    transform: translateY(var(--h, 120px));
+    opacity: 0;
+  }
+}
+.scanline {
+  position: relative;
+  overflow: hidden;
+}
+.scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--core), transparent);
+  animation: sweep-line 1100ms var(--ease-out) 200ms both;
+  --h: 260px;
+  pointer-events: none;
+}
+.stream-caret::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--core);
+  animation: caret 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@layer base {
+  :focus-visible {
+    outline: 1.5px solid var(--data);
+    outline-offset: 2px;
+  }
+}
+
+* {
+  scrollbar-color: oklch(0.35 0.02 245) transparent;
+  scrollbar-width: thin;
+}
