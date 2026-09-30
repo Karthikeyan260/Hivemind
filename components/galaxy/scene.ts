@@ -109,6 +109,30 @@ const hexTex = () =>
     g.lineWidth = 2;
     g.stroke();
   });
+// The owner's monogram, etched into the reactor: a smoky dark "K" with a thin molten rim.
+const monogramTex = () =>
+  canvasTexture(512, (g, s) => {
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = `900 ${s * 0.72}px "Arial Black", "Segoe UI Black", "Helvetica Neue", sans-serif`;
+    const x = s / 2;
+    const y = s / 2 + s * 0.04;
+    // Soft shadow body
+    g.shadowColor = "rgba(20,6,0,1)";
+    g.shadowBlur = s * 0.05;
+    g.fillStyle = "rgba(34,11,0,0.96)";
+    g.fillText("K", x, y);
+    g.shadowBlur = 0;
+    // Deeper core so it reads as carved, not printed
+    g.fillStyle = "rgba(12,3,0,0.8)";
+    g.fillText("K", x, y + s * 0.006);
+    // Molten rim
+    g.shadowColor = "rgba(255,190,90,0.9)";
+    g.shadowBlur = s * 0.025;
+    g.lineWidth = s * 0.012;
+    g.strokeStyle = "rgba(255,222,165,1)";
+    g.strokeText("K", x, y);
+  });
 
 function flowMaterial(color: THREE.Color, base: number, pulse: number, speed: number, density = 1) {
   return new THREE.ShaderMaterial({
@@ -162,6 +186,7 @@ export class GalaxyScene {
   private plasma!: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private corona!: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private coreRings: THREE.Mesh[] = [];
+  private monogram!: THREE.Sprite;
   private sonar: { mesh: THREE.Mesh; t: number }[] = [];
   private sonarClock = 0;
   private flowMats: THREE.ShaderMaterial[] = [];
@@ -388,6 +413,13 @@ export class GalaxyScene {
     );
     core.add(this.plasma, this.corona);
 
+    this.monogram = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: monogramTex(), transparent: true, depthWrite: false, opacity: 1, toneMapped: false }),
+    );
+    this.monogram.scale.setScalar(10);
+    this.monogram.renderOrder = 2;
+    core.add(this.monogram);
+
     const ring = (radius: number, tube: number, color: THREE.Color, opacity: number, tilt: [number, number], dashed = false) => {
       const geo = dashed ? new THREE.TorusGeometry(radius, tube, 4, 240, Math.PI * 1.6) : new THREE.TorusGeometry(radius, tube, 6, 200);
       const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -414,7 +446,7 @@ export class GalaxyScene {
     const light = new THREE.PointLight(0xffe2b0, 2, 0, 0);
     if (!this.reduced) {
       const flare = new Lensflare();
-      flare.addElement(new LensflareElement(this.tex.glow, 170, 0, C.amber.clone().multiplyScalar(0.55)));
+      flare.addElement(new LensflareElement(this.tex.glow, 170, 0, C.amber.clone().multiplyScalar(0.32)));
       flare.addElement(new LensflareElement(this.tex.hex, 50, 0.45, new THREE.Color("#8fd3ea").multiplyScalar(0.3)));
       flare.addElement(new LensflareElement(this.tex.hex, 80, 0.66, new THREE.Color("#f0b45a").multiplyScalar(0.3)));
       if (!this.mobile) {
@@ -1029,6 +1061,11 @@ export class GalaxyScene {
     });
     const pulse = 1 + Math.sin(t * (2 + this.energy * 6)) * (0.03 + this.energy * 0.08);
     this.plasma.scale.setScalar(pulse + this.voice * 0.35);
+    // Keep the monogram on the camera-facing surface of the plasma so things in front still hide it.
+    const coreScale = pulse + this.voice * 0.35;
+    this.monogram.position.copy(this.camera.position).normalize().multiplyScalar(4.25 * coreScale);
+    this.monogram.scale.setScalar(10 * coreScale);
+    this.monogram.material.opacity = 0.94 + Math.sin(t * 1.3) * 0.05 - this.voice * 0.2;
     // Up close the reactor fills the frame, so rays and bloom back off with proximity.
     const near = THREE.MathUtils.smoothstep(this.camera.position.length(), 35, 170);
     this.bloom.intensity = (0.55 + near * 0.5) + this.energy * 0.3 * near + this.voice * 0.6 * near + warpStress * 1.2;

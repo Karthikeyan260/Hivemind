@@ -30,11 +30,14 @@ type Turn = {
   intent?: string;
   sources?: Source[];
   actions?: { label: string; href?: string }[];
+  /** The orchestrator's work: which agents ran and which tools they used. */
+  trace?: Step[];
   model?: string;
   latency?: number;
   streaming: boolean;
   error?: boolean;
 };
+type Step = { kind: "agent"; name: string; delegated: boolean } | { kind: "tool"; tool: string; status: "run" | "ok" | "error"; detail?: string };
 type GalaxyData = { nodes: GNode[]; projects: GProject[] };
 type MobileTab = "console" | "operator" | "log";
 
@@ -50,7 +53,16 @@ const NAV = [
   { href: "/settings", label: "Settings" },
 ];
 const KIND_DOT: Record<string, string> = { memory: "bg-data", note: "bg-ok", document: "bg-[#b59cff]" };
-const INTENT: Record<string, string> = { SEARCH: "RECALL", STORE_MEMORY: "STORED", UPDATE_MEMORY: "UPDATE", CREATE_PROJECT: "NEW SECTOR", GENERAL_CHAT: "COMMS" };
+const INTENT: Record<string, string> = {
+  core: "COMMS",
+  rag: "RECALL",
+  memory: "MEMORY",
+  research: "RESEARCH",
+  career: "CAREER",
+  project: "SECTORS",
+  profile: "PROFILE",
+};
+const toolLabel = (t: string) => t.replace(/_/g, " ");
 const idFromHref = (href: string) => href.split("open=")[1] ?? "";
 
 export default function BridgePage() {
@@ -205,10 +217,24 @@ function Bridge() {
             setState("answering");
             patch((t) => ({ ...t, a: t.a + e.text }));
             stream?.push(e.text);
+          } else if (e.type === "agent") {
+            patch((t) => ({ ...t, trace: [...(t.trace ?? []), { kind: "agent", name: e.name, delegated: e.via === "delegation" }] }));
+          } else if (e.type === "tool") {
+            patch((t) => {
+              const trace = [...(t.trace ?? [])];
+              if (e.status === "run") trace.push({ kind: "tool", tool: e.tool, status: "run", detail: e.detail });
+              else {
+                const i = trace.findLastIndex((s) => s.kind === "tool" && s.tool === e.tool && s.status === "run");
+                if (i >= 0) trace[i] = { kind: "tool", tool: e.tool, status: e.status, detail: e.detail ?? (trace[i] as { detail?: string }).detail };
+              }
+              return { ...t, trace };
+            });
+            if (e.status === "run") sfx.lock();
           } else if (e.type === "action") {
             patch((t) => ({ ...t, actions: [...(t.actions ?? []), { label: e.label, href: e.href }] }));
           } else if (e.type === "done") {
             patch((t) => ({ ...t, model: e.model, latency: e.latency_ms }));
+            if (e.changed) changed = true;
             sfx.done();
           } else if (e.type === "error") {
             patch((t) => ({ ...t, error: true, a: t.a || e.message }));
@@ -512,9 +538,34 @@ function Bridge() {
                   <span className="text-core">▸</span>
                   <span className="text-fg/85">{t.q}</span>
                 </div>
+                {t.trace?.length ? (
+                  <div className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[10px] uppercase tracking-wider">
+                    {t.trace.map((s, j) =>
+                      s.kind === "agent" ? (
+                        <span key={j} className={cx("flex items-center gap-1", s.delegated ? "text-violet-300" : "text-core")}>
+                          {j > 0 && <span className="text-faint">›</span>}
+                          {s.delegated ? "⇢" : "◆"} {s.name}
+                        </span>
+                      ) : (
+                        <span
+                          key={j}
+                          title={s.detail}
+                          className={cx("flex items-center gap-1", s.status === "error" ? "text-alert" : s.status === "ok" ? "text-data" : "animate-pulse text-soft")}
+                        >
+                          <span className="text-faint">›</span>
+                          {toolLabel(s.tool)} {s.status === "ok" ? "✓" : s.status === "error" ? "✕" : "⟳"}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                ) : null}
                 {t.streaming && !t.a ? (
                   <div className="font-mono text-[12px] text-data">
-                    {t.sources?.length ? `LOCKED ${t.sources.length} NODES · SYNTHESIZING` : "SCANNING NEURAL LATTICE"}
+                    {(() => {
+                      const running = t.trace?.findLast((s) => s.kind === "tool" && s.status === "run");
+                      if (running && running.kind === "tool") return `${toolLabel(running.tool).toUpperCase()}${running.detail ? ` · ${running.detail}` : ""}`;
+                      return t.sources?.length ? `LOCKED ${t.sources.length} NODES · SYNTHESIZING` : "ROUTING TO AGENT";
+                    })()}
                     <span className="stream-caret" aria-hidden />
                   </div>
                 ) : (
@@ -525,7 +576,11 @@ function Bridge() {
                 {t.actions?.length ? (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {t.actions.map((a) =>
-                      a.href ? (
+                      a.href?.startsWith("/api/") ? (
+                        <a key={a.label} href={a.href} download className="border border-core/50 px-2 py-0.5 font-mono text-[10.5px] text-core hover:border-core">
+                          {a.label} ↓
+                        </a>
+                      ) : a.href ? (
                         <Link key={a.label} href={a.href} className="border border-data/40 px-2 py-0.5 font-mono text-[10.5px] text-data hover:border-data">
                           {a.label} →
                         </Link>

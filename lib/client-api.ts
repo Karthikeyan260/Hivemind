@@ -122,7 +122,9 @@ export type HiveEvent =
   | { type: "meta"; conversation_id: string; intent: string; sources: Source[] }
   | { type: "delta"; text: string }
   | { type: "action"; label: string; href?: string }
-  | { type: "done"; provider?: string; model?: string; latency_ms?: number }
+  | { type: "agent"; agent: string; name: string; via: "router" | "delegation" }
+  | { type: "tool"; agent: string; tool: string; status: "run" | "ok" | "error"; detail?: string }
+  | { type: "done"; provider?: string; model?: string; latency_ms?: number; changed?: boolean }
   | { type: "error"; message: string };
 
 /** Streams HIVEMIND's newline-delimited JSON events. */
