@@ -125,6 +125,14 @@ type AgentToolOut = {
 /** Server tools whose result page should open right away (the owner asked to go there or to see the result). */
 const OPENS_PAGE = new Set(["open_source", "check_listed_job"]);
 
+/** Spoken phrases that end the live session even if the model forgets to call go_to_sleep. */
+const SLEEP_WORDS = {
+  test: (q: string) =>
+    /\b(go(ing)? to sleep|sleep now|stop listening|turn off (the )?mic|mic off)\b/i.test(q) ||
+    // A bare goodbye ("bye", "okay goodnight Hivemind"), not one inside a sentence.
+    /^\W*(ok(ay)?\W+)?(good ?night|bye[ -]?bye|goodbye|bye)(\W+(hivemind|for now|then))?\W*$/i.test(q.trim()),
+};
+
 const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/notes", "/documents", "/sources", "/search", "/settings"];
 
 /**
@@ -154,6 +162,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   }>({});
   const turns = useRef(0);
   const lastSources = useRef<LiveSource[]>([]);
+  const sleepAfterTurn = useRef(false);
   const routerRef = useRef(router);
   useEffect(() => {
     routerRef.current = router;
@@ -205,6 +214,12 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
               if (j.conversation_id) convId.current = j.conversation_id;
             })
             .catch(() => {});
+        }
+        // "Go to sleep": turn the mic off once the goodbye has finished playing.
+        if (sleepAfterTurn.current || SLEEP_WORDS.test(t.q)) {
+          sleepAfterTurn.current = false;
+          const live = liveRef.current;
+          setTimeout(() => live?.stop(), (live?.remainingAudio ?? 0) * 1000 + 400);
         }
       },
       onSources: (sources) => {
@@ -392,6 +407,10 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         scroll,
         type_text: typeText,
         select_option: selectOption,
+        go_to_sleep: () => {
+          sleepAfterTurn.current = true;
+          return { sleeping: true, note: "Say a very short goodbye; the mic turns off when you finish." };
+        },
         go_back: () => {
           history.back();
           return { went: "back" };

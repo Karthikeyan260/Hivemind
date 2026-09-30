@@ -206,6 +206,11 @@ const VOICE_TOOLS = [
   },
   { name: "go_back", description: "Browser back: return to the previous page.", parametersJsonSchema: { type: "object", properties: {} } },
   { name: "go_forward", description: "Browser forward.", parametersJsonSchema: { type: "object", properties: {} } },
+  {
+    name: "go_to_sleep",
+    description: "End the live voice conversation and turn the microphone off ('go to sleep', 'stop listening', 'that's all', 'bye').",
+    parametersJsonSchema: { type: "object", properties: {} },
+  },
 ];
 
 // Voice gets every chat-agent tool too (run on the server via /api/agent-tool), except the ones the
@@ -270,6 +275,7 @@ Tools:
 - "Where did that come from / take me there / open the source": call open_source (empty 'about' = what you just said). It opens the page; say in one line where the info came from.
 - Jobs: search_jobs finds live openings (role and/or location; empty role = based on their resume). Read out the top 3-5 as "number, role at company, city" and ask which one to check. When they pick one ("number two", "the Infosys one"), say "On it, about half a minute" and call check_listed_job with their pick: it runs the ATS check, generates the tailored resume and opens it in Career. Report fit, ATS percent and the main missing keywords.
 - Also available: recent_memories, list_projects, project_details, job_analyses, get_profile, refresh_profile, research_and_save.
+- When the owner says "go to sleep", "stop listening", "that's all for now" or says goodbye, call go_to_sleep, then say a very short goodbye (a few words). The mic turns off after that.
 - You can use every page like a person would: scroll (up/down/top/bottom or to a section), click any button/link/tab by its label, type_text into fields, select_option in dropdowns, go_back. If you don't know the exact label, call read_screen first (it lists the controls). Do it instead of telling the owner to do it.
 - On the home page the 3D galaxy has its own actions (via page_actions / do_page_action): rotate_galaxy ('left', 'right 90', 'up'), zoom_galaxy ('in' / 'out'), focus_project (project name), reset_galaxy_view, galaxy_auto_rotate ('on'/'off'). "Zoom into project X" = focus_project.
 - Call read_screen when they refer to what they're looking at ("this job", "summarise this page", "what's my fit here"), then answer from it.

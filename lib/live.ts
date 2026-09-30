@@ -76,6 +76,11 @@ export class LiveVoice {
     return this.state !== "off";
   }
 
+  /** Seconds of HIVEMIND's voice still queued to play (so a goodbye isn't cut off). */
+  get remainingAudio() {
+    return this.outCtx ? Math.max(0, this.nextTime - this.outCtx.currentTime) : 0;
+  }
+
   async start() {
     if (this.active) return;
     this.closedByUs = false;
