@@ -201,6 +201,16 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           window.dispatchEvent(new Event(BRAIN_CHANGED));
           return summarizeTailored(t);
         },
+        get_weather: async ({ place }) => await call(`/api/tools/weather${place ? `?place=${encodeURIComponent(String(place))}` : ""}`, "GET"),
+        web_search: async ({ query, save }) => {
+          const r = (await call("/api/tools/web", "POST", { query: String(query ?? ""), save: !!save })) as {
+            answer: string;
+            sources: { title: string }[];
+            saved?: { id: string; title: string };
+          };
+          if (r.saved) window.dispatchEvent(new Event(BRAIN_CHANGED));
+          return { answer: r.answer.slice(0, 3000), sources: r.sources.map((x) => x.title), saved_as_note: r.saved?.title ?? null };
+        },
         create_note: async ({ title, content }) => {
           const n = await call("/api/notes", "POST", { title: title ? String(title) : undefined, content: String(content ?? "") });
           window.dispatchEvent(new Event(BRAIN_CHANGED));

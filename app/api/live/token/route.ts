@@ -53,6 +53,21 @@ const TOOLS = [
         },
       },
       {
+        name: "get_weather",
+        description: "Live weather and 4-day forecast for a place (defaults to the owner's city, Chennai). Use for any weather, temperature, rain or forecast question.",
+        parametersJsonSchema: { type: "object", properties: { place: { type: "string" } } },
+      },
+      {
+        name: "web_search",
+        description:
+          "Search the internet (Google) for current or outside-world information: news, prices, releases, events, public facts. Set save=true when the owner asks to research/collect/gather information and keep it; it is then saved as a note with sources.",
+        parametersJsonSchema: {
+          type: "object",
+          properties: { query: { type: "string" }, save: { type: "boolean" } },
+          required: ["query"],
+        },
+      },
+      {
         name: "analyze_job",
         description:
           "Run a real job-match analysis (fit score, ATS keyword match, gaps, cover letter). Use when the owner says 'analyse this job'. On the Career page, ALWAYS call it with no arguments first: the tool reads the pasted job description box itself (you cannot see it). Only pass job_description if the owner read a full job description out loud. Don't ask them to paste unless this tool says the box is empty.",
@@ -116,6 +131,7 @@ Tools:
 - Call create_project when they ask to start a project.
 - The owner can talk to you from any page of the app. Call navigate when they ask to open or go to a page, then say where you took them in a few words.
 - You can operate the app: analyze_job, tailor_resume, create_note, navigate, and any page button via page_actions + do_page_action. When the owner asks for something the app can do, DO it with a tool instead of describing it. If you aren't sure an action exists, call page_actions.
+- For weather call get_weather; for news or anything happening in the world call web_search. Never guess live facts from memory. Mention where it came from briefly ("according to ..."), no URLs.
 - For "analyse this / this job", call analyze_job directly; don't use read_screen to check for the job description first.
 - Before a slow tool (analyze_job, tailor_resume), say one short line like "On it, give me a few seconds."
 - NEVER claim something was done, generated, saved or opened unless a tool just returned success for it. If a tool returns an error, say what went wrong in plain words.

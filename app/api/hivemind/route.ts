@@ -4,11 +4,13 @@ import { generateWithFallback, parseJson } from "@/lib/ai/providers";
 import { detectIntent } from "@/lib/ai/router";
 import type { ChatMessage } from "@/lib/ai/types";
 import { logActivity } from "@/lib/activity";
-import { dbError, handle, parseBody } from "@/lib/api";
+import { dbError, handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
 import { createMemory } from "@/lib/knowledge";
 import { listProjects } from "@/lib/organizer";
 import { getProfile, profileForPrompt } from "@/lib/profile";
+import { getWeather, HOME_CITY, weatherText } from "@/lib/external/weather";
+import { researchAndSave, webSearch } from "@/lib/external/web";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
 
 export const maxDuration = 60;
@@ -115,19 +117,52 @@ export const POST = handle(async (req: Request) => {
             }
           }
           send({ type: "delta", text: reply });
+        } else if (intent === "WEB_SEARCH") {
+          const started = Date.now();
+          const web = await webSearch(message);
+          sources = web.sources.map((w, i) => ({ n: i + 1, type: "web", title: w.title, href: w.url, similarity: 1 }));
+          send({ type: "meta", conversation_id: conversationId!, intent, sources });
+          reply = web.answer;
+          send({ type: "delta", text: reply });
+          done = { type: "done", provider: "gemini + google search", model: web.model, latency_ms: Date.now() - started };
+        } else if (intent === "RESEARCH") {
+          const started = Date.now();
+          send({ type: "meta", conversation_id: conversationId!, intent, sources });
+          const topic =
+            message
+              .replace(/^(please\s+)?(research|collect|gather|compile)\s+((data|info(rmation)?|details)\s+)?((on|about|for)\s+)?/i, "")
+              .replace(/\s*(and\s+)?(save|store|keep)( it| that| them)?[.!]*$/i, "")
+              .trim() || message;
+          const { note, result } = await researchAndSave(supabase, topic, project_id);
+          sources = result.sources.map((w, i) => ({ n: i + 1, type: "web", title: w.title, href: w.url, similarity: 1 }));
+          send({ type: "meta", conversation_id: conversationId!, intent, sources });
+          reply = `${result.answer}\n\nSaved to your brain as **${note.title}** with ${result.sources.length} sources.`;
+          actions.push({ label: "Open note", href: `/notes?open=${note.id}` });
+          send({ type: "delta", text: reply });
+          done = { type: "done", provider: "gemini + google search", model: result.model, latency_ms: Date.now() - started };
         } else {
-          const context = intent === "GENERAL_CHAT" ? [] : await searchKnowledge(supabase, message, { projectId: project_id, limit: 8 });
-          sources = context.map((c, i) => ({
-            n: i + 1,
-            type: c.source_type,
-            title: c.title,
-            href: sourceHref(c),
-            similarity: Math.round(c.similarity * 100) / 100,
-          }));
+          let live: string | null = null;
+          if (intent === "WEATHER") {
+            const place = message.match(/\b(?:in|at|for|of)\s+([a-z][a-z .'-]{1,40}?)(?:\s+(?:today|tomorrow|now|right now|this week|tonight))?\s*[?.!]*$/i)?.[1] ?? HOME_CITY;
+            const w = await getWeather(place).catch(() => getWeather(HOME_CITY));
+            live = weatherText(w);
+            sources = [{ n: 1, type: "web", title: `Open-Meteo · ${w.place}`, href: "https://open-meteo.com", similarity: 1 }];
+          }
+          const context = intent === "GENERAL_CHAT" || live ? [] : await searchKnowledge(supabase, message, { projectId: project_id, limit: 8 });
+          if (!live)
+            sources = context.map((c, i) => ({
+              n: i + 1,
+              type: c.source_type,
+              title: c.title,
+              href: sourceHref(c),
+              similarity: Math.round(c.similarity * 100) / 100,
+            }));
           send({ type: "meta", conversation_id: conversationId!, intent, sources });
 
           const system = persona(profileForPrompt(profile), projects.map((p) => p.name).join(", "));
-          const userTurn = context.length
+          const userTurn = live
+            ? `Live data (real-time, answer from this):\n${live}\n\nMe: ${message}`
+            : context.length
             ? `Context from my brain:\n${context.map((c, i) => `[${i + 1}] (${c.source_type}) ${c.title}\n${c.content.slice(0, 1500)}`).join("\n\n---\n\n")}\n\nMe: ${message}`
             : message;
           const messages: ChatMessage[] = [...history, { role: "user", content: userTurn }];
@@ -164,7 +199,7 @@ export const POST = handle(async (req: Request) => {
         ]);
       } catch (err) {
         console.error("hivemind:", err instanceof Error ? err.message : err);
-        send({ type: "error", message: "I hit a problem answering that. Try again in a moment." });
+        send({ type: "error", message: err instanceof HttpError ? err.message : "I hit a problem answering that. Try again in a moment." });
       } finally {
         controller.close();
       }
