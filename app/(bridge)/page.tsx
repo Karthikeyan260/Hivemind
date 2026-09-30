@@ -4,22 +4,23 @@ import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { AudioLines, ArrowUp, Crosshair, Eye, EyeOff, Mic, Plus, Square, RefreshCw, Undo2, Volume2, VolumeX, Wand2, X } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Boot } from "@/components/bridge/boot";
 import { Compass } from "@/components/bridge/compass";
 import { Cursor } from "@/components/bridge/cursor";
 import { Gauge, Holo, Meter } from "@/components/bridge/holo";
 import { Scramble } from "@/components/bridge/scramble";
+import { JobCards } from "@/components/career/job-cards";
 import { AgendaPanel } from "@/components/reminders/agenda";
 import type { CoreState } from "@/components/core";
 import { Decrypt } from "@/components/fx";
 import { Galaxy, type GNode, type GProject } from "@/components/galaxy/galaxy";
 import type { GalaxyScene, Telemetry } from "@/components/galaxy/scene";
 import { cx, RichText } from "@/components/ui";
-import { api, type Brain as BrainT, type HiveEvent, type Source, streamHivemind, useFetch } from "@/lib/client-api";
+import { api, type Brain as BrainT, type HiveEvent, type JobListing, type Source, streamHivemind, useFetch } from "@/lib/client-api";
 import { isMuted, setMuted, sfx } from "@/lib/sfx";
-import { useVoice } from "@/components/voice/provider";
+import { useVoice, useVoiceActions } from "@/components/voice/provider";
 import type { LiveState } from "@/lib/live";
 import { SentenceStream, Speaker } from "@/lib/voice";
 
@@ -31,6 +32,8 @@ type Turn = {
   intent?: string;
   sources?: Source[];
   actions?: { label: string; href?: string }[];
+  /** Live job openings found by the Career agent, shown as cards. */
+  jobs?: JobListing[];
   /** The orchestrator's work: which agents ran and which tools they used. */
   trace?: Step[];
   model?: string;
@@ -82,6 +85,7 @@ function greeting() {
 
 function Bridge() {
   const params = useSearchParams();
+  const router = useRouter();
   const brain = useFetch<BrainT>("/api/brain");
   const galaxy = useFetch<GalaxyData>("/api/galaxy");
   const sceneRef = useRef<GalaxyScene | null>(null);
@@ -171,6 +175,60 @@ function Bridge() {
     if (p) sfx.lock();
   }, []);
 
+  /* ───── Voice control of the galaxy ───── */
+  const num = (s: unknown, d: number) => Number(String(s ?? "").match(/\d+/)?.[0] ?? d);
+  const findProject = (q: string) => {
+    const words = q.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
+    const all = galaxy.data?.projects ?? [];
+    return all.find((p) => p.name.toLowerCase() === q.toLowerCase()) ?? all.map((p) => ({ p, s: words.filter((w) => p.name.toLowerCase().includes(w)).length })).sort((a, b) => b.s - a.s).find((x) => x.s > 0)?.p;
+  };
+  useVoiceActions({
+    rotate_galaxy: {
+      description: "Rotate the 3D galaxy view. input: direction left/right/up/down plus optional degrees, e.g. 'left', 'right 90', 'up 30' (default 45°).",
+      run: ({ input }) => {
+        const s = String(input ?? "left").toLowerCase();
+        const deg = num(s, 45);
+        const [yaw, pitch] = /right/.test(s) ? [-deg, 0] : /up|above|top/.test(s) ? [0, deg] : /down|below/.test(s) ? [0, -deg] : [deg, 0];
+        if (!sceneRef.current) return { error: "The galaxy isn't loaded." };
+        sceneRef.current.orbit(yaw, pitch);
+        return { rotated: s };
+      },
+    },
+    zoom_galaxy: {
+      description: "Zoom the galaxy in or out. input: 'in' or 'out', optionally 'a lot' / 'a little'.",
+      run: ({ input }) => {
+        const s = String(input ?? "in").toLowerCase();
+        const strength = /lot|more|far|max/.test(s) ? 0.45 : /little|bit|slight/.test(s) ? 0.8 : 0.65;
+        const d = sceneRef.current?.zoom(/out|away|back/.test(s) ? 1 / strength : strength);
+        return d == null ? { error: "The galaxy isn't loaded." } : { zoomed: s, distance: d };
+      },
+    },
+    focus_project: {
+      description: "Fly the galaxy to one project and highlight its knowledge. input: the project name (e.g. 'Address NER').",
+      run: ({ input }) => {
+        const p = findProject(String(input ?? ""));
+        if (!p) return { error: `No project matching "${input}".`, projects: (galaxy.data?.projects ?? []).map((x) => x.name) };
+        focusProject(p);
+        return { focused: p.name };
+      },
+    },
+    reset_galaxy_view: {
+      description: "Go back to the full galaxy overview (clears the project focus).",
+      run: () => {
+        focusProject(null);
+        return { reset: true };
+      },
+    },
+    galaxy_auto_rotate: {
+      description: "Pause or resume the galaxy's slow automatic spin. input: 'on' / 'off'.",
+      run: ({ input }) => {
+        const on = !/off|stop|pause|no/.test(String(input ?? "").toLowerCase());
+        sceneRef.current?.setSpin(on);
+        return { auto_rotate: on };
+      },
+    },
+  });
+
   const getSpeaker = useCallback(() => {
     if (!speakerRef.current) {
       speakerRef.current = new Speaker();
@@ -204,6 +262,7 @@ function Bridge() {
       setTurns((t) => [...t, { q: message, a: "", streaming: true }]);
       const patch = (fn: (t: Turn) => Turn) => setTurns((all) => [...all.slice(0, -1), fn(all[all.length - 1])]);
       let changed = false;
+      let goTo: string | null = null;
       try {
         await streamHivemind({ message, conversation_id: conversationId, project_id: focus?.id ?? null }, (e: HiveEvent) => {
           if (e.type === "meta") {
@@ -234,6 +293,9 @@ function Bridge() {
             if (e.status === "run") sfx.lock();
           } else if (e.type === "action") {
             patch((t) => ({ ...t, actions: [...(t.actions ?? []), { label: e.label, href: e.href }] }));
+            if (e.navigate && e.href?.startsWith("/")) goTo = e.href;
+          } else if (e.type === "jobs") {
+            patch((t) => ({ ...t, jobs: e.jobs }));
           } else if (e.type === "done") {
             patch((t) => ({ ...t, model: e.model, latency: e.latency_ms }));
             if (e.changed) changed = true;
@@ -255,9 +317,14 @@ function Bridge() {
           galaxy.reload();
         }
         inputRef.current?.focus();
+        // "Take me there": open where the answer came from, after a beat so the reply can be read.
+        if (goTo) {
+          const href = goTo;
+          setTimeout(() => router.push(href), 1500);
+        }
       }
     },
-    [state, conversationId, focus, brain, galaxy, getSpeaker, speakAll, voice],
+    [state, conversationId, focus, brain, galaxy, getSpeaker, speakAll, voice, router],
   );
 
   /* ───── Live voice: the site-wide Gemini Live session, mirrored into this console ───── */
@@ -583,6 +650,10 @@ function Bridge() {
                         <a key={a.label} href={a.href} download className="border border-core/50 px-2 py-0.5 font-mono text-[10.5px] text-core hover:border-core">
                           {a.label} ↓
                         </a>
+                      ) : a.href?.startsWith("http") ? (
+                        <a key={a.label} href={a.href} target="_blank" rel="noopener noreferrer" className="border border-data/40 px-2 py-0.5 font-mono text-[10.5px] text-data hover:border-data">
+                          {a.label} ↗
+                        </a>
                       ) : a.href ? (
                         <Link key={a.label} href={a.href} className="border border-data/40 px-2 py-0.5 font-mono text-[10.5px] text-data hover:border-data">
                           {a.label} →
@@ -590,6 +661,9 @@ function Bridge() {
                       ) : null,
                     )}
                   </div>
+                ) : null}
+                {t.jobs?.length ? (
+                  <JobCards jobs={t.jobs} busy={state !== "idle"} onCheck={(n, j) => send(`Check job #${n} (${j.title} at ${j.company}): ATS check and tailored resume`)} />
                 ) : null}
                 {!t.streaming && t.sources && t.sources.length > 0 && (
                   <div className="stagger mt-3 flex flex-wrap gap-1.5">

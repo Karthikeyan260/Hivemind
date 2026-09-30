@@ -112,7 +112,7 @@ async function jobProjectId(supabase: SupabaseClient) {
   return created!.id as string;
 }
 
-export async function analyzeJob(supabase: SupabaseClient, input: { jobDescription: string; role?: string; company?: string }) {
+export async function analyzeJob(supabase: SupabaseClient, input: { jobDescription: string; role?: string; company?: string; applyLink?: string; location?: string }) {
   const jd = input.jobDescription.trim();
   const [profile, ev] = await Promise.all([getProfile(supabase), gatherEvidence(supabase, jd)]);
   if (!ev.items.length && !ev.resumeText) throw new HttpError(422, "Your brain has no profile data yet. Sync your portfolio in Sources first.");
@@ -182,7 +182,7 @@ ${evidence}`;
       importance: 7,
       confidence: 1,
       tags: ["job", "career", ...analysis.matched_keywords.slice(0, 5)],
-      metadata: { source: CAREER_SOURCE, job_description: jd.slice(0, 20000), analysis, model: res.model },
+      metadata: { source: CAREER_SOURCE, job_description: jd.slice(0, 20000), analysis, model: res.model, apply_link: input.applyLink || null, location: input.location || null },
       embedding: toVector(vector),
       project_id: projectId,
     })

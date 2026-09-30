@@ -8,11 +8,19 @@ import { AGENT_IDS, type AgentId } from "./types";
 const RouteSchema = z.object({ agent: z.enum(AGENT_IDS) });
 
 /** Instant keyword routing: used when Groq is unavailable, and to skip the LLM for obvious cases. */
-export function ruleBasedAgent(message: string): AgentId | null {
+export function ruleBasedAgent(message: string, previous?: AgentId | null): AgentId | null {
   const m = message.trim().toLowerCase();
   if (/^(hi|hello|hey|thanks|thank you|good (morning|night|evening))\b[\s!.]*$/.test(m)) return "core";
   if (/\b(remind(er)?s?|schedule|meeting|appointment|deadline|agenda|calendar|my day|on today|on tomorrow)\b|\bmark\b.*\b(done|complete)\b|\b(cancel|reschedule|postpone|move)\b.*\b(meeting|call|reminder|appointment|it)\b|\b(plans?|free|busy)\b.*\b(today|tomorrow|tonight)\b|\b(today|tomorrow)\b.*\b(at \d|am\b|pm\b)/.test(m)) return "scheduler";
   if (/^(please\s+)?(remember|save|store|note)\b|^note:|\b(update|correct|change)\b.*\b(memory|saved)\b/.test(m)) return "memory";
+  if (/\b(delete|remove|erase)\b.*\b(job analys[ie]s|analys[ie]s|job match)\b/.test(m)) return "career";
+  if (/^(please\s+)?(forget|delete|remove|erase)\b|\b(delete|remove|erase|forget)\b.*\bmemor(y|ies)\b/.test(m)) return "memory";
+  // "Yes" to a delete confirmation goes back to the Memory agent that asked.
+  if ((previous === "memory" || previous === "career") && /^(yes|yeah|yep|yup|sure|ok(ay)?|confirm(ed)?|do it|go ahead|delete it|please do)\b/.test(m)) return "memory";
+  if (/\b(where did (you|that|this|it) (get|come)|where (is|was) (that|this|it) from|take me (there|to (it|that|the source))|open (the |that )?source|show (me )?(the )?source|go to (the )?source)\b/.test(m)) return "rag";
+  // A short follow-up to a job search ("check #2", "the second one", "ATS for Quest Global") stays with Career.
+  if (previous === "career" && m.length < 160 && /#?\b\d{1,2}\b|\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|that|this) (one|job|role)\b|\b(check|pick|choose|select|analy[sz]e|ats|go with)\b/.test(m)) return "career";
+  if (/\b(jobs|job (openings?|search|listings?|vacanc(y|ies))|openings|vacanc(y|ies))\b/.test(m)) return "career";
   if (/^(please\s+)?(research|collect|gather|compile)\b|\b(weather|temperature|forecast|raining|humidity)\b|\b(search (the )?(web|internet)|google|latest news|news (about|on))\b/.test(m)) return "research";
   if (/\b(job analys[ie]s|job match(es)?|job description|jd\b|resume|cv\b|cover letter|interview|ats\b|hiring|apply(ing)? (for|to))\b/.test(m) || m.length > 900) return "career";
   if (/^(please\s+)?(create|start|add|new)\b.*\bproject\b|\b(my projects|list projects|project status)\b/.test(m)) return "project";
@@ -27,8 +35,8 @@ ${agentRoster()}
 If unsure between knowledge questions and others, pick "rag".`;
 
 /** Picks the specialist for a message (fast Groq model, rules as fallback), like an auto-routing chat room. */
-export async function routeAgent(message: string): Promise<{ agent: AgentId; via: "rules" | "groq" | "default" }> {
-  const rule = ruleBasedAgent(message);
+export async function routeAgent(message: string, previous?: AgentId | null): Promise<{ agent: AgentId; via: "rules" | "groq" | "default" }> {
+  const rule = ruleBasedAgent(message, previous);
   if (rule) return { agent: rule, via: "rules" };
   if (groqProvider.isConfigured()) {
     try {

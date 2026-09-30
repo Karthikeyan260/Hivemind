@@ -1,17 +1,19 @@
 import { z } from "zod";
 import { runAgent } from "@/lib/agents/orchestrator";
 import { routeAgent } from "@/lib/agents/router";
-import type { AgentEvent, RunContext, Source } from "@/lib/agents/types";
+import type { Action, AgentEvent, AgentId, RunContext, Source } from "@/lib/agents/types";
 import { generateWithFallback } from "@/lib/ai/providers";
 import type { ChatMessage } from "@/lib/ai/types";
 import { dbError, handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
+import type { Job } from "@/lib/external/jobs";
 import { listProjects } from "@/lib/organizer";
 import { getProfile, profileForPrompt } from "@/lib/profile";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
 import { agenda, agendaForPrompt } from "@/lib/reminders";
 
-export const maxDuration = 60;
+// Checking a found job runs the ATS analysis and the tailored resume back to back.
+export const maxDuration = 120;
 
 const Body = z.object({
   message: z.string().trim().min(1).max(4000),
@@ -23,7 +25,8 @@ export type StreamEvent =
   | AgentEvent
   | { type: "meta"; conversation_id: string; intent: string; sources: Source[] }
   | { type: "delta"; text: string }
-  | { type: "action"; label: string; href?: string }
+  | { type: "action"; label: string; href?: string; navigate?: boolean }
+  | { type: "jobs"; jobs: Job[] }
   | { type: "done"; provider?: string; model?: string; latency_ms?: number; changed?: boolean }
   | { type: "error"; message: string };
 
@@ -54,15 +57,18 @@ export const POST = handle(async (req: Request) => {
 
   let conversationId = conversation_id ?? null;
   let history: ChatMessage[] = [];
+  let previousAgent: AgentId | null = null;
   if (conversationId) {
     const { data, error } = await supabase
       .from("messages")
-      .select("role, content")
+      .select("role, content, agent:metadata->>agent")
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: false })
       .limit(8);
     dbError(error);
-    history = (data ?? []).reverse() as ChatMessage[];
+    const rows = (data ?? []) as (ChatMessage & { agent?: AgentId | null })[];
+    previousAgent = rows.find((m) => m.role === "assistant")?.agent ?? null;
+    history = rows.reverse().map(({ role, content }) => ({ role, content }));
   } else {
     const { data, error } = await supabase.from("conversations").insert({ title: message.slice(0, 80) }).select("id").single();
     dbError(error);
@@ -76,14 +82,14 @@ export const POST = handle(async (req: Request) => {
       let reply = "";
       const sources: Source[] = [];
       const trace: AgentEvent[] = [];
-      const actions: { label: string; href?: string }[] = [];
+      const actions: Action[] = [];
       let done: Extract<StreamEvent, { type: "done" }> = { type: "done" };
       let intent = "rag";
       let via = "rules";
 
       try {
         const [route, profile, projects, schedule] = await Promise.all([
-          routeAgent(message),
+          routeAgent(message, previousAgent),
           getProfile(supabase),
           listProjects(supabase),
           agenda(supabase, 2).then(agendaForPrompt).catch(() => "(unavailable)"),
@@ -92,7 +98,7 @@ export const POST = handle(async (req: Request) => {
         via = route.via;
         send({ type: "meta", conversation_id: conversationId!, intent, sources });
 
-        const ctx: RunContext = { supabase, projectId: project_id ?? null, sources, actions, changed: false, emit: (e) => {
+        const ctx: RunContext = { supabase, projectId: project_id ?? null, conversationId: conversationId!, sources, actions, changed: false, jobs: null, pendingDelete: null, emit: (e) => {
             trace.push(e);
             send(e);
           } };
@@ -129,6 +135,7 @@ export const POST = handle(async (req: Request) => {
         send({ type: "meta", conversation_id: conversationId!, intent, sources });
         done.changed = ctx.changed;
 
+        if (ctx.jobs) send({ type: "jobs", jobs: ctx.jobs });
         for (const a of actions) send({ type: "action", ...a });
         send(done);
 
@@ -138,7 +145,7 @@ export const POST = handle(async (req: Request) => {
             conversation_id: conversationId,
             role: "assistant",
             content: reply,
-            metadata: { intent, agent: intent, router: via, trace, sources, actions, provider: done.provider, model: done.model, latency_ms: done.latency_ms },
+            metadata: { intent, agent: intent, router: via, trace, sources, actions, jobs: ctx.jobs ?? undefined, pending_delete: ctx.pendingDelete ?? undefined, provider: done.provider, model: done.model, latency_ms: done.latency_ms },
           },
         ]);
       } catch (err) {

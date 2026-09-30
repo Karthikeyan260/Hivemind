@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { dbError, handle, HttpError } from "@/lib/api";
 import { CAREER_SOURCE } from "@/lib/career";
 import { db } from "@/lib/db";
+import { deleteMemory } from "@/lib/knowledge";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -21,7 +22,11 @@ export const GET = handle(async (_req: Request, { params }: Ctx) => {
 
 export const DELETE = handle(async (_req: Request, { params }: Ctx) => {
   const { id } = await params;
-  const { error } = await db().from("memories").delete().eq("id", id).eq("metadata->>source", CAREER_SOURCE);
+  const supabase = db();
+  const { data, error } = await supabase.from("memories").select("id").eq("id", id).eq("metadata->>source", CAREER_SOURCE).maybeSingle();
   dbError(error);
+  if (!data) throw new HttpError(404, "Analysis not found");
+  // Same as memories: kept in the activity log so it can be undone.
+  await deleteMemory(supabase, id);
   return new NextResponse(null, { status: 204 });
 });

@@ -2,9 +2,11 @@ import "server-only";
 import { logActivity } from "@/lib/activity";
 import { dbError, HttpError } from "@/lib/api";
 import { analyzeJob, CAREER_SOURCE } from "@/lib/career";
+import { type Job, jobDetails, type JobQuery, searchJobs } from "@/lib/external/jobs";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { researchAndSave, webSearch } from "@/lib/external/web";
-import { createMemory, updateMemory } from "@/lib/knowledge";
+import { createMemory, deleteMemory, updateMemory } from "@/lib/knowledge";
+import { originOf } from "@/lib/origin";
 import { getProfile, rebuildProfile } from "@/lib/profile";
 import { actOnReminder, agenda, createReminder, nowForPrompt } from "@/lib/reminders";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
@@ -31,6 +33,49 @@ async function latestAnalysisId(ctx: RunContext) {
   dbError(error);
   return (data?.[0]?.id as string | undefined) ?? null;
 }
+
+/** A value the last assistant message in this conversation kept in its metadata (e.g. its job search or sources). */
+async function lastReply<T>(ctx: RunContext, key: string, onlyPrevious = false): Promise<T | null> {
+  if (!ctx.conversationId) return null;
+  let q = ctx.supabase.from("messages").select(`value:metadata->${key}`).eq("conversation_id", ctx.conversationId).eq("role", "assistant");
+  if (!onlyPrevious) q = q.not(`metadata->${key}`, "is", null);
+  const { data, error } = await q.order("created_at", { ascending: false }).limit(1);
+  dbError(error);
+  return ((data?.[0] as { value?: T | null } | undefined)?.value ?? null) || null;
+}
+const lastJobSearch = (ctx: RunContext) => lastReply<Job[]>(ctx, "jobs");
+
+
+
+const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+const FILLER = new Set(["the", "a", "at", "in", "one", "job", "role", "for", "and", "no", "number", "#", "last", "listing", "option"]);
+
+/** "2", "#2", "the second one", "Quest Global", "react developer at TCS" → one listing. */
+function pickJob(jobs: Job[], pick: string): Job | null {
+  const p = pick.toLowerCase().trim();
+  const words = p.split(/[^a-z0-9+#.]+/).filter((w) => w && !FILLER.has(w) && !ORDINALS.includes(w));
+  const num = Number(p.match(/\d+/)?.[0]) || ORDINALS.findIndex((o) => words.length === 0 && p.includes(o)) + 1 || (p.includes("last") ? jobs.length : 0);
+  const byNumber = num >= 1 && num <= jobs.length ? jobs[num - 1] : null;
+  if (byNumber && words.every((w) => /^\d+$/.test(w))) return byNumber;
+  // Otherwise match words against company/role; the best overlap wins.
+  let best: Job | null = null;
+  let bestScore = 0;
+  for (const j of jobs) {
+    const hay = `${j.company} ${j.title} ${j.location}`.toLowerCase();
+    const score = words.filter((w) => !/^\d+$/.test(w) && hay.includes(w)).length;
+    if (score > bestScore) [best, bestScore] = [j, score];
+  }
+  return best ?? byNumber;
+}
+
+const jobDescriptionText = (j: Job) =>
+  [
+    j.description,
+    ...Object.entries(j.highlights).map(([k, v]) => `${k}:\n${v.map((x) => `- ${x}`).join("\n")}`),
+    j.location ? `Location: ${j.location}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
 export const TOOLS: Record<string, Tool> = {
   /* ───── knowledge (RAG) ───── */
@@ -73,6 +118,70 @@ export const TOOLS: Record<string, Tool> = {
       ctx.changed = true;
       ctx.actions.push({ label: "Open memory", href: `/memories?open=${target.parent_id}` });
       return { updated: true, title: (m as { title?: string } | null)?.title ?? target.title };
+    },
+  },
+  delete_memory: {
+    name: "delete_memory",
+    description:
+      "Step 1 of deleting a memory ('forget…', 'delete the memory about…'): finds the closest memory to 'which' and asks the owner to confirm. It does NOT delete anything by itself.",
+    parameters: obj({ which: S }, ["which"]),
+    async run(args, ctx) {
+      const hits = (await searchKnowledge(ctx.supabase, str(args.which), { limit: 8, minSimilarity: 0.3 })).filter((h) => h.source_type === "memory");
+      const seen = new Set<string>();
+      const memories = hits.filter((h) => (seen.has(h.parent_id) ? false : (seen.add(h.parent_id), true)));
+      const target = memories[0];
+      if (!target) return { error: "No matching memory found." };
+      ctx.pendingDelete = { id: target.parent_id, title: target.title };
+      ctx.actions.push({ label: "View memory", href: `/memories?open=${target.parent_id}` });
+      return {
+        needs_confirmation: true,
+        memory: { title: target.title, content: target.content.slice(0, 300) },
+        other_close_matches: memories.slice(1, 4).map((m) => m.title),
+        note: "Ask the owner to confirm deleting this one memory. Only after they say yes, call confirm_delete_memory.",
+      };
+    },
+  },
+  confirm_delete_memory: {
+    name: "confirm_delete_memory",
+    description:
+      "Step 2: permanently delete the memory or job analysis proposed by delete_memory / delete_job_analysis in the previous reply, after the owner said yes. Undoable from the activity log.",
+    parameters: obj({}),
+    async run(_args, ctx) {
+      const pending = ctx.carried ? (ctx.carried.pendingDelete ?? null) : await lastReply<{ id: string; title: string }>(ctx, "pending_delete", true);
+      if (!pending) return { error: "Nothing is waiting to be deleted. Ask which memory to delete first (delete_memory)." };
+      const row = await deleteMemory(ctx.supabase, pending.id);
+      ctx.changed = true;
+      return { deleted: true, id: row.id, title: row.title, undo: "It can be restored with Undo in the activity log." };
+    },
+  },
+  open_source: {
+    name: "open_source",
+    description:
+      "Take the owner to where a piece of information came from: opens the memory/note/document in the app and gives the original outside link (imported web page, portfolio repo, job posting, web article) when there is one. Use for 'where did that come from', 'take me there', 'open the source', 'show me where you got that'. Leave 'about' empty to use the sources of your previous answer.",
+    parameters: obj({ about: { type: "string", description: "What to find. Empty = the source of your last answer." }, cite: { type: "number", description: "Citation number [n] from your last answer, if the owner named one." } }),
+    async run(args, ctx) {
+      const about = str(args.about);
+      type Src = { n: number; type: string; title: string; href: string };
+      let item: { type: string; title: string; href: string; id: string } | null = null;
+      if (!about || args.cite != null) {
+        // The previous answer's sources, else whatever this turn already found.
+        const saved = await lastReply<Src[]>(ctx, "sources");
+        const prev = saved?.length ? saved : ctx.sources;
+        const s = prev.find((x) => x.n === Number(args.cite)) ?? prev[0];
+        if (s) item = { type: s.type, title: s.title, href: s.href, id: s.href.split("open=")[1] ?? "" };
+      }
+      if (!item && about) {
+        const hit = (await searchKnowledge(ctx.supabase, about, { projectId: ctx.projectId, limit: 3 }))[0];
+        if (hit) item = { type: hit.source_type, title: hit.title, href: sourceHref(hit), id: hit.parent_id };
+      }
+      if (!item) return { error: "I couldn't find where that came from in your brain." };
+
+      const external = item.href.startsWith("http");
+      const origin = external ? item.href : await originOf(ctx.supabase, item.type, item.id);
+      if (!external) ctx.actions.push({ label: `Open ${item.title.slice(0, 40)}`, href: item.href, navigate: true });
+      if (origin) ctx.actions.push({ label: "Original source", href: origin });
+      cite(ctx, [{ type: item.type, title: item.title, href: item.href, similarity: 1 }]);
+      return { opening: external ? null : item.href, title: item.title, stored_as: item.type, original_source: origin ?? "none (entered directly into HIVEMIND)" };
     },
   },
   recent_memories: {
@@ -150,6 +259,122 @@ export const TOOLS: Record<string, Tool> = {
       const t = await tailorResume(ctx.supabase, id);
       ctx.actions.push({ label: "Open tailored resume", href: `/career?open=${id}` }, { label: "Download PDF", href: `/api/career/${id}/resume?format=pdf-download` });
       return { keywords_added: t.keywords_added, left_out_no_evidence: t.not_added, changes: t.changes.slice(0, 8) };
+    },
+  },
+  search_jobs: {
+    name: "search_jobs",
+    description:
+      "Search live job openings on the internet (LinkedIn, Indeed, Naukri, company career sites…). Returns numbered listings with company, role, location and apply link; the full descriptions are shown to the owner as cards. Leave role empty to search for roles that fit the owner's resume/profile.",
+    parameters: obj({
+      role: { type: "string", description: "Job title or skills, e.g. 'React developer'. Empty = based on the owner's profile." },
+      location: { type: "string", description: "City/region, e.g. 'Bangalore'. Empty = anywhere in the country." },
+      country: { type: "string", description: "2-letter country code, default 'in' (India)." },
+      remote: { type: "boolean", description: "Only remote / work-from-home jobs." },
+      date_posted: { type: "string", enum: ["all", "today", "3days", "week", "month"], description: "Default 'month'." },
+    }),
+    async run(args, ctx) {
+      let role = str(args.role);
+      if (!role) {
+        const p = await getProfile(ctx.supabase);
+        role = p?.current_role || p?.headline || p?.top_skills.slice(0, 3).join(" ") || "";
+        if (!role) return { error: "Tell me which role to search for (your profile doesn't say yet)." };
+      }
+      const jobs = await searchJobs({
+        role,
+        location: str(args.location),
+        country: str(args.country) || "in",
+        remote: args.remote === true,
+        date_posted: (str(args.date_posted) || "month") as JobQuery["date_posted"],
+      });
+      if (!jobs.length) return { searched_for: role, results: [], note: "No openings found. Try a broader role or another location." };
+      ctx.jobs = jobs;
+      return {
+        searched_for: role,
+        results: jobs.map((j, i) => ({
+          n: i + 1,
+          role: j.title,
+          company: j.company,
+          location: j.location,
+          posted: j.posted,
+          salary: j.salary || undefined,
+          via: j.publisher,
+          summary: j.description.replace(/\s+/g, " ").slice(0, 220),
+        })),
+        note: "The owner sees each job as a card with the full description and an Apply button. To check one, call check_listed_job with its number.",
+      };
+    },
+  },
+  check_listed_job: {
+    name: "check_listed_job",
+    description:
+      "For one job from the latest search_jobs results: run the ATS / fit check against the owner's resume, save it to Career, and generate the tailored resume PDF. 'pick' is the listing number ('2') or words from the company/role ('Quest Global').",
+    parameters: obj({ pick: S, make_resume: { type: "boolean", description: "Also generate the tailored resume (default true)." } }, ["pick"]),
+    async run(args, ctx) {
+      const jobs = ctx.jobs ?? ctx.carried?.jobs ?? (await lastJobSearch(ctx));
+      if (!jobs?.length) return { error: "There's no job search to pick from yet. Search for jobs first." };
+      const job = pickJob(jobs, str(args.pick));
+      if (!job) return { error: `Couldn't tell which job "${str(args.pick)}" means. Use its number (1-${jobs.length}).`, jobs: jobs.map((j, i) => `${i + 1}. ${j.title} @ ${j.company}`) };
+
+      let jd = jobDescriptionText(job);
+      if (jd.length < 300) {
+        const full = await jobDetails(job.id).catch(() => null);
+        if (full && jobDescriptionText(full).length > jd.length) jd = jobDescriptionText(full);
+      }
+      const r = await analyzeJob(ctx.supabase, { jobDescription: jd, role: job.title, company: job.company, applyLink: job.apply_link, location: job.location });
+      ctx.changed = true;
+      ctx.actions.push({ label: "Open in Career", href: `/career?open=${r.id}` });
+      if (job.apply_link) ctx.actions.push({ label: `Apply at ${job.publisher || job.company}`, href: job.apply_link });
+      const a = r.analysis;
+      const out: Record<string, unknown> = {
+        analysis_id: r.id,
+        role: a.role,
+        company: a.company,
+        fit: a.fit_score,
+        ats_percent: a.ats_score,
+        verdict: a.verdict,
+        matched_keywords: a.matched_keywords.slice(0, 12),
+        missing_keywords: a.missing_keywords,
+        gaps: a.gaps.slice(0, 3).map((g) => g.gap),
+        apply_link: job.apply_link,
+      };
+      if (args.make_resume !== false) {
+        try {
+          const t = await tailorResume(ctx.supabase, r.id);
+          ctx.actions.push({ label: "Download tailored resume", href: `/api/career/${r.id}/resume?format=pdf-download` });
+          out.resume = { generated: true, keywords_added: t.keywords_added, left_out_no_evidence: t.not_added };
+        } catch (err) {
+          out.resume = { generated: false, error: err instanceof Error ? err.message : "Resume generation failed." };
+        }
+      }
+      return out;
+    },
+  },
+  delete_job_analysis: {
+    name: "delete_job_analysis",
+    description:
+      "Step 1 of deleting a saved job analysis (Career history): finds it by role/company words ('the clinical research one', 'Infosys'), 'latest', or its id, and asks the owner to confirm. It does NOT delete anything by itself; confirm_delete_memory does after they say yes.",
+    parameters: obj({ which: S, id: S }),
+    async run(args, ctx) {
+      const { data, error } = await ctx.supabase.from("memories").select("id, title, created_at").eq("metadata->>source", CAREER_SOURCE).order("created_at", { ascending: false }).limit(30);
+      dbError(error);
+      const rows = data ?? [];
+      if (!rows.length) return { error: "There are no saved job analyses." };
+      const id = str(args.id);
+      const words = str(args.which).toLowerCase().split(/[^a-z0-9+#.]+/).filter((w) => w.length > 1 && !FILLER.has(w) && !["latest", "last", "this", "that", "analysis", "delete"].includes(w));
+      let target = id ? rows.find((r) => r.id === id) : undefined;
+      if (!target && words.length) {
+        const scored = rows.map((r) => ({ r, s: words.filter((w) => r.title.toLowerCase().includes(w)).length })).sort((a, b) => b.s - a.s);
+        if (scored[0].s > 0) target = scored[0].r;
+      }
+      if (!target && !words.length) target = rows[0];
+      if (!target) return { error: `No job analysis matches "${str(args.which)}".`, analyses: rows.slice(0, 8).map((r) => r.title.replace("Job analysis: ", "")) };
+      ctx.pendingDelete = { id: target.id, title: target.title };
+      return {
+        needs_confirmation: true,
+        analysis: target.title.replace("Job analysis: ", ""),
+        saved: target.created_at,
+        note: "Ask the owner to confirm deleting this analysis (and its tailored resume). Only after they say yes, call confirm_delete_memory.",
+      };
     },
   },
   job_analyses: {

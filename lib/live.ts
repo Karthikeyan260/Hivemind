@@ -18,6 +18,8 @@ type Handlers = {
   onError: (message: string) => void;
   /** Tools that run in the page itself (navigation, reading the screen). */
   clientTools?: Record<string, (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>>;
+  /** Every other tool: one of the chat agents' tools, run on the server. */
+  serverTool?: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>;
 };
 
 // Captures mic audio as Float32 frames on the audio thread.
@@ -299,6 +301,7 @@ export class LiveVoice {
       this.h.onBrainChanged();
       return { created: true, name: p.name };
     }
+    if (this.h.serverTool) return await this.h.serverTool(name, args);
     return { error: `unknown tool ${name}` };
   }
 

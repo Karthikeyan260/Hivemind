@@ -221,6 +221,8 @@ export class GalaxyScene {
   private hovered: number | null = null;
   private selectedId: string | null = null;
   private focusedProject: string | null = null;
+  /** Idle auto-rotation; voice can pause it. */
+  private spin = true;
   private fps = 60;
   private tmp = new THREE.Vector3();
   private orbitTime = 0;
@@ -809,6 +811,31 @@ export class GalaxyScene {
     this.flyTo(hub.clone().add(dir.multiplyScalar(34)).add(new THREE.Vector3(0, 9, 0)), hub.clone(), 1.8);
   }
 
+  /* ───── Camera controls (voice: "rotate left", "zoom in", "look from above") ───── */
+
+  /** Orbit the view around what it's looking at. yaw > 0 turns the galaxy to the left; pitch > 0 looks from higher up. */
+  orbit(yawDeg: number, pitchDeg = 0) {
+    const target = this.controls.target.clone();
+    const off = this.camera.position.clone().sub(target);
+    const sph = new THREE.Spherical().setFromVector3(off);
+    sph.theta += THREE.MathUtils.degToRad(THREE.MathUtils.clamp(yawDeg, -180, 180));
+    sph.phi = THREE.MathUtils.clamp(sph.phi - THREE.MathUtils.degToRad(pitchDeg), 0.08, Math.PI - 0.08);
+    this.flyTo(target.clone().add(new THREE.Vector3().setFromSpherical(sph)), target, 1.1);
+  }
+
+  /** factor < 1 moves closer (zoom in), > 1 moves away; clamped to the orbit limits. */
+  zoom(factor: number) {
+    const target = this.controls.target.clone();
+    const off = this.camera.position.clone().sub(target);
+    const len = THREE.MathUtils.clamp(off.length() * factor, this.controls.minDistance, this.controls.maxDistance);
+    this.flyTo(target.clone().add(off.setLength(len)), target, 0.9);
+    return Math.round(len);
+  }
+
+  setSpin(on: boolean) {
+    this.spin = on;
+  }
+
   private flyTo(pos: THREE.Vector3, target: THREE.Vector3, dur = 1.8, warp = false) {
     if (this.reduced) {
       this.camera.position.copy(pos);
@@ -1029,7 +1056,7 @@ export class GalaxyScene {
       if (this.fly.warp) warpStress = Math.pow(1 - x, 2);
       if (x >= 1) this.fly = null;
     }
-    this.controls.autoRotate = !this.reduced && !this.fly && this.hovered == null;
+    this.controls.autoRotate = this.spin && !this.reduced && !this.fly && this.hovered == null;
     this.controls.update();
 
     // Orbits

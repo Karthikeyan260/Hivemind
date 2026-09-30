@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { BRAIN_CHANGED } from "@/lib/client-api";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
+import { click, listControls, scroll, selectOption, typeText } from "./dom-tools";
 
 /** Everything a page can react to during a live conversation. */
 export type VoiceListener = {
@@ -16,7 +17,10 @@ export type VoiceListener = {
 
 type ToolResult = Record<string, unknown>;
 /** Something the current page can do when asked by voice (clicking its own buttons, filling its forms). */
-export type VoiceAction = { description: string; run: (args: ToolResult) => Promise<ToolResult> | ToolResult };
+export type VoiceAction = {
+  description: string;
+  run: (args: ToolResult) => Promise<ToolResult> | ToolResult;
+};
 
 export type Exchange = { q: string; a: string; done: boolean };
 
@@ -43,7 +47,6 @@ export function useVoice() {
   return v;
 }
 
-
 /**
  * Lets a page expose its own actions to voice while it's mounted. Actions always run with the page's
  * latest state (they're read through a ref at call time).
@@ -56,20 +59,41 @@ export function useVoiceActions(actions: Record<string, VoiceAction>) {
   });
   const names = Object.keys(actions).join("|");
   useEffect(() => {
-    const offs = names.split("|").filter(Boolean).map((n) => register(n, () => ref.current[n]));
+    const offs = names
+      .split("|")
+      .filter(Boolean)
+      .map((n) => register(n, () => ref.current[n]));
     return () => offs.forEach((off) => off());
   }, [names, register]);
 }
 
 async function call(url: string, method = "POST", body?: object): Promise<ToolResult> {
-  const r = await fetch(url, { method, headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
   return j as ToolResult;
 }
 
-type AnalysisOut = { id: string; analysis: { role: string; company: string; fit_score: number; ats_score: number; verdict: string; missing_keywords: string[] } };
-type TailoredOut = { keywords_added: string[]; not_added: string[]; changes: string[] };
+type AnalysisOut = {
+  id: string;
+  analysis: {
+    role: string;
+    company: string;
+    fit_score: number;
+    ats_score: number;
+    verdict: string;
+    missing_keywords: string[];
+  };
+};
+type TailoredOut = {
+  keywords_added: string[];
+  not_added: string[];
+  changes: string[];
+};
 
 /** Short, speakable summaries the model reports back (never the whole payload). */
 export const summarizeAnalysis = (r: AnalysisOut) => ({
@@ -90,6 +114,17 @@ export const summarizeTailored = (t: TailoredOut) => ({
   note: "The PDF is shown on the Career page with View / Download buttons.",
 });
 
+type AgentToolOut = {
+  result: Record<string, unknown>;
+  sources: LiveSource[];
+  actions: { label: string; href?: string; navigate?: boolean }[];
+  changed: boolean;
+  jobs: Record<string, unknown>[] | null;
+  pending_delete: { id: string; title: string } | null;
+};
+/** Server tools whose result page should open right away (the owner asked to go there or to see the result). */
+const OPENS_PAGE = new Set(["open_source", "check_listed_job"]);
+
 const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/notes", "/documents", "/sources", "/search", "/settings"];
 
 /**
@@ -105,8 +140,20 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const listeners = useRef(new Set<VoiceListener>());
   const liveRef = useRef<LiveVoice | null>(null);
   const convId = useRef<string | null>(null);
-  const turn = useRef<{ q: string; a: string; sources: LiveSource[]; open: boolean }>({ q: "", a: "", sources: [], open: false });
+  const turn = useRef<{
+    q: string;
+    a: string;
+    sources: LiveSource[];
+    open: boolean;
+  }>({ q: "", a: "", sources: [], open: false });
   const actions = useRef(new Map<string, () => VoiceAction>());
+  // Live-voice memory across turns: the last job search, and a memory awaiting "yes, delete it".
+  const agentState = useRef<{
+    jobs?: Record<string, unknown>[];
+    pending?: { id: string; title: string; turn: number };
+  }>({});
+  const turns = useRef(0);
+  const lastSources = useRef<LiveSource[]>([]);
   const routerRef = useRef(router);
   useEffect(() => {
     routerRef.current = router;
@@ -134,6 +181,8 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       },
       onTurnEnd: (interrupted) => {
         const t = turn.current;
+        turns.current++;
+        if (t.sources.length) lastSources.current = t.sources;
         each((l) => l.onTurnEnd?.(interrupted));
         if (!t.open) return;
         t.open = false;
@@ -144,7 +193,12 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           void fetch("/api/live/log", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ conversation_id: convId.current, user: t.q, assistant: a, sources: t.sources }),
+            body: JSON.stringify({
+              conversation_id: convId.current,
+              user: t.q,
+              assistant: a,
+              sources: t.sources,
+            }),
           })
             .then((r) => r.json())
             .then((j: { conversation_id?: string }) => {
@@ -162,6 +216,46 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         window.dispatchEvent(new Event(BRAIN_CHANGED));
       },
       onError: setError,
+      serverTool: async (name, args) => {
+        const st = agentState.current;
+        // A delete only goes through after the owner spoke again since it was proposed.
+        const pending = st.pending && turns.current > st.pending.turn ? { id: st.pending.id, title: st.pending.title } : null;
+        if (name === "confirm_delete_memory" && st.pending && !pending)
+          return {
+            error: "Ask the owner to confirm first and wait for their answer.",
+          };
+        // "Take me there" with nothing else: use what the last answer was based on.
+        // "Delete this analysis" on the Career page means the one open on screen.
+        const openId = new URLSearchParams(location.search).get("open");
+        const vague = !/[a-z]{4,}/i.test(String(args.which ?? "").replace(/\b(this|that|current|open|one|analysis|job|delete)\b/gi, ""));
+        if (name === "delete_job_analysis" && !args.id && openId && location.pathname.startsWith("/career") && vague) args = { ...args, id: openId };
+        if (name === "open_source" && !args.about && !turn.current.sources.length && lastSources.current[0]) args = { ...args, about: lastSources.current[0].title };
+        const r = (await call("/api/agent-tool", "POST", {
+          name,
+          args,
+          state: { jobs: st.jobs, pending_delete: pending },
+        })) as unknown as AgentToolOut;
+        if (r.jobs) st.jobs = r.jobs;
+        if (name === "confirm_delete_memory") {
+          st.pending = undefined;
+          // Don't leave the page showing something that no longer exists.
+          if (r.result.deleted && openId && r.result.id === openId) routerRef.current.push(location.pathname);
+        }
+        if (r.pending_delete) st.pending = { ...r.pending_delete, turn: turns.current };
+        if (r.sources.length) {
+          turn.current.sources = r.sources;
+          each((l) => l.onSources?.(r.sources));
+        }
+        if (r.changed) {
+          each((l) => l.onBrainChanged?.());
+          window.dispatchEvent(new Event(BRAIN_CHANGED));
+        }
+        const go = r.actions.find((a) => a.href?.startsWith("/") && (a.navigate || OPENS_PAGE.has(name)));
+        if (go?.href) routerRef.current.push(go.href);
+        // Outside links can't be spoken usefully; say where they point instead.
+        const links = r.actions.filter((a) => a.href?.startsWith("http")).map((a) => a.label);
+        return links.length ? { ...r.result, links_shown_on_screen: links } : r.result;
+      },
       clientTools: {
         navigate: ({ page }) => {
           const path = String(page ?? "");
@@ -171,19 +265,32 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         },
         page_actions: () => ({
           page: location.pathname,
-          actions: [...actions.current.entries()].map(([name, get]) => ({ name, description: get().description })),
+          actions: [...actions.current.entries()].map(([name, get]) => ({
+            name,
+            description: get().description,
+          })),
         }),
         do_page_action: async ({ name, input }) => {
           const get = actions.current.get(String(name));
-          if (!get) return { error: `No action "${name}" on this page. Call page_actions to see what's available.` };
+          if (!get)
+            return {
+              error: `No action "${name}" on this page. Call page_actions to see what's available.`,
+            };
           return await get().run({ input: input == null ? "" : String(input) });
         },
         analyze_job: async (args) => {
           const page = actions.current.get("analyse_job");
           if (page) return await page().run(args);
           const jd = String(args.job_description ?? "").trim();
-          if (jd.length < 80) return { error: "I need the job description. Paste it on the Career page, or read it to me." };
-          const r = (await call("/api/career", "POST", { jobDescription: jd, role: args.role || undefined, company: args.company || undefined })) as unknown as AnalysisOut;
+          if (jd.length < 80)
+            return {
+              error: "I need the job description. Paste it on the Career page, or read it to me.",
+            };
+          const r = (await call("/api/career", "POST", {
+            jobDescription: jd,
+            role: args.role || undefined,
+            company: args.company || undefined,
+          })) as unknown as AnalysisOut;
           routerRef.current.push(`/career?open=${r.id}`);
           return summarizeAnalysis(r);
         },
@@ -192,10 +299,15 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           if (page) return await page().run({});
           let id = new URLSearchParams(location.search).get("open");
           if (!location.pathname.startsWith("/career") || !id) {
-            const list = (await call("/api/career", "GET")) as unknown as { id: string }[];
+            const list = (await call("/api/career", "GET")) as unknown as {
+              id: string;
+            }[];
             id = list[0]?.id ?? null;
           }
-          if (!id) return { error: "There's no job analysis yet. Analyse a job description first." };
+          if (!id)
+            return {
+              error: "There's no job analysis yet. Analyse a job description first.",
+            };
           const t = (await call(`/api/career/${id}/resume`)) as unknown as TailoredOut;
           routerRef.current.push(`/career?open=${id}`);
           window.dispatchEvent(new Event(BRAIN_CHANGED));
@@ -203,13 +315,20 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         },
         get_weather: async ({ place }) => await call(`/api/tools/weather${place ? `?place=${encodeURIComponent(String(place))}` : ""}`, "GET"),
         web_search: async ({ query, save }) => {
-          const r = (await call("/api/tools/web", "POST", { query: String(query ?? ""), save: !!save })) as {
+          const r = (await call("/api/tools/web", "POST", {
+            query: String(query ?? ""),
+            save: !!save,
+          })) as {
             answer: string;
             sources: { title: string }[];
             saved?: { id: string; title: string };
           };
           if (r.saved) window.dispatchEvent(new Event(BRAIN_CHANGED));
-          return { answer: r.answer.slice(0, 3000), sources: r.sources.map((x) => x.title), saved_as_note: r.saved?.title ?? null };
+          return {
+            answer: r.answer.slice(0, 3000),
+            sources: r.sources.map((x) => x.title),
+            saved_as_note: r.saved?.title ?? null,
+          };
         },
         create_reminder: async ({ title, date, time, in_minutes, details }) => {
           const r = await call("/api/reminders", "POST", {
@@ -236,10 +355,18 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         list_reminders: async () => {
           const a = (await call("/api/reminders?days=7", "GET")) as Record<string, { title: string; when: string; status: string }[]>;
           const pick = (k: string) => (a[k] ?? []).map((r) => `${r.title} (${r.when}${r.status === "done" ? ", done" : ""})`);
-          return { overdue: pick("overdue"), today: pick("today"), tomorrow: pick("tomorrow"), later: pick("later") };
+          return {
+            overdue: pick("overdue"),
+            today: pick("today"),
+            tomorrow: pick("tomorrow"),
+            later: pick("later"),
+          };
         },
         create_note: async ({ title, content }) => {
-          const n = await call("/api/notes", "POST", { title: title ? String(title) : undefined, content: String(content ?? "") });
+          const n = await call("/api/notes", "POST", {
+            title: title ? String(title) : undefined,
+            content: String(content ?? ""),
+          });
           window.dispatchEvent(new Event(BRAIN_CHANGED));
           return { saved: true, title: n.title };
         },
@@ -249,8 +376,29 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           // innerText skips what's typed/pasted into form fields, so report those separately.
           const fields = [...root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("textarea, input:not([type=hidden]):not([type=password])")]
             .filter((f) => f.value.trim())
-            .map((f) => ({ field: f.getAttribute("aria-label") || f.placeholder || f.name || f.tagName.toLowerCase(), value: f.value.slice(0, 6000) }));
-          return { page: location.pathname + location.search, form_fields: fields, text: text.slice(0, 6000) || "(the page is empty)" };
+            .map((f) => ({
+              field: f.getAttribute("aria-label") || f.placeholder || f.name || f.tagName.toLowerCase(),
+              value: f.value.slice(0, 6000),
+            }));
+          return {
+            page: location.pathname + location.search,
+            form_fields: fields,
+            controls: listControls(),
+            text: text.slice(0, 6000) || "(the page is empty)",
+          };
+        },
+        // Use the page like a person: scroll, click, type, choose, go back.
+        click,
+        scroll,
+        type_text: typeText,
+        select_option: selectOption,
+        go_back: () => {
+          history.back();
+          return { went: "back" };
+        },
+        go_forward: () => {
+          history.forward();
+          return { went: "forward" };
         },
       },
     });
@@ -304,7 +452,19 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => () => liveRef.current?.stop(), []);
 
   const value = useMemo<Voice>(
-    () => ({ state, on: state !== "off", error, last, start, stop, toggle, sendText, level, subscribe, register }),
+    () => ({
+      state,
+      on: state !== "off",
+      error,
+      last,
+      start,
+      stop,
+      toggle,
+      sendText,
+      level,
+      subscribe,
+      register,
+    }),
     [state, error, last, start, stop, toggle, sendText, level, subscribe, register],
   );
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>;

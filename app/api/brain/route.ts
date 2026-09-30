@@ -34,7 +34,8 @@ export const GET = handle(async () => {
   return NextResponse.json({
     profile,
     projects: (projects.data ?? []).map((p) => ({ ...p, items: linked.get(p.id) ?? 0 })),
-    activity: (activity.data ?? []).map((a) => ({ ...a, undoable: !a.undone && ["project_created", "linked"].includes((a.payload as { type: string }).type) })),
+    // The payload can hold a whole deleted memory (for undo): keep it server-side.
+    activity: (activity.data ?? []).map(({ payload, ...a }) => ({ ...a, undoable: !a.undone && ["project_created", "linked", "memory_deleted"].includes((payload as { type: string }).type) })),
     counts: { notes: notes.count ?? 0, memories: memories.count ?? 0, documents: documents.count ?? 0, projects: projects.data?.length ?? 0 },
   });
 });

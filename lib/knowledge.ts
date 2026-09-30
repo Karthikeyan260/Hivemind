@@ -4,6 +4,7 @@ import { z } from "zod";
 import { embedOne } from "@/lib/ai/embeddings";
 import { extractMetadata, MEMORY_TYPES } from "@/lib/ai/metadata";
 import { dbError, toVector, HttpError } from "@/lib/api";
+import { logActivity } from "@/lib/activity";
 import { organizeItem } from "@/lib/organizer";
 
 export const NOTE_COLUMNS = "id, project_id, title, content, summary, category, tags, created_at, updated_at";
@@ -145,4 +146,15 @@ export async function updateMemory(
     .single();
   dbError(error);
   return data;
+}
+
+/** Deletes a memory, keeping the full row in the activity log so Undo can restore it exactly. */
+export async function deleteMemory(supabase: SupabaseClient, id: string) {
+  const { data: row, error } = await supabase.from("memories").select("*").eq("id", id).maybeSingle();
+  dbError(error);
+  if (!row) throw new HttpError(404, "That memory no longer exists.");
+  const { error: delErr } = await supabase.from("memories").delete().eq("id", id);
+  dbError(delErr);
+  await logActivity(supabase, "memory_deleted", `Deleted memory “${row.title}”`, { type: "memory_deleted", memory: row });
+  return { id, title: row.title as string };
 }

@@ -5,6 +5,8 @@ import { dbError, HttpError } from "@/lib/api";
 export type ActivityPayload =
   | { type: "project_created"; project_id: string }
   | { type: "linked"; table: "notes" | "memories" | "documents"; id: string; prev_project_id: string | null }
+  /** The full row (embedding included), so undo restores it exactly. */
+  | { type: "memory_deleted"; memory: Record<string, unknown> }
   | { type: "info" };
 
 export async function logActivity(supabase: SupabaseClient, kind: string, message: string, payload: ActivityPayload = { type: "info" }) {
@@ -24,6 +26,9 @@ export async function undoActivity(supabase: SupabaseClient, id: string) {
     dbError(e);
   } else if (p.type === "linked") {
     const { error: e } = await supabase.from(p.table).update({ project_id: p.prev_project_id }).eq("id", p.id);
+    dbError(e);
+  } else if (p.type === "memory_deleted") {
+    const { error: e } = await supabase.from("memories").insert(p.memory);
     dbError(e);
   } else {
     throw new HttpError(400, "This action can't be undone");

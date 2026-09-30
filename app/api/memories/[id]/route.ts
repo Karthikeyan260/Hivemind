@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { dbError, handle, parseBody, HttpError } from "@/lib/api";
 import { db } from "@/lib/db";
-import { MEMORY_COLUMNS, MemoryUpdate, updateMemory } from "@/lib/knowledge";
+import { deleteMemory, MEMORY_COLUMNS, MemoryUpdate, updateMemory } from "@/lib/knowledge";
 
 export const maxDuration = 30;
 type Ctx = { params: Promise<{ id: string }> };
@@ -25,7 +25,6 @@ export const PUT = handle(async (req: Request, { params }: Ctx) => {
 export const DELETE = handle(async (_req: Request, { params }: Ctx) => {
   const { id } = await params;
   const supabase = db();
-  const { error } = await supabase.from("memories").delete().eq("id", id);
-  dbError(error);
+  await deleteMemory(supabase, id);
   return new NextResponse(null, { status: 204 });
 });

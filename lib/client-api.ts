@@ -118,10 +118,27 @@ export type Brain = {
 };
 
 export type Source = { n: number; type: string; title: string; href: string; similarity: number };
+/** One live job opening from the Career agent's search_jobs tool. */
+export type JobListing = {
+  id: string;
+  title: string;
+  company: string;
+  logo: string | null;
+  location: string;
+  remote: boolean;
+  employment_type: string;
+  posted: string;
+  salary: string;
+  publisher: string;
+  apply_link: string;
+  description: string;
+};
+
 export type HiveEvent =
   | { type: "meta"; conversation_id: string; intent: string; sources: Source[] }
   | { type: "delta"; text: string }
-  | { type: "action"; label: string; href?: string }
+  | { type: "action"; label: string; href?: string; navigate?: boolean }
+  | { type: "jobs"; jobs: JobListing[] }
   | { type: "agent"; agent: string; name: string; via: "router" | "delegation" }
   | { type: "tool"; agent: string; tool: string; status: "run" | "ok" | "error"; detail?: string }
   | { type: "done"; provider?: string; model?: string; latency_ms?: number; changed?: boolean }
