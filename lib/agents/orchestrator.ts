@@ -2,6 +2,7 @@ import "server-only";
 import type { Content, FunctionDeclaration, Part } from "@google/genai";
 import { geminiClient } from "@/lib/ai/gemini";
 import type { ChatMessage } from "@/lib/ai/types";
+import { nowForPrompt } from "@/lib/reminders";
 import { agentRoster, AGENTS } from "./registry";
 import { TOOLS } from "./tools";
 import { AGENT_IDS, type AgentId, type RunContext } from "./types";
@@ -97,7 +98,7 @@ export async function runAgent(o: RunOpts): Promise<{ text: string; model: strin
     agent.instructions,
     depth === 0 ? `Colleagues you can hand work to with ask_agent:\n${agentRoster()}` : "You were asked by a colleague; return a complete, factual answer to their task.",
     RULES,
-    `Today is ${new Date().toISOString().slice(0, 10)}.`,
+    `Current local time: ${nowForPrompt()}.`,
   ].join("\n\n");
 
   const contents: Content[] = [

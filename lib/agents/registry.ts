@@ -51,6 +51,14 @@ export const AGENTS: Record<AgentId, Agent> = {
     instructions: "Use list_projects for an overview, project_details for one project, create_project to start one. Be concise.",
     tools: ["list_projects", "project_details", "create_project", "search_brain"],
   },
+  scheduler: {
+    id: "scheduler",
+    name: "Scheduler Agent",
+    role: "Reminders, meetings, deadlines and the owner's agenda ('remind me…', 'I have a meeting tomorrow at 3', 'what's on today').",
+    instructions:
+      "Resolve relative dates ('tomorrow', 'next Monday', 'in 2 hours') against the current local time given below and call create_reminder with an ISO date-time including the UTC offset. If no time is given, use all_day=true. Put extra context (location, people, links) in details. For 'what do I have', call list_reminders. Confirm with the day and time in plain words (e.g. 'Thursday 1 Oct at 3 pm'), never the ISO string.",
+    tools: ["create_reminder", "list_reminders", "complete_reminder"],
+  },
   profile: {
     id: "profile",
     name: "Profile Agent",

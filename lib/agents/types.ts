@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const AGENT_IDS = ["core", "memory", "rag", "research", "career", "project", "profile"] as const;
+export const AGENT_IDS = ["core", "memory", "rag", "research", "career", "project", "profile", "scheduler"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
 export type Source = { n: number; type: string; title: string; href: string; similarity: number };

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ReminderWatcher } from "@/components/reminders/watcher";
 import { VoiceDock } from "@/components/voice/dock";
 import { VoiceProvider } from "@/components/voice/provider";
 import "./globals.css";
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <VoiceProvider>
           {children}
           <VoiceDock />
+          <ReminderWatcher />
         </VoiceProvider>
       </body>
     </html>

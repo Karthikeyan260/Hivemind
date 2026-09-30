@@ -11,6 +11,7 @@ import { Compass } from "@/components/bridge/compass";
 import { Cursor } from "@/components/bridge/cursor";
 import { Gauge, Holo, Meter } from "@/components/bridge/holo";
 import { Scramble } from "@/components/bridge/scramble";
+import { AgendaPanel } from "@/components/reminders/agenda";
 import type { CoreState } from "@/components/core";
 import { Decrypt } from "@/components/fx";
 import { Galaxy, type GNode, type GProject } from "@/components/galaxy/galaxy";
@@ -440,6 +441,7 @@ function Bridge() {
           )}
         </div>
       </Holo>
+      <AgendaPanel />
       {composition.length > 0 && (
         <Holo title="Composition">
           <div className="space-y-2.5 p-4">

@@ -4,6 +4,7 @@ import { handle } from "@/lib/api";
 import { db } from "@/lib/db";
 import { listProjects } from "@/lib/organizer";
 import { getProfile, profileForPrompt } from "@/lib/profile";
+import { agenda, agendaForPrompt, nowForPrompt } from "@/lib/reminders";
 
 const MODEL = process.env.GEMINI_LIVE_MODEL || "gemini-3.8-live";
 const VOICE = process.env.GEMINI_TTS_VOICE || "Charon";
@@ -68,6 +69,21 @@ const TOOLS = [
         },
       },
       {
+        name: "create_reminder",
+        description:
+          "Schedule a reminder / meeting / deadline. 'when' is an ISO 8601 date-time WITH the owner's UTC offset (e.g. 2026-10-01T15:00:00+05:30), resolved from the current local time. all_day=true when no time was given.",
+        parametersJsonSchema: {
+          type: "object",
+          properties: { title: { type: "string" }, when: { type: "string" }, all_day: { type: "boolean" }, details: { type: "string" } },
+          required: ["title", "when"],
+        },
+      },
+      {
+        name: "list_reminders",
+        description: "The owner's agenda (overdue, today, tomorrow, later). Use for 'what do I have today/tomorrow'.",
+        parametersJsonSchema: { type: "object", properties: {} },
+      },
+      {
         name: "analyze_job",
         description:
           "Run a real job-match analysis (fit score, ATS keyword match, gaps, cover letter). Use when the owner says 'analyse this job'. On the Career page, ALWAYS call it with no arguments first: the tool reads the pasted job description box itself (you cannot see it). Only pass job_description if the owner read a full job description out loud. Don't ask them to paste unless this tool says the box is empty.",
@@ -114,7 +130,11 @@ const TOOLS = [
  */
 export const POST = handle(async () => {
   const supabase = db();
-  const [profile, projects] = await Promise.all([getProfile(supabase), listProjects(supabase)]);
+  const [profile, projects, schedule] = await Promise.all([
+    getProfile(supabase),
+    listProjects(supabase),
+    agenda(supabase, 2).then(agendaForPrompt).catch(() => "(unavailable)"),
+  ]);
 
   const systemInstruction = `You are HIVEMIND, the owner's personal AI, speaking out loud in a live voice conversation.
 Voice rules: sound natural and warm, like a trusted aide. Keep replies short (1-3 sentences) unless asked for detail.
@@ -125,12 +145,17 @@ ${profileForPrompt(profile)}
 
 Their projects: ${projects.map((p) => p.name).join(", ") || "(none yet)"}
 
+Current local time: ${nowForPrompt()}
+Their schedule:
+${schedule}
+
 Tools:
 - Call search_brain before answering anything about the owner, their work, projects or saved knowledge. Answer only from what it returns; if it has nothing, say so briefly.
 - Call remember when they ask you to remember or note something. Confirm in a few words.
 - Call create_project when they ask to start a project.
 - The owner can talk to you from any page of the app. Call navigate when they ask to open or go to a page, then say where you took them in a few words.
 - You can operate the app: analyze_job, tailor_resume, create_note, navigate, and any page button via page_actions + do_page_action. When the owner asks for something the app can do, DO it with a tool instead of describing it. If you aren't sure an action exists, call page_actions.
+- For reminders, meetings and deadlines call create_reminder (confirm the day and time in plain words); for 'what's on today/tomorrow' call list_reminders.
 - For weather call get_weather; for news or anything happening in the world call web_search. Never guess live facts from memory. Mention where it came from briefly ("according to ..."), no URLs.
 - For "analyse this / this job", call analyze_job directly; don't use read_screen to check for the job description first.
 - Before a slow tool (analyze_job, tailor_resume), say one short line like "On it, give me a few seconds."

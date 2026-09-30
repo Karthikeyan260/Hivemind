@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { listProjects } from "@/lib/organizer";
 import { getProfile, profileForPrompt } from "@/lib/profile";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
+import { agenda, agendaForPrompt } from "@/lib/reminders";
 
 export const maxDuration = 60;
 
@@ -26,7 +27,7 @@ export type StreamEvent =
   | { type: "done"; provider?: string; model?: string; latency_ms?: number; changed?: boolean }
   | { type: "error"; message: string };
 
-const persona = (profile: string, projects: string) => `You are HIVEMIND, the owner's personal AI: part memory, part chief of staff.
+const persona = (profile: string, projects: string, schedule: string) => `You are HIVEMIND, the owner's personal AI: part memory, part chief of staff.
 You know them from their own stored knowledge. Speak directly to them as "you", warm but efficient, like a
 trusted aide. Be concrete. Use short paragraphs and bullet lists when listing things.
 
@@ -34,6 +35,10 @@ What you understand about the owner:
 ${profile}
 
 Their projects: ${projects || "(none yet)"}
+
+Their schedule:
+${schedule}
+When greeting them or when it matters, briefly mention what is on today (and tomorrow).
 
 When context from their brain is given, ground every claim in it and cite like [1], [2].
 If the brain doesn't contain the answer, say so plainly and suggest what to save. Never invent facts about them.`;
@@ -77,7 +82,12 @@ export const POST = handle(async (req: Request) => {
       let via = "rules";
 
       try {
-        const [route, profile, projects] = await Promise.all([routeAgent(message), getProfile(supabase), listProjects(supabase)]);
+        const [route, profile, projects, schedule] = await Promise.all([
+          routeAgent(message),
+          getProfile(supabase),
+          listProjects(supabase),
+          agenda(supabase, 2).then(agendaForPrompt).catch(() => "(unavailable)"),
+        ]);
         intent = route.agent;
         via = route.via;
         send({ type: "meta", conversation_id: conversationId!, intent, sources });
@@ -86,7 +96,7 @@ export const POST = handle(async (req: Request) => {
             trace.push(e);
             send(e);
           } };
-        const system = persona(profileForPrompt(profile), projects.map((p) => p.name).join(", "));
+        const system = persona(profileForPrompt(profile), projects.map((p) => p.name).join(", "), schedule);
         const started = Date.now();
         try {
           const r = await runAgent({

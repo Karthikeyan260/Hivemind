@@ -6,6 +6,7 @@ import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { researchAndSave, webSearch } from "@/lib/external/web";
 import { createMemory, updateMemory } from "@/lib/knowledge";
 import { getProfile, rebuildProfile } from "@/lib/profile";
+import { agenda, createReminder, findReminder, nowForPrompt, setReminderStatus } from "@/lib/reminders";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
 import { tailorResume } from "@/lib/resume/tailor";
 import type { RunContext, Tool } from "./types";
@@ -221,6 +222,49 @@ export const TOOLS: Record<string, Tool> = {
       ctx.changed = true;
       ctx.actions.push({ label: "Open project", href: `/projects/${p!.id}` });
       return { created: true, name: p!.name };
+    },
+  },
+
+  /* ───── scheduler ───── */
+  create_reminder: {
+    name: "create_reminder",
+    description:
+      "Schedule a reminder / meeting / deadline. 'when' must be an ISO 8601 date-time WITH the owner's UTC offset (e.g. 2026-10-01T15:00:00+05:30), resolved from the current local time. Use all_day=true when no time was given.",
+    parameters: obj({ title: S, when: S, all_day: { type: "boolean" }, details: S, remind_before_min: { type: "number" } }, ["title", "when"]),
+    async run(args, ctx) {
+      const r = await createReminder(ctx.supabase, {
+        title: str(args.title),
+        when: str(args.when),
+        all_day: !!args.all_day,
+        details: str(args.details) || undefined,
+        remind_before_min: args.remind_before_min == null ? undefined : Number(args.remind_before_min),
+        project_id: ctx.projectId,
+      });
+      ctx.changed = true;
+      ctx.actions.push({ label: "Open reminder", href: `/notes?open=${r.id}` });
+      return { scheduled: true, title: r.title, when: r.when, alert: r.all_day ? "on the morning of that day" : "15 minutes before, in HIVEMIND" };
+    },
+  },
+  list_reminders: {
+    name: "list_reminders",
+    description: "The owner's agenda: overdue, today, tomorrow and later reminders.",
+    parameters: obj({ days: { type: "number" } }),
+    async run(args, ctx) {
+      const a = await agenda(ctx.supabase, Math.min(Number(args.days) || 7, 60));
+      const pick = (list: typeof a.today) => list.map((r) => ({ title: r.title, when: r.when, status: r.status, details: r.details || undefined }));
+      return { now: nowForPrompt(), overdue: pick(a.overdue), today: pick(a.today), tomorrow: pick(a.tomorrow), later: pick(a.later) };
+    },
+  },
+  complete_reminder: {
+    name: "complete_reminder",
+    description: "Mark a reminder as done. 'which' is a phrase identifying it (e.g. 'dentist').",
+    parameters: obj({ which: S }, ["which"]),
+    async run(args, ctx) {
+      const r = await findReminder(ctx.supabase, str(args.which));
+      if (!r) return { error: `No pending reminder matching "${str(args.which)}".` };
+      await setReminderStatus(ctx.supabase, r.id, "done");
+      ctx.changed = true;
+      return { done: true, title: r.title, when: r.when };
     },
   },
 
