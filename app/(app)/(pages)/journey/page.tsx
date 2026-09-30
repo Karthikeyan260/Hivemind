@@ -52,44 +52,42 @@ export default function JourneyPage() {
     details: c.description,
     tags: c.tags,
   });
-  const show = (i: number) => {
-    const c = j!.commits[i];
-    if (view === "story") story.current?.goTo(i);
-    else setPicked(c);
+  // The story view skips projects (they live in the Log view), so its indexes are over this list.
+  const storyList = () => j!.commits.filter((c) => c.kind !== "project");
+  const show = (c: Commit) => {
+    const si = storyList().findIndex((x) => x.id === c.id);
+    if (view === "story" && si >= 0) story.current?.goTo(si);
+    else {
+      setView("log");
+      setPicked(c);
+    }
     return describe(c);
+  };
+  const step = (d: 1 | -1) => {
+    if (view === "story") {
+      const list = storyList();
+      const i = Math.max(0, Math.min(list.length - 1, (story.current?.index() ?? 0) + d));
+      return show(list[i]);
+    }
+    const i = Math.max(0, Math.min(j!.commits.length - 1, j!.commits.findIndex((c) => c.id === current?.id) + d));
+    return show(j!.commits[i]);
   };
   useVoiceActions({
     go_to_milestone: {
       description:
-        "Fly to / highlight a milestone in the journey (input: e.g. 'Zinnov', 'B.Tech', 'NutrifyAI', '2024 internship').",
+        "Go to / highlight a milestone in the journey (input: e.g. 'Zinnov', 'B.Tech', 'IoT internship'). Projects open in the Log view.",
       run: ({ input }) => {
         const hit = find(String(input ?? ""));
-        return hit
-          ? { showing: show(hit.i) }
-          : { error: `No milestone matching "${input}".` };
+        return hit ? { showing: show(hit.c) } : { error: `No milestone matching "${input}".` };
       },
     },
     next_milestone: {
       description: "Move to the next milestone in time.",
-      run: () => {
-        const i = Math.min(
-          (j?.commits.length ?? 1) - 1,
-          (story.current?.index() ??
-            j!.commits.findIndex((c) => c.id === current?.id)) + 1,
-        );
-        return { showing: show(i) };
-      },
+      run: () => ({ showing: step(1) }),
     },
     previous_milestone: {
       description: "Move to the previous milestone.",
-      run: () => {
-        const i = Math.max(
-          0,
-          (story.current?.index() ??
-            j!.commits.findIndex((c) => c.id === current?.id)) - 1,
-        );
-        return { showing: show(i) };
-      },
+      run: () => ({ showing: step(-1) }),
     },
     start_tour: {
       description:
@@ -99,7 +97,7 @@ export default function JourneyPage() {
         setTimeout(() => story.current?.tour(true), 50);
         return {
           touring: true,
-          milestones: j!.commits.map(
+          milestones: storyList().map(
             (c) =>
               `${c.period}: ${c.kind === "now" ? "HEAD, now" : c.title}${c.subtitle ? ` (${c.subtitle})` : ""}`,
           ),

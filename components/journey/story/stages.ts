@@ -50,8 +50,9 @@ function ageFor(scene: SceneKind, i: number, stages: { scene: SceneKind }[]): Ag
   return "student";
 }
 
+/** The story follows school → internships → degree → work; projects stay in the Log view. */
 export function buildStages(commits: Commit[]): Stage[] {
   const certs = commits.find((c) => c.kind === "milestone");
-  const base = commits.map((c) => ({ commit: c, scene: sceneFor(c) }));
+  const base = commits.filter((c) => c.kind !== "project").map((c) => ({ commit: c, scene: sceneFor(c) }));
   return base.map((s, i) => ({ ...s, age: ageFor(s.scene, i, base), line: lineFor(s.commit, s.scene, certs) }));
 }

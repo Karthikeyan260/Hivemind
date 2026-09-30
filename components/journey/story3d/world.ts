@@ -415,27 +415,6 @@ export class LifeWorld {
           g.add(s);
           break;
         }
-        case "desk": {
-          this.shell(g, 0x243150, woodFloor("#6b4a33", "#3b2717"));
-          const win = windowView("night");
-          win.position.set(-2.2, 2.3, -4.78);
-          g.add(win);
-          const desk = await this.put(g, "metal_office_desk", 1.9, -3.0);
-          await Promise.all([
-            this.put(g, "classic_laptop", 1.8, -3.0, 0, desk),
-            this.put(g, "desk_lamp_arm_01", 2.6, -3.15, -0.5, desk),
-            this.put(g, "modern_arm_chair_01", 1.9, -2.0, Math.PI),
-            this.put(g, "wooden_bookshelf_worn", -4.6, -4.35),
-            this.put(g, "potted_plant_02", 4.6, -4.0),
-          ]);
-          const lamp = new THREE.PointLight(0xffc27a, 5, 6, 1.6);
-          lamp.position.set(2.6, 1.6, -2.9);
-          g.add(lamp);
-          const s = sign(clip(c.title, 26), c.subtitle ?? "", 2.8, "#b59cff", "#141a33");
-          s.position.set(2.2, 3.2, -4.78);
-          g.add(s);
-          break;
-        }
         case "remote": {
           this.shell(g, 0xcbb59a, woodFloor("#9a7452", "#5b4130"));
           const win = windowView("morning");

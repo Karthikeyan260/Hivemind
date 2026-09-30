@@ -238,8 +238,6 @@ export const LifeStory3D = forwardRef<StoryHandle, { lanes: Lane[]; commits: Com
         </p>
       )}
 
-      <p className="pointer-events-none absolute bottom-[4.2rem] right-3 font-mono text-[9px] tracking-wider text-white/40">SOME PLACES: POLY HAVEN (CC0)</p>
-
       {/* Timeline */}
       <div className="absolute inset-x-3 bottom-3 flex items-center gap-2 border border-line bg-[#0b1016]/85 px-2 py-2 backdrop-blur">
         <button type="button" aria-label="Previous" onClick={() => { stopTour(); void goTo(index - 1); }} className="p-1 text-soft hover:text-fg">
