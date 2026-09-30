@@ -46,6 +46,7 @@ const NAV = [
   { href: "/", label: "Overview" },
   { href: "/projects", label: "Projects" },
   { href: "/career", label: "Career" },
+  { href: "/journey", label: "Journey" },
   { href: "/memories", label: "Memories" },
   { href: "/notes", label: "Notes" },
   { href: "/documents", label: "Documents" },

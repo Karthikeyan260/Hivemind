@@ -43,3 +43,8 @@ next-env.d.ts
 
 # local agent tooling state
 .claude-flow/
+
+# 3D avatar (owner's face) and its animations: kept out of git until the owner decides it may be public
+/public/journey/
+# Owner-supplied photos of real places (may be copyrighted): not committed until the owner decides
+/public/journey-env/*-photo.jpg

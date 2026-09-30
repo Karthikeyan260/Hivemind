@@ -90,7 +90,7 @@ export const summarizeTailored = (t: TailoredOut) => ({
   note: "The PDF is shown on the Career page with View / Download buttons.",
 });
 
-const PAGES = ["/", "/projects", "/memories", "/career", "/notes", "/documents", "/sources", "/search", "/settings"];
+const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/notes", "/documents", "/sources", "/search", "/settings"];
 
 /**
  * One Gemini Live session for the whole site. It lives in the root layout, so the conversation keeps

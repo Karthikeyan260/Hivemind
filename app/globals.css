@@ -599,3 +599,57 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Journey graph: HEAD / current-role halo */
+@keyframes gg-pulse {
+  0% { transform: scale(0.7); opacity: 0.9; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.gg-pulse { animation: gg-pulse 1.8s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .gg-pulse { animation: none; } }
+
+/* Journey life story: animated character + scenes */
+.av .av-leg-l, .av .av-leg-r { transform-box: fill-box; transform-origin: top center; }
+.av .av-arm-l, .av .av-arm-r { transform-box: fill-box; transform-origin: top center; }
+.av .av-eyes { transform-box: fill-box; transform-origin: center; animation: av-blink 4.2s infinite; }
+.av .av-body { animation: av-breathe 3.2s ease-in-out infinite; }
+.av .av-mouth-open { opacity: 0; }
+.av.is-walking .av-body { animation: av-bob 0.42s ease-in-out infinite; }
+.av.is-walking .av-leg-l { animation: av-step 0.42s ease-in-out infinite alternate; }
+.av.is-walking .av-leg-r { animation: av-step 0.42s ease-in-out infinite alternate-reverse; }
+.av.is-walking .av-arm-l { animation: av-swing 0.42s ease-in-out infinite alternate-reverse; }
+.av.is-walking .av-arm-r { animation: av-swing 0.42s ease-in-out infinite alternate; }
+.av.is-talking .av-mouth-open { animation: av-talk 0.28s steps(2) infinite; }
+.av.is-talking .av-mouth-closed { animation: av-talk 0.28s steps(2) infinite reverse; }
+.av.is-waving .av-arm-r { animation: av-wave 0.55s ease-in-out 2 alternate; }
+.av.is-holo { animation: av-holo 2.4s ease-in-out infinite; }
+@keyframes av-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
+@keyframes av-breathe { 50% { transform: translateY(-1.2px); } }
+@keyframes av-bob { 50% { transform: translateY(-4px); } }
+@keyframes av-step { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+@keyframes av-swing { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
+@keyframes av-talk { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes av-wave { from { transform: rotate(0deg); } to { transform: rotate(-150deg); } }
+@keyframes av-holo { 50% { opacity: 0.6; } }
+.st-flag { transform-box: fill-box; transform-origin: left center; animation: st-flag 2.4s ease-in-out infinite; }
+.st-wifi { animation: st-pulse 1.6s ease-in-out infinite; }
+.st-led { animation: st-pulse 1.2s ease-in-out infinite; }
+.st-lid { transform-box: fill-box; transform-origin: left bottom; animation: st-lid 4s ease-in-out infinite; }
+.st-code rect { transform-box: fill-box; transform-origin: left; animation: st-type 2.6s ease-in-out infinite; }
+.st-code rect:nth-child(2) { animation-delay: 0.3s; } .st-code rect:nth-child(3) { animation-delay: 0.6s; } .st-code rect:nth-child(4) { animation-delay: 0.9s; } .st-code rect:nth-child(5) { animation-delay: 1.2s; }
+.st-spin { animation: st-spin 6s linear infinite; transform-box: fill-box; transform-origin: center; }
+.st-steam { animation: st-steam 2.2s ease-in-out infinite; }
+.st-twinkle, .st-flicker, .st-shine { animation: st-pulse 2.4s ease-in-out infinite; }
+.st-confetti { animation: st-fall 3.6s linear infinite; }
+.st-portal { transform-box: fill-box; transform-origin: center; animation: st-portal 2.6s ease-in-out infinite; }
+.st-bubble { animation: rise-in 0.35s ease-out; }
+@media (min-width: 640px) { .st-bubble::after { content: ""; position: absolute; right: -9px; bottom: 22px; border: 9px solid transparent; border-left-color: rgba(11, 16, 22, 0.92); border-right: 0; } }
+@keyframes st-flag { 50% { transform: skewY(6deg) scaleX(0.94); } }
+@keyframes st-pulse { 50% { opacity: 0.35; } }
+@keyframes st-lid { 0%, 70%, 100% { transform: rotate(0); } 80%, 90% { transform: rotate(-35deg); } }
+@keyframes st-type { 0% { transform: scaleX(0); } 40%, 100% { transform: scaleX(1); } }
+@keyframes st-spin { to { transform: rotate(360deg); } }
+@keyframes st-steam { 0% { opacity: 0; transform: translateY(6px); } 40% { opacity: 0.8; } 100% { opacity: 0; transform: translateY(-14px); } }
+@keyframes st-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(470px) rotate(540deg); } }
+@keyframes st-portal { 50% { transform: scale(1.08); opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) { .av *, .av, [class^="st-"], [class*=" st-"] { animation: none !important; } }

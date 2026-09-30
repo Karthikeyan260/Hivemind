@@ -14,6 +14,7 @@ const PAGES = [
   { path: "/projects", what: "projects" },
   { path: "/memories", what: "memories" },
   { path: "/career", what: "career: job match analyses and tailored resume PDFs" },
+  { path: "/journey", what: "journey: animated git-graph of education, internships, projects and current work" },
   { path: "/notes", what: "notes" },
   { path: "/documents", what: "uploaded documents" },
   { path: "/sources", what: "data sources and imports" },

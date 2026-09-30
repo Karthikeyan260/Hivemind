@@ -57,6 +57,11 @@ export class SentenceStream {
  * Plays chunks in order. Each chunk's audio is requested as soon as it arrives (so the next one is
  * ready while the current one plays). Exposes a live level from an AnalyserNode for visuals.
  */
+/** Splits on sentence ends before a capital, so "1.6M" or "e.g." mid-sentence stay together. */
+export function splitSentences(text: string) {
+  return text.split(/(?<=[.!?])\s+(?=[A-Z(])/).map((x) => x.trim()).filter(Boolean);
+}
+
 export class Speaker {
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -67,7 +72,23 @@ export class Speaker {
   private browserVoiceUntil = 0;
   private active = 0;
   private fakeLevel = 0;
+  private cache = new Map<string, Promise<AudioBuffer | null>>();
   onSpeakingChange?: (speaking: boolean) => void;
+  /** Playback speed (1 = normal). The journey story uses a brisker 1.2. */
+  rate = 1;
+
+  /** Start generating audio for these lines now (e.g. while the character walks), so it's ready instantly. */
+  prefetch(texts: string[]) {
+    if (Date.now() < this.browserVoiceUntil) return;
+    for (const t of texts) if (t.trim() && !this.cache.has(t)) this.cache.set(t, this.fetchAudio(t));
+    if (this.cache.size > 40) this.cache.delete(this.cache.keys().next().value!);
+  }
+
+  /** Speak a paragraph sentence by sentence (the first sentence starts sooner); resolves when all of it has played. */
+  say(text: string) {
+    for (const part of splitSentences(text)) this.speak(part);
+    return this.chain;
+  }
 
   /** Must be called from a user gesture once, so the browser allows audio. */
   unlock() {
@@ -85,7 +106,9 @@ export class Speaker {
 
   speak(text: string) {
     const gen = this.generation;
-    const audio = Date.now() < this.browserVoiceUntil ? Promise.resolve(null) : this.fetchAudio(text);
+    const cached = this.cache.get(text);
+    this.cache.delete(text);
+    const audio = Date.now() < this.browserVoiceUntil ? Promise.resolve(null) : (cached ?? this.fetchAudio(text));
     this.chain = this.chain.then(async () => {
       if (gen !== this.generation) return;
       this.setActive(+1);
@@ -157,6 +180,7 @@ export class Speaker {
       if (!this.ctx || !this.analyser || gen !== this.generation) return resolve();
       const src = this.ctx.createBufferSource();
       src.buffer = buf;
+      src.playbackRate.value = this.rate;
       src.connect(this.analyser);
       src.onended = () => {
         this.sources.delete(src);
@@ -177,7 +201,7 @@ export class Speaker {
         voices.find((v) => /Google UK English Male/i.test(v.name)) ??
         voices.find((v) => v.lang.startsWith("en")) ??
         null;
-      u.rate = 1.02;
+      u.rate = 1.02 * this.rate;
       u.onboundary = () => (this.fakeLevel = 0.7);
       u.onend = () => resolve();
       u.onerror = () => resolve();
