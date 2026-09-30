@@ -30,7 +30,7 @@ export function VoiceDock() {
   const text = v.last?.a || v.last?.q;
 
   return (
-    <div className="pointer-events-none fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-50 flex max-w-[min(26rem,calc(100vw-2rem))] flex-col items-end gap-2">
+    <div className="pointer-events-none fixed bottom-[calc(var(--tabbar-h)+1rem)] right-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 flex max-w-[min(26rem,calc(100vw-2rem))] flex-col items-end gap-2">
       {(v.on || v.error) && (
         <div className="pointer-events-auto w-full border border-data/30 bg-[#0b1016]/90 p-3 shadow-[0_0_30px_-8px_rgba(56,189,248,0.35)] backdrop-blur-md">
           <div className="flex items-center justify-between gap-3">

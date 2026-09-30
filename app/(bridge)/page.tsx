@@ -779,12 +779,12 @@ function Bridge() {
   );
 
   return (
-    <div ref={rootRef} className="bridge fixed inset-0 flex flex-col bg-bg text-fg">
+    <div ref={rootRef} className="bridge fixed inset-x-0 top-0 bottom-[var(--tabbar-h)] flex flex-col bg-bg text-fg">
       <Cursor locked={!!hover} label={hover ? `${hover.node.kind.slice(0, 3).toUpperCase()} · LOCK` : undefined} />
       <Boot onDone={() => setBooted(true)} lines={bootLines} ready={!!galaxy.data && !!b} />
 
       {/* ───── Top bar ───── */}
-      <header className="in-top relative z-20 flex h-14 shrink-0 items-center gap-6 border-b border-line bg-sunken/90 px-4 md:px-5">
+      <header className="in-top relative z-20 flex h-[calc(3.5rem+env(safe-area-inset-top))] shrink-0 items-center gap-6 border-b border-line bg-sunken/90 px-4 pt-[env(safe-area-inset-top)] md:px-5">
         <Link href="/" className="flex shrink-0 items-center gap-2.5">
           <span className="relative flex h-2.5 w-2.5">
             <span className={cx("absolute inline-flex h-full w-full rounded-full bg-core opacity-60", state !== "idle" ? "animate-ping" : "motion-safe:animate-pulse")} />

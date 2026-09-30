@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, GitCommitVertical, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, GitCommitVertical, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -141,6 +141,7 @@ function Explorer() {
     setDraft(null);
     setOpenVersion(null);
     router.replace(`/memories?open=${id}`);
+    if (window.innerWidth < 1024) window.scrollTo({ top: 0 });
   };
 
   function edit() {
@@ -218,7 +219,8 @@ function Explorer() {
             </button>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Phone: an even two-column grid; wider screens: one wrapping row. */}
+        <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap [&>select]:w-full sm:[&>select]:w-auto">
           <Select value={filters.type} onChange={setF("type")}>
             <option value="">All types</option>
             {MEMORY_TYPES.map((t) => (
@@ -266,7 +268,7 @@ function Explorer() {
               RESET
             </button>
           )}
-          <span className="ml-auto font-mono text-[11px] text-faint">
+          <span className="col-span-2 text-right font-mono text-[11px] text-faint sm:ml-auto">
             {list.data ? `${list.data.items.length} of ${f?.total ?? 0} memories` : "…"}
           </span>
         </div>
@@ -274,7 +276,7 @@ function Explorer() {
 
       <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
         {/* List */}
-        <div className="lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto lg:pr-1">
+        <div className={cx("min-w-0 lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto lg:pr-1", (openId || draft) && "hidden lg:block")}>
           <ErrorText error={list.error} />
           {list.loading && !list.data ? (
             <p className="font-mono text-[11px] text-faint">SCANNING…</p>
@@ -315,6 +317,18 @@ function Explorer() {
         </div>
 
         {/* Detail / editor */}
+        <div className={cx("min-w-0", !openId && !draft && "hidden lg:block")}>
+          {/* Phone: the list and a memory take turns on screen. */}
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(null);
+              router.replace("/memories");
+            }}
+            className="mb-3 flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-data lg:hidden"
+          >
+            <ChevronLeft size={14} /> All memories
+          </button>
         {draft ? (
           <Holo title={draft.id ? "Edit memory" : "New memory"} tone="core">
             <div className="space-y-3 p-5">
@@ -574,6 +588,7 @@ function Explorer() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

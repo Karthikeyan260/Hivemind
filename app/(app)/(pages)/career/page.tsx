@@ -82,6 +82,12 @@ function Career() {
     if (opened.data) setResult(opened.data);
   }, [opened.data]);
 
+  // Phone: the result sits below the form and history, so bring it into view when one opens.
+  const shownId = result?.id;
+  useEffect(() => {
+    if (shownId && window.innerWidth < 1024) setTimeout(() => document.getElementById("career-result")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  }, [shownId]);
+
   async function runAnalysis(text: string, r = role, c = company) {
     setBusy(true);
     setError(null);
@@ -161,7 +167,7 @@ function Career() {
 
       <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
         {/* Input + history */}
-        <div className="space-y-5">
+        <div className="min-w-0 space-y-5">
           <form onSubmit={analyze} className="space-y-2.5">
             <div className="grid grid-cols-2 gap-2">
               <Input placeholder="Role (optional)" value={role} onChange={(e) => setRole(e.target.value)} />
@@ -226,7 +232,7 @@ function Career() {
             <Empty>Paste a job description to see your fit score, ATS keyword match, tailored summary, resume bullets, cover letter and interview prep.</Empty>
           )
         ) : (
-          <div className="space-y-4">
+          <div id="career-result" className="min-w-0 scroll-mt-16 space-y-4">
             <Holo title={`${a.role}${a.company ? ` @ ${a.company}` : ""}`} right={<CopyButton text={toMarkdown(a)} label="Copy all" />} tone="core">
               <div className="flex flex-wrap items-center gap-6 p-5">
                 <div className="flex gap-4">

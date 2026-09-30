@@ -586,6 +586,24 @@ body {
     outline: 1.5px solid var(--data);
     outline-offset: 2px;
   }
+  /* A plain one-column grid should shrink to the screen, not stretch to its widest child (phones).
+     Breakpoint utilities like md:grid-cols-2 still win: utilities come after base. */
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Phone: room for the bottom tab bar (and the home-indicator area). */
+  :root {
+    --tabbar-h: 0px;
+  }
+  @media (max-width: 767px) {
+    :root.has-tabbar {
+      --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom));
+    }
+  }
+  body {
+    overflow-x: clip;
+    -webkit-tap-highlight-color: transparent;
+  }
 }
 
 * {

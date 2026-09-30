@@ -63,28 +63,13 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
         )}
       </aside>
 
-      {/* Phone: top bar with scrollable nav */}
-      <header className="sticky top-0 z-30 border-b border-line bg-sunken md:hidden">
-        <div className="flex items-center gap-2 px-4 pt-3">
-          <span className="h-2 w-2 rounded-full bg-core" />
-          <span className="font-mono text-xs font-semibold tracking-[0.3em]">HIVEMIND</span>
-        </div>
-        <nav className="flex gap-1 overflow-x-auto px-2 py-2" aria-label="Main">
-          {NAV.map(({ label, href, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active(href) ? "page" : undefined}
-              className={cx(
-                "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs",
-                active(href) ? "bg-raised text-fg" : "text-soft",
-              )}
-            >
-              <Icon size={14} className={active(href) ? "text-core" : ""} />
-              {label}
-            </Link>
-          ))}
-        </nav>
+      {/* Phone: slim title bar; navigation is the bottom tab bar (components/mobile-nav.tsx) */}
+      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-sunken/95 px-4 pb-2.5 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden">
+        <span className="h-2 w-2 rounded-full bg-core" />
+        <Link href="/" className="font-mono text-xs font-semibold tracking-[0.3em]">
+          HIVEMIND
+        </Link>
+        <span className="ml-auto truncate font-mono text-[10.5px] uppercase tracking-wider text-faint">{NAV.find((n) => n.href !== "/" && active(n.href))?.label}</span>
       </header>
     </>
   );
