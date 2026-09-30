@@ -57,6 +57,22 @@ export class SentenceStream {
  * Plays chunks in order. Each chunk's audio is requested as soon as it arrives (so the next one is
  * ready while the current one plays). Exposes a live level from an AnalyserNode for visuals.
  */
+/** Male voices in order of preference (Indian English first, then natural-sounding ones). */
+const MALE_VOICES = [
+  /Prabhat.*Natural/i,
+  /Microsoft Ravi/i,
+  /Rishi/i,
+  /Guy.*Natural/i,
+  /Andrew.*Natural/i,
+  /Brian.*Natural/i,
+  /Christopher.*Natural/i,
+  /Ryan.*Natural/i,
+  /Google UK English Male/i,
+  /Microsoft (David|Mark|George)/i,
+  /Daniel/i,
+  /Alex/i,
+];
+
 /** Splits on sentence ends before a capital, so "1.6M" or "e.g." mid-sentence stay together. */
 export function splitSentences(text: string) {
   return text.split(/(?<=[.!?])\s+(?=[A-Z(])/).map((x) => x.trim()).filter(Boolean);
@@ -74,12 +90,19 @@ export class Speaker {
   private fakeLevel = 0;
   private cache = new Map<string, Promise<AudioBuffer | null>>();
   onSpeakingChange?: (speaking: boolean) => void;
-  /** Playback speed (1 = normal). The journey story uses a brisker 1.2. */
-  rate = 1;
+  /** Playback speed (1 = normal). */
+  rate = 1.15;
+  /**
+   * "gemini": HIVEMIND's TTS voice, falling back to the browser when out of quota (chat replies).
+   * "browser": always the device's speech engine with one locked male voice, so a long narration
+   * never switches voice mid-way (the journey story).
+   */
+  engine: "gemini" | "browser" = "gemini";
+  private lockedVoice: SpeechSynthesisVoice | null = null;
 
   /** Start generating audio for these lines now (e.g. while the character walks), so it's ready instantly. */
   prefetch(texts: string[]) {
-    if (Date.now() < this.browserVoiceUntil) return;
+    if (this.engine === "browser" || Date.now() < this.browserVoiceUntil) return;
     for (const t of texts) if (t.trim() && !this.cache.has(t)) this.cache.set(t, this.fetchAudio(t));
     if (this.cache.size > 40) this.cache.delete(this.cache.keys().next().value!);
   }
@@ -108,7 +131,7 @@ export class Speaker {
     const gen = this.generation;
     const cached = this.cache.get(text);
     this.cache.delete(text);
-    const audio = Date.now() < this.browserVoiceUntil ? Promise.resolve(null) : (cached ?? this.fetchAudio(text));
+    const audio = this.engine === "browser" || Date.now() < this.browserVoiceUntil ? Promise.resolve(null) : (cached ?? this.fetchAudio(text));
     this.chain = this.chain.then(async () => {
       if (gen !== this.generation) return;
       this.setActive(+1);
@@ -191,16 +214,49 @@ export class Speaker {
     });
   }
 
-  private browserSpeak(text: string, gen: number) {
+  /** One consistent male voice (Indian English first), chosen once and reused for every line. */
+  private maleVoice() {
+    if (this.lockedVoice) return this.lockedVoice;
+    const voices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith("en"));
+    const byName = (re: RegExp) => voices.find((v) => re.test(v.name));
+    this.lockedVoice =
+      MALE_VOICES.map(byName).find(Boolean) ??
+      byName(/\b(male|man|guy|david|mark|george|ravi|rishi|daniel|alex|andrew|brian|christopher|eric|ryan|prabhat|fred|aaron)\b/i) ??
+      null;
+    return this.lockedVoice;
+  }
+
+  /** Voice lists load asynchronously; wait briefly so the first line already gets the locked voice. */
+  private voicesReady() {
+    if (typeof speechSynthesis === "undefined" || speechSynthesis.getVoices().length) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const done = () => {
+        speechSynthesis.removeEventListener("voiceschanged", done);
+        resolve();
+      };
+      speechSynthesis.addEventListener("voiceschanged", done);
+      setTimeout(done, 1000);
+    });
+  }
+
+  private async browserSpeak(text: string, gen: number) {
+    if (this.engine === "browser") await this.voicesReady();
     return new Promise<void>((resolve) => {
       if (typeof speechSynthesis === "undefined" || gen !== this.generation) return resolve();
       const u = new SpeechSynthesisUtterance(text);
       const voices = speechSynthesis.getVoices();
-      u.voice =
-        voices.find((v) => /natural/i.test(v.name) && v.lang.startsWith("en")) ??
-        voices.find((v) => /Google UK English Male/i.test(v.name)) ??
-        voices.find((v) => v.lang.startsWith("en")) ??
-        null;
+      if (this.engine === "browser") {
+        const male = this.maleVoice();
+        u.voice = male;
+        // No male voice installed: deepen the default one so it still reads as a man's voice.
+        if (!male) u.pitch = 0.75;
+      } else {
+        u.voice =
+          voices.find((v) => /natural/i.test(v.name) && v.lang.startsWith("en")) ??
+          voices.find((v) => /Google UK English Male/i.test(v.name)) ??
+          voices.find((v) => v.lang.startsWith("en")) ??
+          null;
+      }
       u.rate = 1.02 * this.rate;
       u.onboundary = () => (this.fakeLevel = 0.7);
       u.onend = () => resolve();

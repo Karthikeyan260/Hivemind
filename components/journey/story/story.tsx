@@ -65,7 +65,7 @@ export const LifeStory = forwardRef<StoryHandle, { lanes: Lane[]; commits: Commi
           }
         };
         if (voice) {
-          speaker.current ??= new Speaker();
+          speaker.current ??= Object.assign(new Speaker(), { engine: "browser" as const, rate: 1.35 });
           const sp = speaker.current;
           sp.stop();
           sp.onSpeakingChange = (on) => {
@@ -263,7 +263,7 @@ export const LifeStory = forwardRef<StoryHandle, { lanes: Lane[]; commits: Commi
         <button
           type="button"
           onClick={() => {
-            speaker.current ??= new Speaker();
+            speaker.current ??= Object.assign(new Speaker(), { engine: "browser" as const, rate: 1.35 });
             speaker.current.unlock();
             if (voice) speaker.current.stop();
             setVoice((v) => !v);

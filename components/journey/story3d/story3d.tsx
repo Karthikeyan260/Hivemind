@@ -10,7 +10,7 @@ import { buildStages, type StoryHandle } from "../story/stages";
 import type { LifeWorld } from "./world";
 
 const TYPE_MS = 22;
-const STORY_VOICE_RATE = 1.2;
+const STORY_VOICE_RATE = 1.35;
 
 /**
  * The life story in 3D: the owner's own avatar walks between milestone scenes and tells each one.
@@ -38,10 +38,11 @@ export const LifeStory3D = forwardRef<StoryHandle, { lanes: Lane[]; commits: Com
     voiceRef.current = voice;
   }, [voice]);
 
-  /** The story's voice: HIVEMIND TTS at a brisker 1.2× speed. */
+  /** The story's voice: one male voice, slightly brisk, identical for every milestone. */
   const voice$ = useCallback(() => {
     speaker.current ??= new Speaker();
     speaker.current.rate = STORY_VOICE_RATE;
+    speaker.current.engine = "browser"; // one consistent male voice for the whole journey
     return speaker.current;
   }, []);
 

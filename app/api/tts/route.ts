@@ -15,7 +15,7 @@ export const POST = handle(async (req: Request) => {
   try {
     const res = await geminiClient().models.generateContent({
       model: MODEL,
-      contents: [{ role: "user", parts: [{ text }] }],
+      contents: [{ role: "user", parts: [{ text: `Say at a brisk, energetic, fast pace: ${text}` }] }],
       config: {
         responseModalities: ["AUDIO"],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE } } },
