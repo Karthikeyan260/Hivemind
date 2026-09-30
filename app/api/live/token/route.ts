@@ -71,11 +71,27 @@ const TOOLS = [
       {
         name: "create_reminder",
         description:
-          "Schedule a reminder / meeting / deadline. 'when' is an ISO 8601 date-time WITH the owner's UTC offset (e.g. 2026-10-01T15:00:00+05:30), resolved from the current local time. all_day=true when no time was given.",
+          "Schedule a reminder / meeting / deadline. 'date' is \"today\", \"tomorrow\", a weekday (\"friday\", \"next monday\"), \"in 3 days\", or YYYY-MM-DD. 'time' is local clock time like \"15:00\" or \"3 pm\" (omit for all-day). For \"in 2 hours\" use in_minutes instead. The server works out the exact moment; never compute UTC or years yourself.",
         parametersJsonSchema: {
           type: "object",
-          properties: { title: { type: "string" }, when: { type: "string" }, all_day: { type: "boolean" }, details: { type: "string" } },
-          required: ["title", "when"],
+          properties: { title: { type: "string" }, date: { type: "string" }, time: { type: "string" }, in_minutes: { type: "number" }, details: { type: "string" } },
+          required: ["title"],
+        },
+      },
+      {
+        name: "change_reminder",
+        description:
+          "Cancel (removes it), complete, or reschedule a reminder/meeting. 'which' = words from its title and/or 'today'/'tomorrow'. For reschedule give the new date and/or time (time alone keeps the same day). 'date' is \"today\", \"tomorrow\", a weekday (\"friday\", \"next monday\"), \"in 3 days\", or YYYY-MM-DD. 'time' is local clock time like \"15:00\" or \"3 pm\" (omit for all-day). For \"in 2 hours\" use in_minutes instead. The server works out the exact moment; never compute UTC or years yourself. Never use complete for a cancellation.",
+        parametersJsonSchema: {
+          type: "object",
+          properties: {
+            action: { type: "string", enum: ["cancel", "complete", "reschedule"] },
+            which: { type: "string" },
+            date: { type: "string" },
+            time: { type: "string" },
+            in_minutes: { type: "number" },
+          },
+          required: ["action", "which"],
         },
       },
       {
@@ -155,7 +171,7 @@ Tools:
 - Call create_project when they ask to start a project.
 - The owner can talk to you from any page of the app. Call navigate when they ask to open or go to a page, then say where you took them in a few words.
 - You can operate the app: analyze_job, tailor_resume, create_note, navigate, and any page button via page_actions + do_page_action. When the owner asks for something the app can do, DO it with a tool instead of describing it. If you aren't sure an action exists, call page_actions.
-- For reminders, meetings and deadlines call create_reminder (confirm the day and time in plain words); for 'what's on today/tomorrow' call list_reminders.
+- For reminders, meetings and deadlines call create_reminder (confirm the day and time in plain words); for 'what's on today/tomorrow' call list_reminders; to cancel, finish or move one call change_reminder.
 - For weather call get_weather; for news or anything happening in the world call web_search. Never guess live facts from memory. Mention where it came from briefly ("according to ..."), no URLs.
 - For "analyse this / this job", call analyze_job directly; don't use read_screen to check for the job description first.
 - Before a slow tool (analyze_job, tailor_resume), say one short line like "On it, give me a few seconds."

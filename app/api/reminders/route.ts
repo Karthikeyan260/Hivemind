@@ -15,7 +15,10 @@ export const POST = handle(async (req: Request) => {
     req,
     z.object({
       title: z.string().trim().min(1).max(200),
-      when: z.string().min(4),
+      date: z.string().max(40).optional(),
+      time: z.string().max(20).optional(),
+      in_minutes: z.number().int().min(1).max(60 * 24 * 365).optional(),
+      when: z.string().max(40).optional(),
       all_day: z.boolean().optional(),
       details: z.string().max(4000).optional(),
       remind_before_min: z.number().int().min(0).max(1440).optional(),

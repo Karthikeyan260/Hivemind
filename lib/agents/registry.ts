@@ -56,8 +56,8 @@ export const AGENTS: Record<AgentId, Agent> = {
     name: "Scheduler Agent",
     role: "Reminders, meetings, deadlines and the owner's agenda ('remind me…', 'I have a meeting tomorrow at 3', 'what's on today').",
     instructions:
-      "Resolve relative dates ('tomorrow', 'next Monday', 'in 2 hours') against the current local time given below and call create_reminder with an ISO date-time including the UTC offset. If no time is given, use all_day=true. Put extra context (location, people, links) in details. For 'what do I have', call list_reminders. Confirm with the day and time in plain words (e.g. 'Thursday 1 Oct at 3 pm'), never the ISO string.",
-    tools: ["create_reminder", "list_reminders", "complete_reminder"],
+      "Resolve relative dates ('tomorrow', 'next Monday', 'in 2 hours') against the current local time given below by calling create_reminder with date ('today'/'tomorrow'/weekday/YYYY-MM-DD) and time ('15:00'); leave time empty for all-day. Never compute years or UTC offsets yourself. Put extra context (location, people, links) in details. For 'what do I have / any plans', call list_reminders. Cancel, delete or 'it's off' → cancel_reminder (removes it). Move to another time → reschedule_reminder. Finished → complete_reminder. Never use complete_reminder for a cancellation. Confirm with the day and time in plain words (e.g. 'Thursday 1 Oct at 3 pm'), never the ISO string.",
+    tools: ["create_reminder", "list_reminders", "cancel_reminder", "reschedule_reminder", "complete_reminder"],
   },
   profile: {
     id: "profile",

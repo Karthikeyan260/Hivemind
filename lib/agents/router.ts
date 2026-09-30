@@ -11,7 +11,7 @@ const RouteSchema = z.object({ agent: z.enum(AGENT_IDS) });
 export function ruleBasedAgent(message: string): AgentId | null {
   const m = message.trim().toLowerCase();
   if (/^(hi|hello|hey|thanks|thank you|good (morning|night|evening))\b[\s!.]*$/.test(m)) return "core";
-  if (/\b(remind(er)?s?|schedule|meeting|appointment|deadline|agenda|calendar|my day|on today|on tomorrow)\b|\bmark\b.*\b(done|complete)\b|\b(today|tomorrow)\b.*\b(at \d|am\b|pm\b)/.test(m)) return "scheduler";
+  if (/\b(remind(er)?s?|schedule|meeting|appointment|deadline|agenda|calendar|my day|on today|on tomorrow)\b|\bmark\b.*\b(done|complete)\b|\b(cancel|reschedule|postpone|move)\b.*\b(meeting|call|reminder|appointment|it)\b|\b(plans?|free|busy)\b.*\b(today|tomorrow|tonight)\b|\b(today|tomorrow)\b.*\b(at \d|am\b|pm\b)/.test(m)) return "scheduler";
   if (/^(please\s+)?(remember|save|store|note)\b|^note:|\b(update|correct|change)\b.*\b(memory|saved)\b/.test(m)) return "memory";
   if (/^(please\s+)?(research|collect|gather|compile)\b|\b(weather|temperature|forecast|raining|humidity)\b|\b(search (the )?(web|internet)|google|latest news|news (about|on))\b/.test(m)) return "research";
   if (/\b(job analys[ie]s|job match(es)?|job description|jd\b|resume|cv\b|cover letter|interview|ats\b|hiring|apply(ing)? (for|to))\b/.test(m) || m.length > 900) return "career";

@@ -6,7 +6,7 @@ import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { researchAndSave, webSearch } from "@/lib/external/web";
 import { createMemory, updateMemory } from "@/lib/knowledge";
 import { getProfile, rebuildProfile } from "@/lib/profile";
-import { agenda, createReminder, findReminder, nowForPrompt, setReminderStatus } from "@/lib/reminders";
+import { actOnReminder, agenda, createReminder, nowForPrompt } from "@/lib/reminders";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
 import { tailorResume } from "@/lib/resume/tailor";
 import type { RunContext, Tool } from "./types";
@@ -229,13 +229,14 @@ export const TOOLS: Record<string, Tool> = {
   create_reminder: {
     name: "create_reminder",
     description:
-      "Schedule a reminder / meeting / deadline. 'when' must be an ISO 8601 date-time WITH the owner's UTC offset (e.g. 2026-10-01T15:00:00+05:30), resolved from the current local time. Use all_day=true when no time was given.",
-    parameters: obj({ title: S, when: S, all_day: { type: "boolean" }, details: S, remind_before_min: { type: "number" } }, ["title", "when"]),
+      "Schedule a reminder / meeting / deadline. 'date' is \"today\", \"tomorrow\", a weekday (\"friday\", \"next monday\"), \"in 3 days\", or YYYY-MM-DD. 'time' is local clock time like \"15:00\" or \"3 pm\" (omit for all-day). For \"in 2 hours\" use in_minutes instead. The server works out the exact moment; never compute UTC or years yourself.",
+    parameters: obj({ title: S, date: S, time: S, in_minutes: { type: "number" }, details: S, remind_before_min: { type: "number" } }, ["title"]),
     async run(args, ctx) {
       const r = await createReminder(ctx.supabase, {
         title: str(args.title),
-        when: str(args.when),
-        all_day: !!args.all_day,
+        date: str(args.date) || undefined,
+        time: str(args.time) || undefined,
+        in_minutes: args.in_minutes == null ? undefined : Number(args.in_minutes),
         details: str(args.details) || undefined,
         remind_before_min: args.remind_before_min == null ? undefined : Number(args.remind_before_min),
         project_id: ctx.projectId,
@@ -257,14 +258,39 @@ export const TOOLS: Record<string, Tool> = {
   },
   complete_reminder: {
     name: "complete_reminder",
-    description: "Mark a reminder as done. 'which' is a phrase identifying it (e.g. 'dentist').",
+    description:
+      "Mark a reminder as DONE, only when the owner says they finished it ('I did it', 'mark X done'). NOT for cancelling. 'which' identifies it (words from the title and/or 'today'/'tomorrow').",
     parameters: obj({ which: S }, ["which"]),
     async run(args, ctx) {
-      const r = await findReminder(ctx.supabase, str(args.which));
-      if (!r) return { error: `No pending reminder matching "${str(args.which)}".` };
-      await setReminderStatus(ctx.supabase, r.id, "done");
-      ctx.changed = true;
-      return { done: true, title: r.title, when: r.when };
+      const r = await actOnReminder(ctx.supabase, "complete", str(args.which));
+      if (!r.error) ctx.changed = true;
+      return r;
+    },
+  },
+  cancel_reminder: {
+    name: "cancel_reminder",
+    description:
+      "Cancel / delete / remove a reminder or meeting ('cancel tomorrow's meeting', 'the call is off'). Removes it from the agenda and notes. 'which' identifies it (words from the title and/or 'today'/'tomorrow').",
+    parameters: obj({ which: S }, ["which"]),
+    async run(args, ctx) {
+      const r = await actOnReminder(ctx.supabase, "cancel", str(args.which));
+      if (!r.error) ctx.changed = true;
+      return r;
+    },
+  },
+  reschedule_reminder: {
+    name: "reschedule_reminder",
+    description:
+      "Move a reminder/meeting to a new date and/or time ('move the meeting to 4 pm', 'push it to Friday'). Give only what changes: time alone keeps the same day. 'date' is \"today\", \"tomorrow\", a weekday (\"friday\", \"next monday\"), \"in 3 days\", or YYYY-MM-DD. 'time' is local clock time like \"15:00\" or \"3 pm\" (omit for all-day). For \"in 2 hours\" use in_minutes instead. The server works out the exact moment; never compute UTC or years yourself.",
+    parameters: obj({ which: S, date: S, time: S, in_minutes: { type: "number" } }, ["which"]),
+    async run(args, ctx) {
+      const r = await actOnReminder(ctx.supabase, "reschedule", str(args.which), {
+        date: str(args.date) || undefined,
+        time: str(args.time) || undefined,
+        in_minutes: args.in_minutes == null ? undefined : Number(args.in_minutes),
+      });
+      if (!r.error) ctx.changed = true;
+      return r;
     },
   },
 

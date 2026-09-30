@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import Link from "next/link";
 import { Holo } from "@/components/bridge/holo";
 import { cx } from "@/components/ui";
@@ -18,6 +18,14 @@ export function AgendaPanel() {
     const flip = (l: Reminder[]) => l.map((x) => (x.id === r.id ? { ...x, status } : x));
     if (data) setData({ overdue: flip(data.overdue), today: flip(data.today), tomorrow: flip(data.tomorrow), later: flip(data.later) });
     await api(`/api/reminders/${r.id}`, { method: "PATCH", json: { status } }).catch(() => {});
+    window.dispatchEvent(new Event(BRAIN_CHANGED));
+  }
+
+  async function cancel(r: Reminder) {
+    if (!confirm(`Cancel “${r.title}”? It will be removed from your agenda and notes.`)) return;
+    const drop = (l: Reminder[]) => l.filter((x) => x.id !== r.id);
+    if (data) setData({ overdue: drop(data.overdue), today: drop(data.today), tomorrow: drop(data.tomorrow), later: drop(data.later) });
+    await api(`/api/reminders/${r.id}`, { method: "DELETE" }).catch(() => {});
     window.dispatchEvent(new Event(BRAIN_CHANGED));
   }
 
@@ -65,6 +73,9 @@ export function AgendaPanel() {
                       <span className="shrink-0 font-mono text-[10px] text-soft">
                         {r.all_day ? "all day" : label === "This week" ? r.when.split(",")[0] : r.when.split(", ").pop()}
                       </span>
+                      <button type="button" onClick={() => cancel(r)} aria-label={`Cancel ${r.title}`} className="shrink-0 text-faint opacity-0 hover:text-alert focus:opacity-100 group-hover:opacity-100">
+                        <X size={12} />
+                      </button>
                     </li>
                   ))}
                 </ul>

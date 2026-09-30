@@ -211,10 +211,27 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           if (r.saved) window.dispatchEvent(new Event(BRAIN_CHANGED));
           return { answer: r.answer.slice(0, 3000), sources: r.sources.map((x) => x.title), saved_as_note: r.saved?.title ?? null };
         },
-        create_reminder: async ({ title, when, all_day, details }) => {
-          const r = await call("/api/reminders", "POST", { title: String(title ?? ""), when: String(when ?? ""), all_day: !!all_day, details: details ? String(details) : undefined });
+        create_reminder: async ({ title, date, time, in_minutes, details }) => {
+          const r = await call("/api/reminders", "POST", {
+            title: String(title ?? ""),
+            date: date ? String(date) : undefined,
+            time: time ? String(time) : undefined,
+            in_minutes: in_minutes ? Number(in_minutes) : undefined,
+            details: details ? String(details) : undefined,
+          });
           window.dispatchEvent(new Event(BRAIN_CHANGED));
           return { scheduled: true, title: r.title, when: r.when };
+        },
+        change_reminder: async ({ action, which, date, time, in_minutes }) => {
+          const r = await call("/api/reminders/act", "POST", {
+            action: String(action),
+            which: String(which ?? ""),
+            date: date ? String(date) : undefined,
+            time: time ? String(time) : undefined,
+            in_minutes: in_minutes ? Number(in_minutes) : undefined,
+          });
+          if (!r.error) window.dispatchEvent(new Event(BRAIN_CHANGED));
+          return r;
         },
         list_reminders: async () => {
           const a = (await call("/api/reminders?days=7", "GET")) as Record<string, { title: string; when: string; status: string }[]>;
