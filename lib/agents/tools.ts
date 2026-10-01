@@ -439,11 +439,18 @@ export const TOOLS: Record<string, Tool> = {
   },
   upcoming_birthdays: {
     name: "upcoming_birthdays",
-    description: "Birthdays and anniversaries coming up ('whose birthday is coming?', 'any birthdays this month?').",
-    parameters: obj({ days: { type: "number", description: "Look-ahead in days, default 30" } }),
+    description:
+      "Birthdays and anniversaries coming up ('whose birthday is next?', 'any birthdays this month?'). Always returns the next ones even if they're months away; pass days only for a specific window like 'this month'.",
+    parameters: obj({ days: { type: "number", description: "Only for an explicit window ('this week' = 7, 'this month' = 30). Omit for 'next'." } }),
     async run(args, ctx) {
-      const list = await upcomingBirthdays(ctx.supabase, Math.min(Number(args.days) || 30, 366));
-      return { upcoming: list.map((b) => ({ name: b.name, kind: b.kind, date: b.label, in_days: b.days, turning: b.turning })) };
+      const all = await upcomingBirthdays(ctx.supabase, 366);
+      const shape = (b: (typeof all)[number]) => ({ name: b.name, kind: b.kind, relation: b.relation, date: b.label, in_days: b.days, turning: b.turning });
+      if (!all.length) return { upcoming: [], note: "No birthdays saved yet." };
+      const window = Number(args.days) || 0;
+      if (!window) return { next: all.slice(0, 3).map(shape) };
+      const inWindow = all.filter((b) => b.days <= window);
+      // Nothing in that window: still say who's next, so the answer is useful.
+      return inWindow.length ? { upcoming: inWindow.map(shape) } : { upcoming: [], next_after_window: all.slice(0, 2).map(shape) };
     },
   },
   remove_birthday: {
