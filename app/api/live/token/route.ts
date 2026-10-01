@@ -4,6 +4,7 @@ import { geminiClient } from "@/lib/ai/gemini";
 import { handle } from "@/lib/api";
 import { db } from "@/lib/db";
 import { listProjects } from "@/lib/organizer";
+import { getPrefs, languageRule } from "@/lib/prefs";
 import { getProfile, profileForPrompt } from "@/lib/profile";
 import { agenda, agendaForPrompt, nowForPrompt } from "@/lib/reminders";
 
@@ -239,12 +240,13 @@ const TOOLS = [
  */
 export const POST = handle(async () => {
   const supabase = db();
-  const [profile, projects, schedule] = await Promise.all([
+  const [profile, projects, schedule, prefs] = await Promise.all([
     getProfile(supabase),
     listProjects(supabase),
     agenda(supabase, 2)
       .then(agendaForPrompt)
       .catch(() => "(unavailable)"),
+    getPrefs(supabase).catch(() => ({ language: "auto" as const })),
   ]);
 
   const systemInstruction = `You are HIVEMIND, the owner's personal AI, speaking out loud in a live voice conversation.
@@ -281,7 +283,10 @@ Tools:
 - You can use every page like a person would: scroll (up/down/top/bottom or to a section), click any button/link/tab by its label, type_text into fields, select_option in dropdowns, go_back. If you don't know the exact label, call read_screen first (it lists the controls). Do it instead of telling the owner to do it.
 - On the home page the 3D galaxy has its own actions (via page_actions / do_page_action): rotate_galaxy ('left', 'right 90', 'up'), zoom_galaxy ('in' / 'out'), focus_project (project name), reset_galaxy_view, galaxy_auto_rotate ('on'/'off'). "Zoom into project X" = focus_project.
 - Call read_screen when they refer to what they're looking at ("this job", "summarise this page", "what's my fit here"), then answer from it.
-For general questions unrelated to the owner, just answer.`;
+For general questions unrelated to the owner, just answer.
+
+${languageRule(prefs.language)}
+In voice, speak Tamil naturally like a Chennai friend would (not formal written Tamil).`;
 
   const now = Date.now();
   const token = await geminiClient().authTokens.create({

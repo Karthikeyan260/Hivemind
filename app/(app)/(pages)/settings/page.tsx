@@ -1,3 +1,4 @@
+import { LanguageCard } from "@/components/language";
 import { NotificationsCard } from "@/components/notifications";
 import { providers } from "@/lib/ai/providers";
 
@@ -35,6 +36,8 @@ export default function SettingsPage() {
           don&apos;t store passwords or secrets in your brain.
         </p>
       </section>
+
+      <LanguageCard />
 
       <NotificationsCard />
 

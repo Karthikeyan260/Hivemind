@@ -8,6 +8,7 @@ import { dbError, handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
 import type { Job } from "@/lib/external/jobs";
 import { listProjects } from "@/lib/organizer";
+import { getPrefs, languageRule } from "@/lib/prefs";
 import { getProfile, profileForPrompt } from "@/lib/profile";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
 import { agenda, agendaForPrompt } from "@/lib/reminders";
@@ -88,11 +89,12 @@ export const POST = handle(async (req: Request) => {
       let via = "rules";
 
       try {
-        const [route, profile, projects, schedule] = await Promise.all([
+        const [route, profile, projects, schedule, prefs] = await Promise.all([
           routeAgent(message, previousAgent),
           getProfile(supabase),
           listProjects(supabase),
           agenda(supabase, 2).then(agendaForPrompt).catch(() => "(unavailable)"),
+          getPrefs(supabase).catch(() => ({ language: "auto" as const })),
         ]);
         intent = route.agent;
         via = route.via;
@@ -103,6 +105,9 @@ export const POST = handle(async (req: Request) => {
             send(e);
           } };
         const system = persona(profileForPrompt(profile), projects.map((p) => p.name).join(", "), schedule);
+        // Tamil script is unambiguous, so say it outright rather than leave it to the model.
+        const tamil = prefs.language !== "en" && /[஀-௿]/.test(message);
+        const closing = [languageRule(prefs.language), tamil ? "The owner just wrote in Tamil script: write your whole answer in Tamil script (technical terms may stay in English)." : ""].filter(Boolean).join("\n");
         const started = Date.now();
         try {
           const r = await runAgent({
@@ -110,6 +115,7 @@ export const POST = handle(async (req: Request) => {
             message,
             history,
             persona: system,
+            closing,
             ctx,
             onText: (t) => {
               reply += t;
@@ -126,7 +132,7 @@ export const POST = handle(async (req: Request) => {
           const userTurn = context.length
             ? `Context from my brain:\n${context.map((c, i) => `[${i + 1}] (${c.source_type}) ${c.title}\n${c.content.slice(0, 1500)}`).join("\n\n---\n\n")}\n\nMe: ${message}`
             : message;
-          const res = await generateWithFallback([...history, { role: "user", content: userTurn }], { system, order: ["nvidia", "groq"], temperature: 0.3 });
+          const res = await generateWithFallback([...history, { role: "user", content: userTurn }], { system: `${system}\n\n${closing}`, order: ["nvidia", "groq"], temperature: 0.3 });
           reply = res.text;
           send({ type: "delta", text: reply });
           done = { type: "done", provider: res.provider, model: res.model, latency_ms: res.latencyMs };

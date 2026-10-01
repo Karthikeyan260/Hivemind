@@ -75,7 +75,8 @@ const MALE_VOICES = [
 
 /** Splits on sentence ends before a capital, so "1.6M" or "e.g." mid-sentence stay together. */
 export function splitSentences(text: string) {
-  return text.split(/(?<=[.!?])\s+(?=[A-Z(])/).map((x) => x.trim()).filter(Boolean);
+  // Tamil has no capitals, so a Tamil letter after the full stop also starts a sentence.
+  return text.split(/(?<=[.!?])\s+(?=[A-Z(஀-௿])/).map((x) => x.trim()).filter(Boolean);
 }
 
 export class Speaker {
@@ -256,6 +257,12 @@ export class Speaker {
           voices.find((v) => /Google UK English Male/i.test(v.name)) ??
           voices.find((v) => v.lang.startsWith("en")) ??
           null;
+      }
+      // Tamil text: the device's Tamil voice (an English voice would spell it out or stay silent).
+      if (/[஀-௿]/.test(text)) {
+        u.lang = "ta-IN";
+        u.voice = voices.find((v) => v.lang.toLowerCase().startsWith("ta")) ?? null;
+        u.pitch = 1;
       }
       u.rate = 1.02 * this.rate;
       u.onboundary = () => (this.fakeLevel = 0.7);

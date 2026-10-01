@@ -33,6 +33,8 @@ type RunOpts = {
   message: string;
   history: ChatMessage[];
   persona: string;
+  /** Appended last (strongest position): the language rule. */
+  closing?: string;
   ctx: RunContext;
   /** Receives the answer as it streams (top-level agent only). */
   onText?: (delta: string) => void;
@@ -99,6 +101,8 @@ export async function runAgent(o: RunOpts): Promise<{ text: string; model: strin
     depth === 0 ? `Colleagues you can hand work to with ask_agent:\n${agentRoster()}` : "You were asked by a colleague; return a complete, factual answer to their task.",
     RULES,
     `Current local time: ${nowForPrompt()}.`,
+    // Sub-agents report to the top agent, which writes the final answer in the owner's language.
+    depth === 0 ? (o.closing ?? "") : "",
   ].join("\n\n");
 
   const contents: Content[] = [
