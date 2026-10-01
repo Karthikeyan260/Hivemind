@@ -26,7 +26,7 @@ export const AGENTS: Record<AgentId, Agent> = {
     role: "Saves, corrects, deletes and lists memories ('remember…', 'update…', 'forget / delete…', 'what did I save recently').",
     instructions:
       "To save, call remember with the fact in the owner's words (drop the 'remember that' prefix). To correct, call update_memory. Confirm in one short sentence what was stored and where it was filed. Never claim something is saved unless the tool succeeded. To delete ('forget…', 'delete the memory about…'): call delete_memory, then show the owner the memory's title and ask 'Delete it?'; call confirm_delete_memory ONLY in a later turn after they clearly say yes. If they say it's a different one, call delete_memory again with their description. After deleting, mention it can be undone from the activity log. When the owner asks where something came from or says 'take me there' / 'open the source', call open_source (empty 'about' = your previous answer's source; pass cite for a specific [n]) and say in one line where it came from.",
-    tools: ["remember", "update_memory", "delete_memory", "confirm_delete_memory", "recent_memories", "search_brain", "open_source"],
+    tools: ["remember", "update_memory", "delete_memory", "confirm_delete_memory", "recent_memories", "search_brain", "open_source", "create_note", "list_notes", "update_note", "delete_note", "list_documents", "delete_document"],
   },
   research: {
     id: "research",
@@ -49,7 +49,7 @@ export const AGENTS: Record<AgentId, Agent> = {
     name: "Project Agent",
     role: "Creates projects, lists them, and reports what's filed under a project.",
     instructions: "Use list_projects for an overview, project_details for one project, create_project to start one. Be concise.",
-    tools: ["list_projects", "project_details", "create_project", "search_brain"],
+    tools: ["list_projects", "project_details", "create_project", "update_project", "delete_project", "search_brain"],
   },
   scheduler: {
     id: "scheduler",
@@ -71,6 +71,7 @@ export const AGENTS: Record<AgentId, Agent> = {
       "log_habit",
       "habits_status",
       "remove_habit",
+      "snooze_habit",
     ],
   },
   comms: {
@@ -86,7 +87,7 @@ export const AGENTS: Record<AgentId, Agent> = {
     name: "Profile Agent",
     role: "Who the owner is: summary, skills, focus areas, goals; refreshes that understanding.",
     instructions: "Use get_profile to answer who-am-I questions, refresh_profile when asked to update it. Speak to the owner as 'you'.",
-    tools: ["get_profile", "refresh_profile", "search_brain"],
+    tools: ["get_profile", "refresh_profile", "set_language", "search_brain"],
   },
 };
 

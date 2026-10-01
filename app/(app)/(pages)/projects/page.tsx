@@ -2,8 +2,10 @@
 
 import { Film, List, Wand2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ProjectReel } from "@/components/projects/reel";
+import { useVoiceActions } from "@/components/voice/provider";
 import type { Evolution } from "@/lib/evolution";
 import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, Skeleton } from "@/components/ui";
 import { api, type Brain, useFetch } from "@/lib/client-api";
@@ -12,6 +14,7 @@ const STATUS_DOT: Record<string, string> = { active: "bg-ok", paused: "bg-core",
 const FILTERS = ["all", "active", "paused", "done"] as const;
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const brain = useFetch<Brain>("/api/brain");
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
   const [name, setName] = useState("");
@@ -65,6 +68,45 @@ export default function ProjectsPage() {
   }
 
   const projects = (brain.data?.projects ?? []).filter((p) => filter === "all" || p.status === filter);
+
+  // Voice: everything on this page (the 3D reel registers its own show/tour/demo actions).
+  useVoiceActions({
+    projects_view: {
+      description: "Projects page: switch between the 3D Showcase reel and the List. input: 'showcase' or 'list'. Switch to showcase before using show_project / tour actions.",
+      run: ({ input }) => {
+        const v = /list/i.test(String(input ?? "")) ? "list" : "reel";
+        switchView(v);
+        return { view: v === "reel" ? "showcase" : "list" };
+      },
+    },
+    projects_filter: {
+      description: `Projects page: show only some projects in the List. input: one of ${FILTERS.join(", ")}.`,
+      run: ({ input }) => {
+        const f = FILTERS.find((x) => String(input ?? "").toLowerCase().includes(x)) ?? "all";
+        switchView("list");
+        setFilter(f);
+        const n = (brain.data?.projects ?? []).filter((p) => f === "all" || p.status === f);
+        return { filter: f, projects: n.map((p) => p.name) };
+      },
+    },
+    organize_projects: {
+      description: "Projects page: file unfiled memories, notes and documents into projects (creates projects where needed). Takes a few seconds.",
+      run: async () => {
+        await organize();
+        return { done: true };
+      },
+    },
+    open_project_page: {
+      description: "Projects page: open a project's own page (its memories, notes, documents, edit and delete). input: project name.",
+      run: ({ input }) => {
+        const q = String(input ?? "").toLowerCase();
+        const p = (brain.data?.projects ?? []).find((x) => x.name.toLowerCase().includes(q));
+        if (!p) return { error: `No project "${input}".`, projects: (brain.data?.projects ?? []).map((x) => x.name) };
+        router.push(`/projects/${p.id}`);
+        return { opened: p.name };
+      },
+    },
+  });
 
   return (
     <div className="mx-auto max-w-5xl">

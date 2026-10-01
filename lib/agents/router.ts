@@ -14,6 +14,10 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (/^(hi|hello|hey|thanks|thank you|good (morning|night|evening))\b[\s!.]*$/.test(m)) return "core";
   if (/\b(birthdays?|bday|anniversar(y|ies)|habits?|streaks?)\b|^i (just )?(did|finished|completed) (my |the )?\w+|^done with (my |the )?\w+|\b(track|log)\b.*\b(daily|every|habit)\b/.test(m)) return "scheduler";
   if (/\b(remind(er)?s?|schedule|meeting|appointment|deadline|agenda|calendar|my day|on today|on tomorrow)\b|\bmark\b.*\b(done|complete)\b|\b(cancel|reschedule|postpone|move)\b.*\b(meeting|call|reminder|appointment|it)\b|\b(plans?|free|busy)\b.*\b(today|tomorrow|tonight)\b|\b(today|tomorrow)\b.*\b(at \d|am\b|pm\b)/.test(m)) return "scheduler";
+  // Projects, notes, documents and settings by name ("delete the HIVEMIND project", "add milk to my shopping note").
+  if (/\b(delete|remove|rename|update|change|pause|finish|mark)\b.*\bprojects?\b/.test(m)) return "project";
+  if (/\bnotes?\b|\bdocuments?\b|\bfiles?\b/.test(m) && !/\bjob\b/.test(m)) return "memory";
+  if (/\b(reply|speak|talk|answer|respond)\b.*\b(tamil|english|tanglish)\b|\blanguage\b/.test(m)) return "profile";
   if (/^(please\s+)?(remember|save|store|note)\b|^note:|\b(update|correct|change)\b.*\b(memory|saved)\b/.test(m)) return "memory";
   if (/\b(delete|remove|erase)\b.*\b(job analys[ie]s|analys[ie]s|job match)\b/.test(m)) return "career";
   // "call Arif", "whatsapp Vijay …", "send a message to …", "Arif's number is 98…"
@@ -21,6 +25,8 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (/^(please\s+)?(forget|delete|remove|erase)\b|\b(delete|remove|erase|forget)\b.*\bmemor(y|ies)\b/.test(m)) return "memory";
   // "Yes" to a delete confirmation goes back to the Memory agent that asked.
   if ((previous === "memory" || previous === "career") && /^(yes|yeah|yep|yup|sure|ok(ay)?|confirm(ed)?|do it|go ahead|delete it|please do)\b/.test(m)) return "memory";
+  // "Yes" to "Delete the project …?" goes back to the Project agent that asked.
+  if (previous === "project" && /^(yes|yeah|yep|yup|sure|ok(ay)?|confirm(ed)?|do it|go ahead|delete it|please do)\b/.test(m)) return "project";
   if (/\b(where did (you|that|this|it) (get|come)|where (is|was) (that|this|it) from|take me (there|to (it|that|the source))|open (the |that )?source|show (me )?(the )?source|go to (the )?source)\b/.test(m)) return "rag";
   // A short follow-up to a job search ("check #2", "the second one", "ATS for Quest Global") stays with Career.
   if (previous === "career" && m.length < 160 && /#?\b\d{1,2}\b|\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|that|this) (one|job|role)\b|\b(check|pick|choose|select|analy[sz]e|ats|go with)\b/.test(m)) return "career";

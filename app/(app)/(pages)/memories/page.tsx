@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Holo } from "@/components/bridge/holo";
 import { Palace } from "@/components/memories/palace";
+import { useVoiceActions } from "@/components/voice/provider";
 import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, ProjectSelect, Select, Textarea } from "@/components/ui";
 import { api, fmtDate, type Memory, MEMORY_TYPES, type Project, useFetch } from "@/lib/client-api";
 
@@ -208,6 +209,16 @@ function Explorer() {
       localStorage.setItem("memories-view", v);
     } catch {}
   };
+  useVoiceActions({
+    memories_view: {
+      description: "Memories page: switch between the 3D Memory Palace and the List. input: 'palace' or 'list'. Switch to palace before using palace_* actions.",
+      run: ({ input }) => {
+        const v = /list/i.test(String(input ?? "")) ? "list" : "palace";
+        switchView(v);
+        return { view: v, note: v === "palace" ? "The palace takes a second to load; then palace_* actions work." : undefined };
+      },
+    },
+  });
   // The palace always shows every memory; search and filters light up the matches.
   const palace = useFetch<ListRes>(view === "palace" ? "/api/memories/explore" : null);
   const matchIds = list.data?.items.map((m) => m.id).join(",");
@@ -608,8 +619,9 @@ function Explorer() {
                 related={relatedIds}
                 onOpen={open}
                 // Walking away closes the memory, but never an unsaved edit.
-                onClose={() => {
-                  if (!draft && openId) router.replace("/memories");
+                onClose={(id) => {
+                  // Only close the memory that is actually showing (a stale close for the previous one is ignored).
+                  if (!draft && openId && (!id || id === openId)) router.replace("/memories");
                 }}
               />
             ) : (

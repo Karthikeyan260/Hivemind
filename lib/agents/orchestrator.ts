@@ -44,6 +44,12 @@ const DESTRUCTIVE = new Set([
   "call_contact",
   "start_call",
   "save_contact",
+  "update_note",
+  "delete_note",
+  "delete_document",
+  "update_project",
+  "delete_project",
+  "set_language",
 ]);
 
 type RunOpts = {

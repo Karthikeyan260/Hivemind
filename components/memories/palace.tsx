@@ -3,6 +3,7 @@
 import { Home, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Scramble } from "@/components/bridge/scramble";
+import { useVoiceActions } from "@/components/voice/provider";
 import { HUB_R, WINGS, type PalaceItem, type PalaceScene, type WingLayout, type Zone } from "./palace-scene";
 
 type Props = {
@@ -14,7 +15,7 @@ type Props = {
   related: string[];
   onOpen: (id: string) => void;
   /** Close the open memory (walked away, set off elsewhere, or Esc). */
-  onClose: () => void;
+  onClose: (id?: string) => void;
 };
 
 const KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight"]);
@@ -52,7 +53,7 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose }: P
       try {
         s = new mod.PalaceScene(canvas.current, items, {
           onOpen: (id) => openRef.current(id),
-          onClose: () => closeRef.current(),
+          onClose: (id) => closeRef.current(id),
           onMove: (x, z, yaw, zone) => setMe({ x, z, yaw, zone }),
         });
       } catch (err) {
@@ -121,6 +122,99 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose }: P
       setFade({ on: false, color });
     }, 260);
   };
+
+  // Voice: move through the palace and open memories by speaking.
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const findMemories = (q: string) => {
+    const words = q.toLowerCase().split(/\W+/).filter((w) => w.length > 1);
+    return items
+      .map((m) => {
+        const title = m.title.toLowerCase();
+        const body = m.snippet.toLowerCase();
+        return { m, score: words.reduce((a, w) => a + (title.includes(w) ? 2 : body.includes(w) ? 1 : 0), 0) };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || b.m.importance - a.m.importance)
+      .map((x) => x.m);
+  };
+  const where = () => {
+    const a = scene.current?.around(5);
+    if (!a) return { error: "The palace is still loading." };
+    return {
+      you_are_in: a.zone.kind === "wing" ? WINGS[a.zone.index].name : "the Rotunda",
+      memory_open: a.open ? byId.get(a.open)?.title ?? null : null,
+      nearest_memories: a.near.map((n) => `${byId.get(n.id)?.title ?? "?"} (${Math.round(n.d)} m)`),
+      wings: layout.map((w) => `${w.wing.name}: ${w.items.length}`),
+    };
+  };
+  useVoiceActions({
+    palace_go: {
+      description: "Memory Palace: go to a wing or back to the rotunda. input: 'knowledge', 'experience', 'projects', 'ideas', 'self' (preferences) or 'rotunda'.",
+      run: ({ input }) => {
+        const q = String(input ?? "").toLowerCase();
+        if (/rotunda|hub|centre|center|start|back/.test(q)) return (jump("hub"), { going_to: "the Rotunda" });
+        const i = WINGS.findIndex((w) => q.includes(w.id) || w.name.toLowerCase().includes(q) || w.types.some((t) => q.includes(t.replace("_", " ")) || q.includes(t)) || (w.id === "self" && /prefer/.test(q)) || (w.id === "projects" && /project/.test(q)) || (w.id === "ideas" && /idea/.test(q)));
+        if (i < 0) return { error: `No wing like "${input}".`, wings: WINGS.map((w) => w.name) };
+        jump(i);
+        return { going_to: WINGS[i].name, memories_there: layout[i]?.items.length ?? 0 };
+      },
+    },
+    palace_walk: {
+      description: "Memory Palace: walk. input: direction (forward, back, left, right) and optional metres, e.g. 'forward 5'. Walls stop the walk.",
+      run: ({ input }) => {
+        const q = String(input ?? "forward").toLowerCase();
+        const dir = /back|behind/.test(q) ? "back" : /left/.test(q) ? "left" : /right/.test(q) ? "right" : "forward";
+        const m = Number(q.match(/\d+(\.\d+)?/)?.[0] ?? 3);
+        const walked = scene.current?.walk(dir, m) ?? 0;
+        return walked ? { walked_m: walked, direction: dir } : { error: "A wall is in the way." };
+      },
+    },
+    palace_turn: {
+      description: "Memory Palace: turn on the spot. input: 'left', 'right', 'around', optionally with degrees ('right 45').",
+      run: ({ input }) => {
+        const q = String(input ?? "around").toLowerCase();
+        const deg = /around|back/.test(q) ? 180 : Number(q.match(/\d+/)?.[0] ?? 90);
+        const sign = /right/.test(q) ? -1 : 1;
+        scene.current?.turn(((sign * deg) / 180) * Math.PI);
+        return { turned_degrees: deg, direction: sign > 0 ? "left" : "right" };
+      },
+    },
+    palace_open: {
+      description: "Memory Palace: walk to a memory and open it. input: words from its title or content, e.g. 'Zinnov', 'Amma phone number'.",
+      run: ({ input }) => {
+        const hits = findMemories(String(input ?? ""));
+        if (!hits.length) return { error: `No memory matches "${input}".` };
+        scene.current?.focus(hits[0].id);
+        return { opening: hits[0].title, type: hits[0].memory_type, other_matches: hits.slice(1, 4).map((m) => m.title) };
+      },
+    },
+    palace_next: {
+      description: "Memory Palace: step to the next memory along the wall and open it (from the open one, or the nearest).",
+      run: () => {
+        const id = scene.current?.neighbour(1);
+        return id ? { opening: byId.get(id)?.title } : { error: "No more memories this way." };
+      },
+    },
+    palace_previous: {
+      description: "Memory Palace: step to the previous memory along the wall and open it.",
+      run: () => {
+        const id = scene.current?.neighbour(-1);
+        return id ? { opening: byId.get(id)?.title } : { error: "This is the first one." };
+      },
+    },
+    palace_close: { description: "Memory Palace: close the open memory panel.", run: () => (onClose(), { closed: true }) },
+    palace_find: {
+      description: "Memory Palace: light up every memory matching some words and walk to the best one. input: words, e.g. 'Python', 'college'.",
+      run: ({ input }) => {
+        const hits = findMemories(String(input ?? ""));
+        if (!hits.length) return { error: `Nothing matches "${input}".` };
+        scene.current?.setHighlight(hits.map((m) => m.id));
+        scene.current?.focus(hits[0].id);
+        return { lit_up: hits.length, opening: hits[0].title, others: hits.slice(1, 5).map((m) => m.title) };
+      },
+    },
+    palace_where: { description: "Memory Palace: where the owner is standing, the memories nearest them, and what is in each wing.", run: () => where() },
+  });
 
   const zoneWing = me.zone.kind === "wing" ? WINGS[me.zone.index] : null;
   const zoneCount = me.zone.kind === "wing" ? layout[me.zone.index]?.items.length ?? 0 : items.length;

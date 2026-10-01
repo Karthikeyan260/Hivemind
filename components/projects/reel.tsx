@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Scramble } from "@/components/bridge/scramble";
 import { useVoiceActions } from "@/components/voice/provider";
 import type { EvoNode, Evolution } from "@/lib/evolution";
+import { openExternal } from "@/lib/open-link";
 import { sfx } from "@/lib/sfx";
 import { Speaker } from "@/lib/voice";
 import type { ReelScene } from "./reel-scene";
@@ -187,6 +188,27 @@ export function ProjectReel({ data }: { data: Evolution }) {
     stop_project_tour: { description: "Projects page (reel): stop the narrated tour.", run: () => (stopTour(), { stopped: true }) },
     next_project: { description: "Projects page (reel): next (older) project.", run: () => (scene.current?.next(1), { moved: "next" }) },
     previous_project: { description: "Projects page (reel): previous (newer) project.", run: () => (scene.current?.next(-1), { moved: "previous" }) },
+    close_project: { description: "Projects page (reel): close the open case study.", run: () => (setOpen(null), { closed: true }) },
+    open_project_demo: {
+      description: "Projects page (reel): open the live demo of the project in front (or a named one) in a new tab. input: optional project name.",
+      run: ({ input }) => {
+        const q = String(input ?? "").toLowerCase();
+        const x = q ? nodes.find((n) => n.name.toLowerCase().includes(q)) : nodes[activeRef.current];
+        if (!x) return { error: `No project "${input}".` };
+        if (!x.live) return { error: `${x.name} has no live demo.`, code: !!x.href };
+        return openExternal(x.live) ? { opened: `${x.name} live demo` } : { blocked: "The browser blocked the new tab. Ask the owner to tap the Live demo button." };
+      },
+    },
+    open_project_code: {
+      description: "Projects page (reel): open the GitHub code of the project in front (or a named one) in a new tab. input: optional project name.",
+      run: ({ input }) => {
+        const q = String(input ?? "").toLowerCase();
+        const x = q ? nodes.find((n) => n.name.toLowerCase().includes(q)) : nodes[activeRef.current];
+        if (!x) return { error: `No project "${input}".` };
+        if (!x.href) return { error: `${x.name} has no public code link.` };
+        return openExternal(x.href) ? { opened: `${x.name} on GitHub` } : { blocked: "The browser blocked the new tab. Ask the owner to tap the Code button." };
+      },
+    },
   });
 
   const n = nodes[active];

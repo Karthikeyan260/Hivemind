@@ -75,7 +75,7 @@ export type Callbacks = {
   onMove: (x: number, z: number, yaw: number, zone: Zone) => void;
   onHover?: (id: string | null) => void;
   /** The visitor walked away from the open memory (or set off somewhere else): close its panel. */
-  onClose?: () => void;
+  onClose?: (id: string) => void;
 };
 
 /* ───── shaders ───── */
@@ -714,6 +714,8 @@ type Frame = {
   wing: number;
   /** Order down its wall (lights cascade in this order when the wing wakes). */
   order: number;
+  /** Index within its wing, newest first (0 = nearest the doorway, left wall). */
+  index: number;
   world: THREE.Vector3 | null;
   /** Clock time of a search pulse (matches flash in a wave). */
   pulseAt: number;
@@ -1157,6 +1159,7 @@ export class PalaceScene {
       f.group.position.copy(local);
       f.group.rotation.y = s < 0 ? Math.PI / 2 : -Math.PI / 2;
       f.order = Math.floor(k / 2);
+      f.index = k;
       f.along = (FIRST + f.order * SPACING) / L;
       g.add(f.group);
       // Standing point: 2.3 m in front of the frame, facing it.
@@ -1313,6 +1316,7 @@ export class PalaceScene {
       level: 0,
       wing,
       order: 0,
+      index: 0,
       world: null,
       pulseAt: -99,
     };
@@ -1457,6 +1461,13 @@ export class PalaceScene {
 
   private focusFrame(f: Frame, open = true) {
     if (f.wing >= 0) this.wake(f.wing);
+    // Heading to a new memory: it is the focus from now on, so walking away from the old one
+    // can't close the new one's panel while the page catches up.
+    if (open) {
+      this.focusId = f.id;
+      this.closeSent = false;
+      this.nearFocus = false;
+    }
     const arrive = () => {
       if (!open) return;
       this.openPulse(f);
@@ -1492,7 +1503,7 @@ export class PalaceScene {
   private requestClose() {
     if (!this.focusId || this.closeSent) return;
     this.closeSent = true;
-    this.cb.onClose?.();
+    this.cb.onClose?.(this.focusId);
   }
 
   /** First visit to a wing: its ceiling light runs down the hall and the frames light up in turn. */
@@ -1562,6 +1573,67 @@ export class PalaceScene {
       this.threads.add(line);
     }
     this.threadStart = this.reduced ? -99 : this.clock.elapsedTime;
+  }
+
+/* ── voice ── */
+
+  /** Walk a distance in a direction relative to where the visitor faces; walls stop the walk early. */
+  walk(dir: "forward" | "back" | "left" | "right", meters = 3) {
+    const a = this.yaw + (dir === "back" ? Math.PI : dir === "left" ? Math.PI / 2 : dir === "right" ? -Math.PI / 2 : 0);
+    const step = new THREE.Vector2(-Math.sin(a), -Math.cos(a)).multiplyScalar(0.25);
+    const p = new THREE.Vector2(this.pos.x, this.pos.z);
+    let walked = 0;
+    for (let i = 0; i < Math.ceil(Math.min(meters, 40) / 0.25); i++) {
+      const n = p.clone().add(step);
+      if (!this.walkable(n.x, n.y)) break;
+      p.copy(n);
+      walked += 0.25;
+    }
+    this.stepTo = null;
+    if (walked > 0) this.setWalk(p);
+    return Math.round(walked * 10) / 10;
+  }
+
+  /** Turn by an angle in radians (positive = left). */
+  turn(rad: number) {
+    this.stepTo = null;
+    this.yawT += rad;
+  }
+
+  /** The visitor's place and what hangs near them, for "where am I / what's around me". */
+  around(count = 4) {
+    const zone = this.zoneAt(this.pos.x, this.pos.z);
+    const near = this.frames
+      .map((f) => ({ id: f.id, d: (f.world ?? f.group.getWorldPosition(new THREE.Vector3())).distanceTo(this.pos) }))
+      .sort((a, b) => a.d - b.d)
+      .filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i)
+      .slice(0, count);
+    return { zone, near, open: this.focusId };
+  }
+
+  /** The neighbouring frame along the wall (from the open memory, or the nearest one); opens it. */
+  neighbour(step: 1 | -1) {
+    let from = this.frames.find((f) => f.id === this.focusId && f.wing >= 0);
+    if (!from) {
+      const zone = this.zoneAt(this.pos.x, this.pos.z);
+      const pool = this.frames.filter((f) => (zone.kind === "wing" ? f.wing === zone.index : f.wing < 0));
+      from = pool.sort((a, b) => (a.world ?? a.group.position).distanceTo(this.pos) - (b.world ?? b.group.position).distanceTo(this.pos))[0];
+      if (from && !this.focusId) {
+        this.focusFrame(from);
+        return from.id;
+      }
+    }
+    if (!from) return null;
+    const row = this.frames.filter((f) => f.wing === from.wing).sort((a, b) => (from.wing < 0 ? a.order - b.order : a.index - b.index));
+    const next = row[row.indexOf(from) + step];
+    if (!next) return null;
+    this.focusFrame(next);
+    return next.id;
+  }
+
+  /** Close the open memory (voice "close it"). */
+  close() {
+    this.requestClose();
   }
 
   setKeys(code: string, down: boolean) {
