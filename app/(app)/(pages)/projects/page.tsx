@@ -1,10 +1,8 @@
 "use client";
 
-import { List, Orbit, Wand2 } from "lucide-react";
+import { Wand2 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { LivingMemoryView } from "@/components/projects/living-memory";
-import type { LivingData } from "@/lib/living-memory";
+import { useState } from "react";
 import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, Skeleton } from "@/components/ui";
 import { api, type Brain, useFetch } from "@/lib/client-api";
 
@@ -18,22 +16,6 @@ export default function ProjectsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<"living" | "list">("living");
-  const living = useFetch<LivingData>(view === "living" ? "/api/projects/living" : null);
-
-  // Remember the last view on this device.
-  useEffect(() => {
-    try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the saved view once
-      if (localStorage.getItem("projects-view") === "list") setView("list");
-    } catch {}
-  }, []);
-  const switchView = (v: "living" | "list") => {
-    setView(v);
-    try {
-      localStorage.setItem("projects-view", v);
-    } catch {}
-  };
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -67,7 +49,7 @@ export default function ProjectsPage() {
   const projects = (brain.data?.projects ?? []).filter((p) => filter === "all" || p.status === filter);
 
   return (
-    <div className={cx("mx-auto", view === "living" ? "max-w-7xl" : "max-w-5xl")}>
+    <div className="mx-auto max-w-5xl">
       <PageHeader
         eyebrow="Workspaces"
         title="Projects"
@@ -81,35 +63,6 @@ export default function ProjectsPage() {
       {msg && <p className="mb-4 text-sm text-data">{msg}</p>}
       <ErrorText error={error ?? brain.error} />
 
-      <div className="mb-5 flex gap-1" role="tablist" aria-label="View">
-        {(
-          [
-            ["living", "Living memory", Orbit],
-            ["list", "List", List],
-          ] as const
-        ).map(([v, label, Icon]) => (
-          <button
-            key={v}
-            role="tab"
-            aria-selected={view === v}
-            onClick={() => switchView(v)}
-            className={cx("flex items-center gap-1.5 border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider", view === v ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}
-          >
-            <Icon size={13} /> {label}
-          </button>
-        ))}
-      </div>
-
-      {view === "living" ? (
-        living.error ? (
-          <ErrorText error={living.error} />
-        ) : !living.data ? (
-          <p className="py-24 text-center font-mono text-[11px] tracking-[0.3em] text-data">GROWING YOUR LIVING MEMORY…</p>
-        ) : (
-          <LivingMemoryView data={living.data} />
-        )
-      ) : (
-      <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1" role="tablist" aria-label="Filter by status">
           {FILTERS.map((f) => (
@@ -162,8 +115,6 @@ export default function ProjectsPage() {
             </li>
           ))}
         </ul>
-      )}
-      </>
       )}
     </div>
   );
