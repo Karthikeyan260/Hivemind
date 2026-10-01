@@ -12,6 +12,7 @@ import { Cursor } from "@/components/bridge/cursor";
 import { Gauge, Holo, Meter } from "@/components/bridge/holo";
 import { Scramble } from "@/components/bridge/scramble";
 import { JobCards } from "@/components/career/job-cards";
+import { HabitsPanel } from "@/components/habits/panel";
 import { AgendaPanel } from "@/components/reminders/agenda";
 import type { CoreState } from "@/components/core";
 import { Decrypt } from "@/components/fx";
@@ -50,6 +51,7 @@ const NAV = [
   { href: "/projects", label: "Projects" },
   { href: "/career", label: "Career" },
   { href: "/journey", label: "Journey" },
+  { href: "/habits", label: "Habits" },
   { href: "/memories", label: "Memories" },
   { href: "/notes", label: "Notes" },
   { href: "/documents", label: "Documents" },
@@ -511,6 +513,7 @@ function Bridge() {
         </div>
       </Holo>
       <AgendaPanel />
+      <HabitsPanel />
       {composition.length > 0 && (
         <Holo title="Composition">
           <div className="space-y-2.5 p-4">

@@ -22,6 +22,7 @@ const PAGES = [
     path: "/journey",
     what: "journey: animated git-graph of education, internships, projects and current work",
   },
+  { path: "/habits", what: "habits (today's checklist, streaks) and birthdays" },
   { path: "/notes", what: "notes" },
   { path: "/documents", what: "uploaded documents" },
   { path: "/sources", what: "data sources and imports" },

@@ -138,7 +138,7 @@ const SLEEP_WORDS = {
     /^\W*(ok(ay)?\W+)?(good ?night|bye[ -]?bye|goodbye|bye)(\W+(hivemind|for now|then))?\W*$/i.test(q.trim()),
 };
 
-const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/notes", "/documents", "/sources", "/search", "/settings"];
+const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/habits", "/notes", "/documents", "/sources", "/search", "/settings"];
 
 /**
  * One Gemini Live session for the whole site. It lives in the root layout, so the conversation keeps

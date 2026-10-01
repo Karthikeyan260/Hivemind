@@ -16,6 +16,8 @@ export type Notice = {
   /** Keep it on screen until handled (calls). */
   sticky?: boolean;
   actions?: { action: string; title: string }[];
+  /** Extra fields the service worker needs for buttons (e.g. which habit "✓ Done" ticks). */
+  data?: Record<string, string>;
 };
 
 type Stored = PushSubscription & { device?: string; added?: string };

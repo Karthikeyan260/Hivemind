@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { birthdaysToday, runBirthdayAlerts } from "@/lib/birthdays";
 import { db } from "@/lib/db";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
+import { runHabitAlerts } from "@/lib/habits";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { notify, pushConfigured } from "@/lib/push";
 import { agenda, dueAlerts, HOME_TZ } from "@/lib/reminders";
@@ -37,15 +39,18 @@ export async function GET(req: Request) {
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
   if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
-    const [a, w] = await Promise.all([agenda(supabase, 2), getWeather(HOME_CITY).catch(() => null)]);
+    const [a, w, bdays] = await Promise.all([agenda(supabase, 2), getWeather(HOME_CITY).catch(() => null), birthdaysToday(supabase).catch(() => [])]);
     const items = [...a.overdue.map((r) => `${r.title} (overdue)`), ...a.today.map((r) => `${r.title}, ${r.when.replace(/^Today,?\s*/i, "")}`)];
     const weather = w ? `${w.place}: ${Math.round(w.current.temp_c)}°C, ${w.current.condition}${w.days[0] ? `, rain ${w.days[0].rain_chance_pct}%` : ""}.` : "";
     const plan = items.length ? `Today: ${items.slice(0, 4).join("; ")}${items.length > 4 ? ` +${items.length - 4} more` : ""}.` : "Nothing scheduled today.";
     // Only counts as sent once a device actually got it (so subscribing later today still gets one).
-    brief = (await notify(supabase, { title: "Good morning ☀️", body: `${plan} ${weather}`.trim(), url: "/", tag: "brief" })) > 0;
+    brief = (await notify(supabase, { title: "Good morning ☀️", body: [bdays.join(" · "), plan, weather].filter(Boolean).join(" "), url: "/", tag: "brief" })) > 0;
   }
+  // 3. Birthdays (week / eve / day) and habits (times, snoozes, 8 pm nudge, Sunday summary).
+  const [birthdays, habits] = await Promise.all([runBirthdayAlerts(supabase, now).catch(() => 0), runHabitAlerts(supabase, now).catch(() => 0)]);
+
   // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
   await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), lastRun: now.toISOString(), lastSent: due.length });
 
-  return NextResponse.json({ ok: true, reminders: due.length, brief });
+  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits });
 }

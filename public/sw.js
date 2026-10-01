@@ -21,7 +21,7 @@ self.addEventListener("push", (e) => {
       requireInteraction: !!n.sticky,
       vibrate: n.sticky ? [400, 200, 400, 200, 400] : [120, 60, 120],
       actions: n.actions || [],
-      data: { url: n.url || "/" },
+      data: { url: n.url || "/", ...(n.data || {}) },
     }),
   );
 });
@@ -29,6 +29,26 @@ self.addEventListener("push", (e) => {
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   if (e.action === "dismiss" || e.action === "decline") return;
+  // Habit buttons work without opening the app.
+  const habit = e.notification.data?.habit;
+  if (habit && (e.action === "habit-done" || e.action === "habit-snooze")) {
+    const done = e.action === "habit-done";
+    e.waitUntil(
+      fetch(`/api/habits/${habit}/${done ? "check" : "snooze"}`, { method: "POST", credentials: "same-origin" })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((j) =>
+          done
+            ? self.registration.showNotification(`${j.emoji || "✅"} ${j.name} done`, {
+                body: j.streak ? `🔥 ${j.streak}-day streak${j.streak >= j.best && j.streak > 1 ? " · your best!" : ""}` : "Logged for today.",
+                icon: "/icons/icon-192.png",
+                tag: `habit-${habit}`,
+              })
+            : null,
+        )
+        .catch(() => self.clients.openWindow("/habits")),
+    );
+    return;
+  }
   const url = new URL(e.notification.data?.url || "/", self.location.origin).href;
   e.waitUntil(
     (async () => {

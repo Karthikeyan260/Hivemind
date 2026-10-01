@@ -30,6 +30,30 @@ export function localDayStart(d: Date, addDays = 0, tz = HOME_TZ) {
   return new Date(guess - tzOffsetMin(new Date(guess), tz) * 60000);
 }
 
+/** Local calendar date ("2026-10-01"), hour, minute and weekday (0 = Sunday) in the home zone. */
+export function localParts(d = new Date(), tz = HOME_TZ) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", weekday: "short" })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  return {
+    date: `${p.year}-${p.month}-${p.day}`,
+    year: Number(p.year),
+    month: Number(p.month),
+    day: Number(p.day),
+    hour: Number(p.hour),
+    minute: Number(p.minute),
+    weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday),
+  };
+}
+
+/** The local date `n` days from `date` ("2026-10-01" + 1 → "2026-10-02"). */
+export function addDays(date: string, n: number) {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 export function formatWhen(dueAt: string, allDay: boolean, tz = HOME_TZ) {
   const d = new Date(dueAt);
   const day = new Intl.DateTimeFormat("en-IN", { timeZone: tz, weekday: "short", day: "numeric", month: "short" }).format(d);

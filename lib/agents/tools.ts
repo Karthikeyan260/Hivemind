@@ -5,7 +5,9 @@ import { analyzeJob, CAREER_SOURCE } from "@/lib/career";
 import { type Job, jobDetails, type JobQuery, searchJobs } from "@/lib/external/jobs";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { researchAndSave, webSearch } from "@/lib/external/web";
+import { addBirthday, birthdayWish, dateLabel, listBirthdays, removeBirthday, upcomingBirthdays } from "@/lib/birthdays";
 import { saveRoom } from "@/lib/call-rooms";
+import { addHabit, checkHabit, everyHours, habitsWithStats, removeHabit } from "@/lib/habits";
 import { type Contact, findContacts, normalizePhone, pretty, smsLink, telLink, whatsappLink } from "@/lib/contacts";
 import { createMemory, deleteMemory, updateMemory } from "@/lib/knowledge";
 import { originOf } from "@/lib/origin";
@@ -404,6 +406,125 @@ export const TOOLS: Record<string, Tool> = {
           return { id: m.id, role: a.analysis?.role, company: a.analysis?.company, fit: a.analysis?.fit_score, ats: a.analysis?.ats_score, has_tailored_resume: !!a.tailored_resume, date: m.created_at };
         }),
       };
+    },
+  },
+
+  /* ───── birthdays & anniversaries ───── */
+  add_birthday: {
+    name: "add_birthday",
+    description: "Save someone's birthday or anniversary ('Arif's birthday is 12 March', 'Amma and Appa's anniversary is 5 June'). Alerts come 1 week before, the evening before and on the morning of the day.",
+    parameters: obj(
+      {
+        name: S,
+        month: { type: "number", description: "1-12" },
+        day: { type: "number", description: "1-31" },
+        year: { type: "number", description: "Birth/wedding year if known (for 'turning 25')" },
+        kind: { type: "string", enum: ["birthday", "anniversary"] },
+        relation: { type: "string", description: "friend, mother, colleague…" },
+      },
+      ["name", "month", "day"],
+    ),
+    async run(args, ctx) {
+      const b = await addBirthday(ctx.supabase, {
+        name: str(args.name),
+        month: Number(args.month),
+        day: Number(args.day),
+        year: args.year ? Number(args.year) : undefined,
+        kind: str(args.kind) === "anniversary" ? "anniversary" : "birthday",
+        relation: str(args.relation) || undefined,
+      });
+      ctx.actions.push({ label: "Birthdays", href: "/habits" });
+      return { saved: true, name: b.name, date: dateLabel(b), kind: b.kind };
+    },
+  },
+  upcoming_birthdays: {
+    name: "upcoming_birthdays",
+    description: "Birthdays and anniversaries coming up ('whose birthday is coming?', 'any birthdays this month?').",
+    parameters: obj({ days: { type: "number", description: "Look-ahead in days, default 30" } }),
+    async run(args, ctx) {
+      const list = await upcomingBirthdays(ctx.supabase, Math.min(Number(args.days) || 30, 366));
+      return { upcoming: list.map((b) => ({ name: b.name, kind: b.kind, date: b.label, in_days: b.days, turning: b.turning })) };
+    },
+  },
+  remove_birthday: {
+    name: "remove_birthday",
+    description: "Remove a saved birthday/anniversary.",
+    parameters: obj({ which: S }, ["which"]),
+    async run(args, ctx) {
+      const b = await removeBirthday(ctx.supabase, str(args.which));
+      return b ? { removed: true, name: b.name } : { error: `No birthday saved for "${str(args.which)}".` };
+    },
+  },
+  birthday_wish: {
+    name: "birthday_wish",
+    description: "Write a personal birthday/anniversary wish for someone and show a WhatsApp button with it ready to send.",
+    parameters: obj({ who: S }, ["who"]),
+    async run(args, ctx) {
+      const q = str(args.who).toLowerCase();
+      const all = await listBirthdays(ctx.supabase);
+      const b = all.find((x) => x.name.toLowerCase() === q) ?? all.find((x) => x.name.toLowerCase().includes(q));
+      if (!b) return { error: `I don't have ${str(args.who)}'s birthday saved. Tell me the date first.` };
+      const w = await birthdayWish(ctx.supabase, b.id);
+      if (w.whatsapp) ctx.actions.push({ label: `WhatsApp ${w.name}`, href: w.whatsapp });
+      return { wish: w.text, whatsapp_button: !!w.whatsapp, note: w.whatsapp ? undefined : `No number saved for ${w.name}; share the wish yourself or save their number.` };
+    },
+  },
+
+  /* ───── habits ───── */
+  add_habit: {
+    name: "add_habit",
+    description:
+      "Start tracking a habit with reminders ('exercise every day at 7 am', 'read 20 minutes on weekdays at 9 pm', 'drink water every 2 hours'). Times are local HH:MM. Changing an existing habit's time uses the same tool.",
+    parameters: obj(
+      {
+        name: S,
+        emoji: { type: "string", description: "One fitting emoji" },
+        times: { type: "array", items: { type: "string" }, description: 'Local times, e.g. ["07:00"]' },
+        every_hours: { type: "number", description: "For 'every N hours' habits" },
+        from: { type: "string", description: "Start time for every_hours (default 09:00)" },
+        to: { type: "string", description: "End time for every_hours (default 21:00)" },
+        days: { type: "string", description: "'daily' (default), 'weekdays', 'weekends', or e.g. 'mon,wed,fri'" },
+      },
+      ["name"],
+    ),
+    async run(args, ctx) {
+      const d = str(args.days).toLowerCase();
+      const names = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+      const days = !d || d === "daily" || d === "every day" ? undefined : d.includes("weekday") ? [1, 2, 3, 4, 5] : d.includes("weekend") ? [0, 6] : names.map((n, i) => (d.includes(n) ? i : -1)).filter((i) => i >= 0);
+      const times = args.every_hours ? everyHours(Number(args.every_hours), str(args.from) || undefined, str(args.to) || undefined) : Array.isArray(args.times) ? (args.times as unknown[]).map(String) : [];
+      if (!times.length) return { error: "What time should I remind you? (e.g. 7 am)" };
+      const h = await addHabit(ctx.supabase, { name: str(args.name), emoji: str(args.emoji) || undefined, times, days });
+      ctx.actions.push({ label: "Habits", href: "/habits" });
+      return { tracking: h.name, emoji: h.emoji, times: h.times, days: h.days.length === 7 ? "daily" : h.days.map((i) => names[i]).join(", ") };
+    },
+  },
+  log_habit: {
+    name: "log_habit",
+    description: "Mark a habit done for today ('I did my exercise', 'drank water', 'done reading'). undo=true un-marks it.",
+    parameters: obj({ which: S, undo: { type: "boolean" } }, ["which"]),
+    async run(args, ctx) {
+      const r = await checkHabit(ctx.supabase, str(args.which), { done: args.undo !== true });
+      ctx.changed = true;
+      return { habit: r.name, done: r.done, streak: r.streak, best: r.best };
+    },
+  },
+  habits_status: {
+    name: "habits_status",
+    description: "How the owner's habits are going: what's done today, streaks, best streaks and the last-30-day rate.",
+    parameters: obj({}),
+    async run(_args, ctx) {
+      const all = await habitsWithStats(ctx.supabase);
+      if (!all.length) return { habits: [], note: "No habits tracked yet." };
+      return { habits: all.map((h) => ({ name: h.name, times: h.times, due_today: h.dueToday, done_today: h.doneToday, streak: h.streak, best: h.best, rate_30d_pct: h.rate })) };
+    },
+  },
+  remove_habit: {
+    name: "remove_habit",
+    description: "Stop tracking a habit (deletes it and its history).",
+    parameters: obj({ which: S }, ["which"]),
+    async run(args, ctx) {
+      const h = await removeHabit(ctx.supabase, str(args.which));
+      return h ? { removed: true, habit: h.name } : { error: `No habit called "${str(args.which)}".` };
     },
   },
 
