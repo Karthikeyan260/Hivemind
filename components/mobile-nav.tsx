@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cx } from "@/components/ui";
+import { isPublicPage } from "@/lib/public-paths";
 
 const TABS = [
   { label: "Home", href: "/", icon: Sparkles },
@@ -27,7 +28,7 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
   const path = usePathname();
   const router = useRouter();
   const [more, setMore] = useState(false);
-  const hidden = path.startsWith("/unlock");
+  const hidden = isPublicPage(path);
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   const inMore = MORE.some((m) => active(m.href));
 

@@ -66,6 +66,7 @@ const INTENT: Record<string, string> = {
   career: "CAREER",
   project: "SECTORS",
   profile: "PROFILE",
+  comms: "CONTACTS",
 };
 const toolLabel = (t: string) => t.replace(/_/g, " ");
 const idFromHref = (href: string) => href.split("open=")[1] ?? "";
@@ -649,6 +650,10 @@ function Bridge() {
                       a.href?.startsWith("/api/") ? (
                         <a key={a.label} href={a.href} download className="border border-core/50 px-2 py-0.5 font-mono text-[10.5px] text-core hover:border-core">
                           {a.label} ↓
+                        </a>
+                      ) : a.href && /^(tel|sms):/.test(a.href) ? (
+                        <a key={a.label} href={a.href} className="border border-ok/50 px-2 py-0.5 font-mono text-[10.5px] text-ok hover:border-ok">
+                          {a.label} ☎
                         </a>
                       ) : a.href?.startsWith("http") ? (
                         <a key={a.label} href={a.href} target="_blank" rel="noopener noreferrer" className="border border-data/40 px-2 py-0.5 font-mono text-[10.5px] text-data hover:border-data">

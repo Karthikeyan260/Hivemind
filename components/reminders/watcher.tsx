@@ -2,6 +2,7 @@
 
 import { AlarmClock, BellRing, Check, X } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { isPublicPage } from "@/lib/public-paths";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { BRAIN_CHANGED } from "@/lib/client-api";
@@ -30,7 +31,7 @@ export function ReminderWatcher() {
   const [canNotify, setCanNotify] = useState<NotificationPermission | "unsupported">("unsupported");
   const busy = useRef(false);
   const briefed = useRef<string | null>(null);
-  const locked = path.startsWith("/unlock");
+  const locked = isPublicPage(path);
 
   const dismiss = (key: string) => setToasts((t) => t.filter((x) => x.key !== key));
 

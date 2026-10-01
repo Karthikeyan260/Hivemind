@@ -5,6 +5,7 @@ import { analyzeJob, CAREER_SOURCE } from "@/lib/career";
 import { type Job, jobDetails, type JobQuery, searchJobs } from "@/lib/external/jobs";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { researchAndSave, webSearch } from "@/lib/external/web";
+import { type Contact, findContacts, normalizePhone, pretty, smsLink, telLink, whatsappLink } from "@/lib/contacts";
 import { createMemory, deleteMemory, updateMemory } from "@/lib/knowledge";
 import { originOf } from "@/lib/origin";
 import { getProfile, rebuildProfile } from "@/lib/profile";
@@ -66,6 +67,18 @@ function pickJob(jobs: Job[], pick: string): Job | null {
     if (score > bestScore) [best, bestScore] = [j, score];
   }
   return best ?? byNumber;
+}
+
+/** One person's number: an explicit phone wins, else the brain's single match (asks when there are several). */
+async function resolveContact(ctx: RunContext, who: string, phone: string): Promise<Contact | { error: string; matches?: string[] }> {
+  if (phone) {
+    const p = normalizePhone(phone);
+    return p ? { name: who || pretty(p), phone: p, from: "given", memory_id: "" } : { error: "That doesn't look like a valid Indian phone number." };
+  }
+  const found = await findContacts(ctx.supabase, who);
+  if (!found.length) return { error: `I don't have a number for ${who}. Tell me it ("${who}'s number is …") and I'll save it.` };
+  if (found.length > 1) return { error: `I have several numbers for ${who}. Which one?`, matches: found.map((f) => `${pretty(f.phone)} (from "${f.from}")`) };
+  return found[0];
 }
 
 const jobDescriptionText = (j: Job) =>
@@ -390,6 +403,67 @@ export const TOOLS: Record<string, Tool> = {
           return { id: m.id, role: a.analysis?.role, company: a.analysis?.company, fit: a.analysis?.fit_score, ats: a.analysis?.ats_score, has_tailored_resume: !!a.tailored_resume, date: m.created_at };
         }),
       };
+    },
+  },
+
+  /* ───── contacts: call / message through the owner's own phone, or a call inside HIVEMIND ───── */
+  save_contact: {
+    name: "save_contact",
+    description: "Save someone's phone number ('Arif's number is 98765 43210'). Indian numbers; stored as a memory so it can be found later.",
+    parameters: obj({ name: S, phone: S, note: { type: "string", description: "Optional: who they are (friend, manager…)" } }, ["name", "phone"]),
+    async run(args, ctx) {
+      const phone = normalizePhone(str(args.phone));
+      if (!phone) return { error: "That doesn't look like a valid Indian phone number (10 digits, optionally with +91)." };
+      const name = str(args.name);
+      const m = await createMemory(ctx.supabase, { content: `${name}'s phone number is ${pretty(phone)}.${str(args.note) ? ` ${name} is ${str(args.note)}.` : ""}`, project_id: null });
+      ctx.changed = true;
+      ctx.actions.push({ label: "Open contact", href: `/memories?open=${m!.id}` });
+      return { saved: true, name, phone: pretty(phone) };
+    },
+  },
+  call_contact: {
+    name: "call_contact",
+    description:
+      "Phone call through the owner's own phone/SIM: finds the person's number in the brain (or uses 'phone') and shows a Call button that opens the dialer. On a laptop, Windows Phone Link places the call through the paired phone.",
+    parameters: obj({ who: S, phone: S }, ["who"]),
+    async run(args, ctx) {
+      const c = await resolveContact(ctx, str(args.who), str(args.phone));
+      if ("error" in c) return c;
+      ctx.actions.push({ label: `Call ${c.name} · ${pretty(c.phone)}`, href: telLink(c.phone) });
+      return { ready: true, name: c.name, phone: pretty(c.phone), note: "A Call button is shown; the owner taps it to dial (browsers never dial on their own)." };
+    },
+  },
+  message_contact: {
+    name: "message_contact",
+    description: "Send a message through the owner's own WhatsApp (default) or SMS: finds the number and opens the app with the text ready, one tap to send.",
+    parameters: obj({ who: S, text: S, via: { type: "string", enum: ["whatsapp", "sms"] }, phone: S }, ["who", "text"]),
+    async run(args, ctx) {
+      const c = await resolveContact(ctx, str(args.who), str(args.phone));
+      if ("error" in c) return c;
+      const text = str(args.text);
+      const sms = str(args.via) === "sms";
+      ctx.actions.push({ label: `${sms ? "SMS" : "WhatsApp"} ${c.name}`, href: sms ? smsLink(c.phone, text) : whatsappLink(c.phone, text) });
+      return { ready: true, name: c.name, phone: pretty(c.phone), via: sms ? "sms" : "whatsapp", text, note: "A Send button is shown; the owner taps it, then Send in the app." };
+    },
+  },
+  start_call: {
+    name: "start_call",
+    description:
+      "Start an internet voice call inside HIVEMIND (free, no phone line): creates a private call link, opens the call screen for the owner, and offers to send the link to the person on WhatsApp. They join from any browser, no app needed.",
+    parameters: obj({ who: S, phone: S }, ["who"]),
+    async run(args, ctx) {
+      const who = str(args.who);
+      // The number is only needed to send the invite; the call works without one.
+      const c = who || str(args.phone) ? await resolveContact(ctx, who, str(args.phone)) : null;
+      const room = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+      const p = await getProfile(ctx.supabase).catch(() => null);
+      const host = p?.name?.split(" ")[0] || "HIVEMIND";
+      const link = `${ctx.origin}/call/${room}?from=${encodeURIComponent(host)}`;
+      const phone = c && !("error" in c) ? c.phone : null;
+      const q = new URLSearchParams({ host: "1", from: host, ...(who ? { name: c && !("error" in c) ? c.name : who } : {}), ...(phone ? { to: phone } : {}) });
+      ctx.actions.push({ label: "Open call", href: `/call/${room}?${q}`, navigate: true });
+      if (phone) ctx.actions.push({ label: `Send link to ${who} on WhatsApp`, href: whatsappLink(phone, `${host} is calling you on HIVEMIND. Tap to join: ${link}`) });
+      return { call_link: link, invite: phone ? "WhatsApp invite button shown" : "No number found; share the link yourself", opening_call_screen: true };
     },
   },
 

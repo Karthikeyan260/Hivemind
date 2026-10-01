@@ -59,6 +59,14 @@ export const AGENTS: Record<AgentId, Agent> = {
       "Resolve relative dates ('tomorrow', 'next Monday', 'in 2 hours') against the current local time given below by calling create_reminder with date ('today'/'tomorrow'/weekday/YYYY-MM-DD) and time ('15:00'); leave time empty for all-day. Never compute years or UTC offsets yourself. Put extra context (location, people, links) in details. For 'what do I have / any plans', call list_reminders. Cancel, delete or 'it's off' → cancel_reminder (removes it). Move to another time → reschedule_reminder. Finished → complete_reminder. Never use complete_reminder for a cancellation. Confirm with the day and time in plain words (e.g. 'Thursday 1 Oct at 3 pm'), never the ISO string.",
     tools: ["create_reminder", "list_reminders", "cancel_reminder", "reschedule_reminder", "complete_reminder"],
   },
+  comms: {
+    id: "comms",
+    name: "Comms Agent",
+    role: "Contacts, phone calls and messages ('call Arif', 'WhatsApp Vijay that…', 'Arif's number is…', 'start a call with Amma').",
+    instructions:
+      "Phone call → call_contact. Text / WhatsApp / SMS → message_contact with the message in the owner's words (WhatsApp unless they say SMS). An internet call inside HIVEMIND ('call through the site', 'video/voice call link', 'HIVEMIND call') → start_call. A new number → save_contact. If several numbers match, list them and ask which. Say in one line what's ready (e.g. 'Tap Call to ring Arif on +91 98765 43210'); never claim you called or sent anything: the owner taps to do it. Never write links or URLs in your reply: the buttons are already shown.",
+    tools: ["call_contact", "message_contact", "start_call", "save_contact", "search_brain"],
+  },
   profile: {
     id: "profile",
     name: "Profile Agent",

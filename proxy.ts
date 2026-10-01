@@ -7,7 +7,8 @@ const OPEN_PATHS = ["/unlock", "/api/unlock", "/manifest.webmanifest"];
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
-  if (OPEN_PATHS.some((p) => path === p)) return NextResponse.next();
+  // Call pages are joined by the person you invited; they only see the call screen, never your data.
+  if (OPEN_PATHS.some((p) => path === p) || path.startsWith("/call/")) return NextResponse.next();
 
   if (misconfigured()) {
     return new NextResponse("APP_PASSWORD is not set. Add it in Vercel → Settings → Environment Variables.", {

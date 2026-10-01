@@ -14,6 +14,8 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (/\b(remind(er)?s?|schedule|meeting|appointment|deadline|agenda|calendar|my day|on today|on tomorrow)\b|\bmark\b.*\b(done|complete)\b|\b(cancel|reschedule|postpone|move)\b.*\b(meeting|call|reminder|appointment|it)\b|\b(plans?|free|busy)\b.*\b(today|tomorrow|tonight)\b|\b(today|tomorrow)\b.*\b(at \d|am\b|pm\b)/.test(m)) return "scheduler";
   if (/^(please\s+)?(remember|save|store|note)\b|^note:|\b(update|correct|change)\b.*\b(memory|saved)\b/.test(m)) return "memory";
   if (/\b(delete|remove|erase)\b.*\b(job analys[ie]s|analys[ie]s|job match)\b/.test(m)) return "career";
+  // "call Arif", "whatsapp Vijay …", "send a message to …", "Arif's number is 98…"
+  if (/^(please\s+)?(call|ring|dial|phone|whatsapp|text|sms|message)\s+(?!me\b)\w|\bsend (an? )?(message|whatsapp|text|sms)\b|\bstart (a |an )?(voice |video |internet )?call\b|\b(phone )?number (is|=)\s*[+\d]|'s (phone |mobile |contact )?number\b/.test(m)) return "comms";
   if (/^(please\s+)?(forget|delete|remove|erase)\b|\b(delete|remove|erase|forget)\b.*\bmemor(y|ies)\b/.test(m)) return "memory";
   // "Yes" to a delete confirmation goes back to the Memory agent that asked.
   if ((previous === "memory" || previous === "career") && /^(yes|yeah|yep|yup|sure|ok(ay)?|confirm(ed)?|do it|go ahead|delete it|please do)\b/.test(m)) return "memory";

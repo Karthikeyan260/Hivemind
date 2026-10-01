@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Job } from "@/lib/external/jobs";
 
-export const AGENT_IDS = ["core", "memory", "rag", "research", "career", "project", "profile", "scheduler"] as const;
+export const AGENT_IDS = ["core", "memory", "rag", "research", "career", "project", "profile", "scheduler", "comms"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 
 export type Source = { n: number; type: string; title: string; href: string; similarity: number };
@@ -18,6 +18,8 @@ export type RunContext = {
   supabase: SupabaseClient;
   projectId: string | null;
   conversationId: string;
+  /** The site's public origin (https://…), for links sent to other people (call invites). */
+  origin: string;
   sources: Source[];
   actions: Action[];
   /** True once any tool changed the brain (so the UI refreshes). */

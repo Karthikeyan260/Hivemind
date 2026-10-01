@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { BRAIN_CHANGED } from "@/lib/client-api";
+import { isPublicPage } from "@/lib/public-paths";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
 import { click, listControls, scroll, selectOption, typeText } from "./dom-tools";
 
@@ -37,7 +38,11 @@ type Voice = {
   level: () => number;
   subscribe: (l: VoiceListener) => () => void;
   register: (name: string, action: () => VoiceAction) => () => void;
+  /** Call / message buttons voice prepared: the owner taps one (browsers never dial or send by themselves). */
+  handoff: Handoff[];
+  clearHandoff: () => void;
 };
+export type Handoff = { label: string; href: string };
 
 const VoiceContext = createContext<Voice | null>(null);
 
@@ -145,6 +150,8 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<LiveState>("off");
   const [error, setError] = useState<string | null>(null);
   const [last, setLast] = useState<Exchange | null>(null);
+  const [handoff, setHandoff] = useState<Handoff[]>([]);
+  const clearHandoff = useCallback(() => setHandoff([]), []);
   const listeners = useRef(new Set<VoiceListener>());
   const liveRef = useRef<LiveVoice | null>(null);
   const convId = useRef<string | null>(null);
@@ -265,6 +272,8 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           each((l) => l.onBrainChanged?.());
           window.dispatchEvent(new Event(BRAIN_CHANGED));
         }
+        const taps = r.actions.filter((a): a is Handoff => !!a.href && /^(tel:|sms:|https:\/\/wa\.me\/)/.test(a.href));
+        if (taps.length) setHandoff(taps);
         const go = r.actions.find((a) => a.href?.startsWith("/") && (a.navigate || OPENS_PAGE.has(name)));
         if (go?.href) routerRef.current.push(go.href);
         // Outside links can't be spoken usefully; say where they point instead.
@@ -455,7 +464,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
 
   // Space (outside text fields and buttons) starts / ends the conversation on every page.
   useEffect(() => {
-    if (pathname.startsWith("/unlock")) return;
+    if (isPublicPage(pathname)) return;
     const down = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       const busy = el && (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(el.tagName) || el.isContentEditable);
@@ -483,8 +492,10 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       level,
       subscribe,
       register,
+      handoff,
+      clearHandoff,
     }),
-    [state, error, last, start, stop, toggle, sendText, level, subscribe, register],
+    [state, error, last, start, stop, toggle, sendText, level, subscribe, register, handoff, clearHandoff],
   );
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>;
 }

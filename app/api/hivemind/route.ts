@@ -98,7 +98,7 @@ export const POST = handle(async (req: Request) => {
         via = route.via;
         send({ type: "meta", conversation_id: conversationId!, intent, sources });
 
-        const ctx: RunContext = { supabase, projectId: project_id ?? null, conversationId: conversationId!, sources, actions, changed: false, jobs: null, pendingDelete: null, emit: (e) => {
+        const ctx: RunContext = { supabase, projectId: project_id ?? null, conversationId: conversationId!, origin: process.env.APP_URL || new URL(req.url).origin, sources, actions, changed: false, jobs: null, pendingDelete: null, emit: (e) => {
             trace.push(e);
             send(e);
           } };

@@ -37,6 +37,7 @@ export const POST = handle(async (req: Request) => {
     supabase: db(),
     projectId: null,
     conversationId: "",
+    origin: process.env.APP_URL || new URL(req.url).origin,
     sources,
     actions,
     changed: false,
