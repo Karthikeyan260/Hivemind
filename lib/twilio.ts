@@ -29,9 +29,7 @@ export const isE164 = (n: string) => /^\+[1-9]\d{7,14}$/.test(n);
 /** TwiML that rings `to` with the owner's caller ID (ringing is heard in the browser). */
 export function dialTwiml(to: string) {
   const r = new twilio.twiml.VoiceResponse();
-  // Calling your own mobile (e.g. to test): showing that same number as the caller fails, so use the Twilio number.
-  const from = to === callerId() && env("TWILIO_PHONE_NUMBER") ? env("TWILIO_PHONE_NUMBER") : callerId();
-  const dial = r.dial({ callerId: from, answerOnBridge: true, timeout: 40 });
+  const dial = r.dial({ callerId: callerId(), answerOnBridge: true, timeout: 40 });
   dial.number(to);
   return r.toString();
 }

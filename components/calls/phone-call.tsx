@@ -38,12 +38,6 @@ export function PhoneCallSheet() {
   const [seconds, setSeconds] = useState(0);
   const [keypad, setKeypad] = useState(false);
   const [callerId, setCallerId] = useState("");
-  const stageRef = useRef<Stage>("confirm");
-  const startedAt = useRef(0);
-  const byMe = useRef(false);
-  useEffect(() => {
-    stageRef.current = stage;
-  }, [stage]);
   const device = useRef<TwilioDevice | null>(null);
   const call = useRef<TwilioCall | null>(null);
 
@@ -78,8 +72,6 @@ export function PhoneCallSheet() {
     if (!target) return;
     setStage("connecting");
     setError("");
-    byMe.current = false;
-    startedAt.current = Date.now();
     try {
       const r = await fetch("/api/twilio/token");
       const j = (await r.json()) as { token?: string; callerId?: string; error?: string };
@@ -97,12 +89,7 @@ export function PhoneCallSheet() {
         if (Number(out) > 0.01) setStage((s) => (s === "ringing" ? "live" : s));
       });
       c.on("disconnect", () => {
-        // Dropped within seconds, never answered, and not by us: the number couldn't be dialled
-        // (most often the Twilio free trial, which only calls verified numbers).
-        if (!byMe.current && stageRef.current !== "live" && Date.now() - startedAt.current < 15_000) {
-          setError("Couldn't connect. On the Twilio free trial you can only call numbers verified in Twilio (Phone Numbers → Verified Caller IDs), or upgrade the Twilio account to call anyone.");
-          setStage("error");
-        } else setStage("ended");
+        setStage("ended");
         cleanup();
       });
       c.on("cancel", () => setStage("ended"));
@@ -121,7 +108,6 @@ export function PhoneCallSheet() {
   }
 
   function hangup() {
-    byMe.current = true;
     cleanup();
     setStage("ended");
   }
