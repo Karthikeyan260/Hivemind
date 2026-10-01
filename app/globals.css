@@ -671,3 +671,81 @@ body {
 @keyframes st-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(470px) rotate(540deg); } }
 @keyframes st-portal { 50% { transform: scale(1.08); opacity: 0.6; } }
 @media (prefers-reduced-motion: reduce) { .av *, .av, [class^="st-"], [class*=" st-"] { animation: none !important; } }
+
+/* ───── Projects · Reel ───── */
+.reel {
+  transition: background 0.9s ease;
+}
+.reel::after {
+  /* Film grain + vignette for a cinematic finish. */
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55) 100%),
+    repeating-radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.015) 0 1px, transparent 1px 3px);
+  content: "";
+}
+.reel-info {
+  background: linear-gradient(to top, rgba(4, 6, 10, 0.92) 10%, rgba(4, 6, 10, 0.55) 55%, transparent);
+}
+.reel-title {
+  text-shadow: 0 2px 30px color-mix(in oklab, var(--accent) 45%, transparent);
+}
+.reel-rise > * {
+  animation: reel-rise 0.7s var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)) both;
+}
+.reel-rise > *:nth-child(2) {
+  animation-delay: 60ms;
+}
+.reel-rise > *:nth-child(3) {
+  animation-delay: 120ms;
+}
+.reel-rise > *:nth-child(4) {
+  animation-delay: 180ms;
+}
+@keyframes reel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(6px);
+  }
+}
+.reel-case {
+  animation: reel-case 0.5s var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1)) both;
+  box-shadow: 0 30px 90px -20px color-mix(in oklab, var(--accent) 40%, transparent);
+}
+@keyframes reel-case {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.97);
+  }
+}
+.reel-case-img {
+  animation: reel-zoom 12s ease-out both;
+}
+@keyframes reel-zoom {
+  from {
+    transform: scale(1.12);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reel-rise > *,
+  .reel-case,
+  .reel-case-img {
+    animation: none;
+  }
+}
+@media (min-width: 1024px) {
+  .reel-info {
+    background: linear-gradient(to right, rgba(4, 6, 10, 0.88) 30%, rgba(4, 6, 10, 0.45) 75%, transparent);
+  }
+}
+/* Giant outlined index behind the project title. */
+.reel-index {
+  font-size: clamp(6rem, 18vw, 13rem);
+  color: transparent;
+  -webkit-text-stroke: 1.5px color-mix(in oklab, var(--accent) 45%, transparent);
+  opacity: 0.35;
+  transition: -webkit-text-stroke-color 0.8s;
+}

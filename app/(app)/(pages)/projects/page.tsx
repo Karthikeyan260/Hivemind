@@ -1,8 +1,10 @@
 "use client";
 
-import { Wand2 } from "lucide-react";
+import { Film, List, Wand2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ProjectReel } from "@/components/projects/reel";
+import type { Evolution } from "@/lib/evolution";
 import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, Skeleton } from "@/components/ui";
 import { api, type Brain, useFetch } from "@/lib/client-api";
 
@@ -16,6 +18,22 @@ export default function ProjectsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<"reel" | "list">("reel");
+  const evolution = useFetch<Evolution>(view === "reel" ? "/api/projects/evolution" : null);
+
+  // Remember the last view on this device.
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the saved view once
+      if (localStorage.getItem("projects-view") === "list") setView("list");
+    } catch {}
+  }, []);
+  const switchView = (v: "reel" | "list") => {
+    setView(v);
+    try {
+      localStorage.setItem("projects-view", v);
+    } catch {}
+  };
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -63,6 +81,35 @@ export default function ProjectsPage() {
       {msg && <p className="mb-4 text-sm text-data">{msg}</p>}
       <ErrorText error={error ?? brain.error} />
 
+      <div className="mb-5 flex gap-1" role="tablist" aria-label="View">
+        {(
+          [
+            ["reel", "Showcase", Film],
+            ["list", "List", List],
+          ] as const
+        ).map(([v, label, Icon]) => (
+          <button
+            key={v}
+            role="tab"
+            aria-selected={view === v}
+            onClick={() => switchView(v)}
+            className={cx("flex items-center gap-1.5 border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider", view === v ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}
+          >
+            <Icon size={13} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "reel" ? (
+        evolution.error ? (
+          <ErrorText error={evolution.error} />
+        ) : !evolution.data ? (
+          <Skeleton lines={8} />
+        ) : (
+          <ProjectReel data={evolution.data} />
+        )
+      ) : (
+      <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1" role="tablist" aria-label="Filter by status">
           {FILTERS.map((f) => (
@@ -115,6 +162,8 @@ export default function ProjectsPage() {
             </li>
           ))}
         </ul>
+      )}
+      </>
       )}
     </div>
   );
