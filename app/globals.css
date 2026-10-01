@@ -749,3 +749,23 @@ body {
   opacity: 0.35;
   transition: -webkit-text-stroke-color 0.8s;
 }
+
+/* Memory Palace HUD: room name rises out of a mask, tagline follows; the memory panel slides in. */
+@keyframes palace-rise {
+  from { transform: translateY(105%); }
+  to { transform: translateY(0); }
+}
+@keyframes palace-follow {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes palace-panel {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.palace-rise { animation: palace-rise 600ms cubic-bezier(0.05, 0.7, 0.1, 1) both; }
+.palace-follow { animation: palace-follow 500ms cubic-bezier(0.05, 0.7, 0.1, 1) 120ms both; }
+.palace-panel { animation: palace-panel 320ms cubic-bezier(0.05, 0.7, 0.1, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .palace-rise, .palace-follow, .palace-panel { animation: none; }
+}
