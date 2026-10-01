@@ -3,6 +3,7 @@
 import { Bell, BellOff, BellRing } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { cx } from "@/components/ui";
 import { isPublicPage } from "@/lib/public-paths";
 
 /** Registers the service worker that shows notifications while HIVEMIND is closed. */
@@ -36,6 +37,7 @@ export function NotificationsCard() {
   const [key, setKey] = useState<string | null>(null);
   const [devices, setDevices] = useState<{ endpoint: string; device?: string }[]>([]);
   const [mine, setMine] = useState<string | null>(null);
+  const [lastRun, setLastRun] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -46,7 +48,8 @@ export function NotificationsCard() {
       setState(ios && !matchMedia("(display-mode: standalone)").matches ? "ios-install" : "unsupported");
       return;
     }
-    const r = await fetch("/api/push").then((x) => x.json() as Promise<{ configured: boolean; publicKey: string | null; devices: { endpoint: string; device?: string }[] }>);
+    const r = await fetch("/api/push").then((x) => x.json() as Promise<{ configured: boolean; publicKey: string | null; devices: { endpoint: string; device?: string }[]; schedulerLastRun: string | null }>);
+    setLastRun(r.schedulerLastRun);
     setKey(r.publicKey);
     setDevices(r.devices);
     if (!r.configured) return setState("unconfigured");
@@ -129,6 +132,16 @@ export function NotificationsCard() {
           ))}
         </ul>
       )}
+      {state === "on" && (() => {
+        // Closed-app notifications depend on cron-job.org calling /api/cron/notify every 5 minutes.
+        const mins = lastRun ? Math.round((Date.now() - +new Date(lastRun)) / 60000) : null;
+        const ok = mins != null && mins <= 15;
+        return (
+          <p className={cx("mt-2 font-mono text-[11px]", ok ? "text-faint" : "text-alert")}>
+            {mins == null ? "Scheduler has never run: set up the cron-job.org job." : ok ? `Scheduler last checked ${mins < 1 ? "just now" : `${mins} min ago`}` : `Scheduler last ran ${mins} min ago: check your cron-job.org job.`}
+          </p>
+        );
+      })()}
       <div className="mt-3 flex flex-wrap gap-2">
         {state === "off" && (
           <button type="button" onClick={enable} disabled={busy || !key} className="rounded-md bg-core px-3 py-1.5 text-sm font-medium text-black disabled:opacity-50">

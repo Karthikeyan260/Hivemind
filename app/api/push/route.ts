@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
+import { readJSON } from "@/lib/private-store";
 import { addSubscription, listSubscriptions, pushConfigured, removeSubscription } from "@/lib/push";
 
 const Sub = z.object({
@@ -11,8 +12,8 @@ const Sub = z.object({
 
 /** Notification setup: the public key the browser needs, and how many devices are subscribed. */
 export const GET = handle(async () => {
-  const subs = pushConfigured() ? await listSubscriptions(db()) : [];
-  return NextResponse.json({ configured: pushConfigured(), publicKey: process.env.VAPID_PUBLIC_KEY ?? null, devices: subs.map((s) => ({ endpoint: s.endpoint, device: s.device, added: s.added })) });
+  const [subs, state] = pushConfigured() ? await Promise.all([listSubscriptions(db()), readJSON<{ lastRun?: string }>(db(), "notify-state", {})]) : [[], {}];
+  return NextResponse.json({ configured: pushConfigured(), publicKey: process.env.VAPID_PUBLIC_KEY ?? null, schedulerLastRun: (state as { lastRun?: string }).lastRun ?? null, devices: subs.map((s) => ({ endpoint: s.endpoint, device: s.device, added: s.added })) });
 });
 
 export const POST = handle(async (req: Request) => {

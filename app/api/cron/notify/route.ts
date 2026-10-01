@@ -33,7 +33,7 @@ export async function GET(req: Request) {
     new Intl.DateTimeFormat("en-CA", { timeZone: HOME_TZ }).format(now),
     Number(new Intl.DateTimeFormat("en-GB", { timeZone: HOME_TZ, hour: "2-digit", hourCycle: "h23" }).format(now)),
   ];
-  const state = await readJSON<{ brief?: string }>(supabase, "notify-state", {});
+  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number }>(supabase, "notify-state", {});
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
   if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
@@ -43,8 +43,9 @@ export async function GET(req: Request) {
     const plan = items.length ? `Today: ${items.slice(0, 4).join("; ")}${items.length > 4 ? ` +${items.length - 4} more` : ""}.` : "Nothing scheduled today.";
     // Only counts as sent once a device actually got it (so subscribing later today still gets one).
     brief = (await notify(supabase, { title: "Good morning ☀️", body: `${plan} ${weather}`.trim(), url: "/", tag: "brief" })) > 0;
-    if (brief) await writeJSON(supabase, "notify-state", { ...state, brief: date });
   }
+  // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
+  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), lastRun: now.toISOString(), lastSent: due.length });
 
   return NextResponse.json({ ok: true, reminders: due.length, brief });
 }
