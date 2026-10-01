@@ -34,7 +34,8 @@ type State = "loading" | "unsupported" | "ios-install" | "unconfigured" | "denie
 export function NotificationsCard() {
   const [state, setState] = useState<State>("loading");
   const [key, setKey] = useState<string | null>(null);
-  const [devices, setDevices] = useState(0);
+  const [devices, setDevices] = useState<{ endpoint: string; device?: string }[]>([]);
+  const [mine, setMine] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -45,13 +46,19 @@ export function NotificationsCard() {
       setState(ios && !matchMedia("(display-mode: standalone)").matches ? "ios-install" : "unsupported");
       return;
     }
-    const r = await fetch("/api/push").then((x) => x.json() as Promise<{ configured: boolean; publicKey: string | null; devices: unknown[] }>);
+    const r = await fetch("/api/push").then((x) => x.json() as Promise<{ configured: boolean; publicKey: string | null; devices: { endpoint: string; device?: string }[] }>);
     setKey(r.publicKey);
-    setDevices(r.devices.length);
+    setDevices(r.devices);
     if (!r.configured) return setState("unconfigured");
     if (Notification.permission === "denied") return setState("denied");
     const reg = await navigator.serviceWorker.getRegistration();
     const sub = await reg?.pushManager.getSubscription();
+    setMine(sub?.endpoint ?? null);
+    // Subscribed here but the server doesn't know this device (a failed save): register it again.
+    if (sub && !r.devices.some((d) => d.endpoint === sub.endpoint)) {
+      const ok = await fetch("/api/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: sub.toJSON(), device: deviceName() }) }).then((x) => x.ok);
+      if (ok) setDevices([...r.devices, { endpoint: sub.endpoint, device: deviceName() }]);
+    }
     setState(sub ? "on" : "off");
   }, []);
 
@@ -112,7 +119,16 @@ export function NotificationsCard() {
         {state === "on" ? <BellRing size={16} className="text-ok" /> : state === "denied" ? <BellOff size={16} className="text-alert" /> : <Bell size={16} />} Notifications
       </h2>
       <p className="text-sm text-soft">{note[state]}</p>
-      {devices > 0 && <p className="mt-1 font-mono text-[11px] text-faint">{devices} device{devices > 1 ? "s" : ""} subscribed</p>}
+      {devices.length > 0 && (
+        <ul className="mt-2 space-y-0.5 font-mono text-[11px] text-faint">
+          {devices.map((d) => (
+            <li key={d.endpoint} className={d.endpoint === mine ? "text-ok" : ""}>
+              • {d.device || "Device"}
+              {d.endpoint === mine ? " (this device)" : ""}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {state === "off" && (
           <button type="button" onClick={enable} disabled={busy || !key} className="rounded-md bg-core px-3 py-1.5 text-sm font-medium text-black disabled:opacity-50">
