@@ -71,7 +71,7 @@ function Call() {
   useEffect(() => {
     if (!isHost || stage !== "ended") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- start the return countdown when the call ends
-    setLeaveIn(10);
+    setLeaveIn(5);
     const t = setInterval(() => setLeaveIn((n) => (n == null ? n : n - 1)), 1000);
     return () => clearInterval(t);
   }, [isHost, stage]);
