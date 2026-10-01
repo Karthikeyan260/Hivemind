@@ -5,6 +5,7 @@ import { analyzeJob, CAREER_SOURCE } from "@/lib/career";
 import { type Job, jobDetails, type JobQuery, searchJobs } from "@/lib/external/jobs";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { researchAndSave, webSearch } from "@/lib/external/web";
+import { saveRoom } from "@/lib/call-rooms";
 import { type Contact, findContacts, normalizePhone, pretty, smsLink, telLink, whatsappLink } from "@/lib/contacts";
 import { createMemory, deleteMemory, updateMemory } from "@/lib/knowledge";
 import { originOf } from "@/lib/origin";
@@ -461,6 +462,8 @@ export const TOOLS: Record<string, Tool> = {
       const link = `${ctx.origin}/call/${room}?from=${encodeURIComponent(host)}`;
       const phone = c && !("error" in c) ? c.phone : null;
       const q = new URLSearchParams({ host: "1", from: host, ...(who ? { name: c && !("error" in c) ? c.name : who } : {}), ...(phone ? { to: phone } : {}) });
+      // Lets the guest's join ring the owner's phone (push), only for rooms made here.
+      await saveRoom(ctx.supabase, { room, name: q.get("name") || who || "Someone", to: phone ?? undefined, from: host }).catch(() => {});
       ctx.actions.push({ label: "Open call", href: `/call/${room}?${q}`, navigate: true });
       if (phone) ctx.actions.push({ label: `Send link to ${who} on WhatsApp`, href: whatsappLink(phone, `${host} is calling you on HIVEMIND. Tap to join: ${link}`) });
       return { call_link: link, invite: phone ? "WhatsApp invite button shown" : "No number found; share the link yourself", opening_call_screen: true };

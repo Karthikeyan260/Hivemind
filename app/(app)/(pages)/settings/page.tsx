@@ -1,3 +1,4 @@
+import { NotificationsCard } from "@/components/notifications";
 import { providers } from "@/lib/ai/providers";
 
 export default function SettingsPage() {
@@ -34,6 +35,8 @@ export default function SettingsPage() {
           don&apos;t store passwords or secrets in your brain.
         </p>
       </section>
+
+      <NotificationsCard />
 
       <section className="rounded-xl border border-line bg-panel p-4">
         <h2 className="mb-2 font-semibold">Export your brain</h2>

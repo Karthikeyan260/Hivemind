@@ -1,0 +1,136 @@
+"use client";
+
+import { Bell, BellOff, BellRing } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { isPublicPage } from "@/lib/public-paths";
+
+/** Registers the service worker that shows notifications while HIVEMIND is closed. */
+export function ServiceWorker() {
+  const path = usePathname();
+  useEffect(() => {
+    if (isPublicPage(path) || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }, [path]);
+  return null;
+}
+
+const toKey = (b64: string) => {
+  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+};
+
+const deviceName = () => {
+  const ua = navigator.userAgent;
+  const os = /Android/i.test(ua) ? "Android" : /iPhone|iPad/i.test(ua) ? "iPhone" : /Windows/i.test(ua) ? "Windows" : /Mac/i.test(ua) ? "Mac" : "Device";
+  const app = matchMedia("(display-mode: standalone)").matches ? "app" : "browser";
+  return `${os} ${app}`;
+};
+
+type State = "loading" | "unsupported" | "ios-install" | "unconfigured" | "denied" | "off" | "on";
+
+/** Settings card: turn notifications on for this device, send a test, see subscribed devices. */
+export function NotificationsCard() {
+  const [state, setState] = useState<State>("loading");
+  const [key, setKey] = useState<string | null>(null);
+  const [devices, setDevices] = useState(0);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const ios = /iPhone|iPad/i.test(navigator.userAgent);
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      // iPhone only allows web notifications for the app added to the home screen.
+      setState(ios && !matchMedia("(display-mode: standalone)").matches ? "ios-install" : "unsupported");
+      return;
+    }
+    const r = await fetch("/api/push").then((x) => x.json() as Promise<{ configured: boolean; publicKey: string | null; devices: unknown[] }>);
+    setKey(r.publicKey);
+    setDevices(r.devices.length);
+    if (!r.configured) return setState("unconfigured");
+    if (Notification.permission === "denied") return setState("denied");
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    setState(sub ? "on" : "off");
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read this device's notification state once
+    void refresh();
+  }, [refresh]);
+
+  async function enable() {
+    setBusy(true);
+    setMsg("");
+    try {
+      if ((await Notification.requestPermission()) !== "granted") return setState("denied");
+      const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
+      await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(key!) });
+      const r = await fetch("/api/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: sub.toJSON(), device: deviceName() }) });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Couldn't save this device.");
+      await test();
+      await refresh();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Couldn't turn on notifications.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disable() {
+    setBusy(true);
+    const sub = await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription();
+    if (sub) {
+      await fetch("/api/push", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) });
+      await sub.unsubscribe();
+    }
+    setBusy(false);
+    setMsg("");
+    await refresh();
+  }
+
+  async function test() {
+    const r = await fetch("/api/push/test", { method: "POST" }).then((x) => x.json() as Promise<{ sent?: number }>);
+    setMsg(r.sent ? `Test sent to ${r.sent} device${r.sent > 1 ? "s" : ""}.` : "No device received it. Try turning notifications off and on again.");
+  }
+
+  const note: Record<State, string> = {
+    loading: "Checking this device…",
+    unsupported: "This browser can't show notifications. Use Chrome on Android, or the installed app on iPhone.",
+    "ios-install": "On iPhone, first add HIVEMIND to your Home Screen (Share → Add to Home Screen), open it from there, then come back here.",
+    unconfigured: "Notifications aren't set up on the server yet: add the VAPID keys to the environment.",
+    denied: "Notifications are blocked for this site. Allow them in your browser/phone settings, then reload.",
+    off: "Get reminders, a morning brief and incoming HIVEMIND calls even when the app is closed.",
+    on: "On for this device. You'll get reminders, the morning brief and incoming calls.",
+  };
+
+  return (
+    <section className="rounded-xl border border-line bg-panel p-4">
+      <h2 className="mb-2 flex items-center gap-2 font-semibold">
+        {state === "on" ? <BellRing size={16} className="text-ok" /> : state === "denied" ? <BellOff size={16} className="text-alert" /> : <Bell size={16} />} Notifications
+      </h2>
+      <p className="text-sm text-soft">{note[state]}</p>
+      {devices > 0 && <p className="mt-1 font-mono text-[11px] text-faint">{devices} device{devices > 1 ? "s" : ""} subscribed</p>}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {state === "off" && (
+          <button type="button" onClick={enable} disabled={busy || !key} className="rounded-md bg-core px-3 py-1.5 text-sm font-medium text-black disabled:opacity-50">
+            {busy ? "Turning on…" : "Turn on for this device"}
+          </button>
+        )}
+        {state === "on" && (
+          <>
+            <button type="button" onClick={test} className="rounded-md border border-line px-3 py-1.5 text-sm">
+              Send a test
+            </button>
+            <button type="button" onClick={disable} disabled={busy} className="rounded-md border border-line px-3 py-1.5 text-sm text-soft">
+              Turn off here
+            </button>
+          </>
+        )}
+      </div>
+      {msg && <p className="mt-2 text-xs text-soft">{msg}</p>}
+    </section>
+  );
+}

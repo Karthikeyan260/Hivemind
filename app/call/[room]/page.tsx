@@ -136,6 +136,8 @@ function Call() {
     } else {
       const p = new PeerCtor();
       peer.current = p;
+      // Ring the owner's phone once (push notification), in case they aren't on the call screen yet.
+      void fetch("/api/call/ring", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room }) }).catch(() => {});
       const dial = () => {
         setStage("connecting");
         attach(p.call(hostId, mic.current!));
