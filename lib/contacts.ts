@@ -46,4 +46,6 @@ export async function findContacts(supabase: SupabaseClient, who: string): Promi
 
 export const telLink = (phone: string) => `tel:${phone}`;
 export const smsLink = (phone: string, text: string) => `sms:${phone}${text ? `?body=${encodeURIComponent(text)}` : ""}`;
+/** "pstn:+91…?name=Arif": the app opens its own call screen (Twilio) for this, not the phone dialer. */
+export const pstnLink = (phone: string, name?: string) => `pstn:${phone}${name ? `?name=${encodeURIComponent(name)}` : ""}`;
 export const whatsappLink = (phone: string, text: string) => `https://wa.me/${phone.slice(1)}${text ? `?text=${encodeURIComponent(text)}` : ""}`;

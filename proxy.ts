@@ -3,8 +3,9 @@ import { isUnlocked, misconfigured, SESSION_COOKIE } from "@/lib/session";
 
 // Every page and API route is private to the owner. Only /unlock, its API, and the app manifest
 // (name + icons, fetched by the phone without cookies when installing), the notification service
-// worker, and the call "ring" a guest triggers (it only works for rooms the owner created) are open.
-const OPEN_PATHS = ["/unlock", "/api/unlock", "/manifest.webmanifest", "/sw.js", "/api/call/ring"];
+// worker, the call "ring" a guest triggers (it only works for rooms the owner created), and Twilio's
+// call webhook (it only obeys requests signed with the Twilio auth token) are open.
+const OPEN_PATHS = ["/unlock", "/api/unlock", "/manifest.webmanifest", "/sw.js", "/api/call/ring", "/api/twilio/voice"];
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
