@@ -44,10 +44,11 @@ export async function addBirthday(supabase: SupabaseClient, b: Omit<Birthday, "i
   return entry;
 }
 
-export async function removeBirthday(supabase: SupabaseClient, idOrName: string) {
+export async function removeBirthday(supabase: SupabaseClient, idOrName: string, exact = false) {
   const all = await listBirthdays(supabase);
   const q = idOrName.toLowerCase();
-  const hit = all.find((x) => x.id === idOrName) ?? all.find((x) => x.name.toLowerCase() === q) ?? all.find((x) => x.name.toLowerCase().includes(q));
+  // API routes pass exact: a URL must only ever delete the entry with that id.
+  const hit = exact ? all.find((x) => x.id === idOrName) : (all.find((x) => x.id === idOrName) ?? all.find((x) => x.name.toLowerCase() === q) ?? all.find((x) => x.name.toLowerCase().includes(q)));
   if (!hit) return null;
   await save(supabase, all.filter((x) => x.id !== hit.id));
   return hit;

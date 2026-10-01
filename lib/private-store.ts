@@ -30,6 +30,32 @@ export async function readJSON<T>(supabase: SupabaseClient, key: string, fallbac
   }
 }
 
+/**
+ * Event markers: one tiny file per event under a prefix. Counting files can't lose updates the way
+ * read-modify-write of a JSON counter does when requests run in parallel (e.g. login guessing).
+ */
+export async function addMarker(supabase: SupabaseClient, prefix: string) {
+  await ensureBucket(supabase);
+  const name = `${prefix}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+  await supabase.storage.from(BUCKET).upload(name, new Blob(["1"]), { upsert: false, contentType: "text/plain" });
+}
+
+/** Markers under a prefix newer than `sinceMs`; older ones are deleted while we're here. */
+export async function countMarkers(supabase: SupabaseClient, prefix: string, sinceMs: number) {
+  await ensureBucket(supabase);
+  const { data } = await supabase.storage.from(BUCKET).list(prefix, { limit: 1000 });
+  const files = data ?? [];
+  const old = files.filter((f) => Number(f.name.split("-")[0]) < sinceMs).map((f) => `${prefix}/${f.name}`);
+  if (old.length) await supabase.storage.from(BUCKET).remove(old);
+  return files.length - old.length;
+}
+
+export async function clearMarkers(supabase: SupabaseClient, prefix: string) {
+  await ensureBucket(supabase);
+  const { data } = await supabase.storage.from(BUCKET).list(prefix, { limit: 1000 });
+  if (data?.length) await supabase.storage.from(BUCKET).remove(data.map((f) => `${prefix}/${f.name}`));
+}
+
 export async function writeJSON(supabase: SupabaseClient, key: string, value: unknown) {
   await ensureBucket(supabase);
   const { error } = await supabase.storage

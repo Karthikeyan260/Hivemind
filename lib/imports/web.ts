@@ -1,6 +1,7 @@
 import "server-only";
 import { HttpError } from "@/lib/api";
 import { chunkText } from "@/lib/rag/chunker";
+import { safeFetch } from "@/lib/safe-fetch";
 
 const MAX_BYTES = 3 * 1024 * 1024;
 
@@ -27,12 +28,12 @@ export async function fetchPageText(rawUrl: string) {
     throw new HttpError(422, "LinkedIn blocks automated access. Open your profile → More → Save to PDF, then upload it in Documents.");
   }
 
-  const res = await fetch(url, {
+  // Public hosts only (no internal network / cloud metadata), checked on every redirect.
+  const res = await safeFetch(url, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; SecondBrain/1.0; personal import)", Accept: "text/html,text/plain" },
-    redirect: "follow",
     signal: AbortSignal.timeout(15_000),
-  }).catch(() => {
-    throw new HttpError(502, "Could not reach that page");
+  }).catch((err) => {
+    throw err instanceof HttpError ? err : new HttpError(502, "Could not reach that page");
   });
   if (!res.ok) throw new HttpError(502, `Page returned HTTP ${res.status}`);
   const html = (await res.text()).slice(0, MAX_BYTES);

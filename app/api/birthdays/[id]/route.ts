@@ -6,6 +6,6 @@ import { db } from "@/lib/db";
 type Ctx = { params: Promise<{ id: string }> };
 
 export const DELETE = handle(async (_req: Request, { params }: Ctx) => {
-  if (!(await removeBirthday(db(), (await params).id))) throw new HttpError(404, "Not found.");
+  if (!(await removeBirthday(db(), (await params).id, true))) throw new HttpError(404, "Not found.");
   return new NextResponse(null, { status: 204 });
 });

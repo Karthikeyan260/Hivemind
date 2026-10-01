@@ -98,23 +98,25 @@ export async function addHabit(supabase: SupabaseClient, h: { name: string; emoj
   return habit;
 }
 
-export function findHabit(all: Habit[], which: string) {
+/** exact: only the habit with this id (API routes: a URL must never match by name). */
+export function findHabit(all: Habit[], which: string, exact = false) {
+  if (exact) return all.find((x) => x.id === which);
   const q = which.toLowerCase().trim();
   return all.find((x) => x.id === which) ?? all.find((x) => x.name.toLowerCase() === q) ?? all.find((x) => x.name.toLowerCase().includes(q) || q.includes(x.name.toLowerCase()));
 }
 
-export async function removeHabit(supabase: SupabaseClient, which: string) {
+export async function removeHabit(supabase: SupabaseClient, which: string, exact = false) {
   const all = await listHabits(supabase);
-  const h = findHabit(all, which);
+  const h = findHabit(all, which, exact);
   if (!h) return null;
   await save(supabase, all.filter((x) => x.id !== h.id));
   return h;
 }
 
 /** Tick (or untick) a habit for a day; returns the new streak. */
-export async function checkHabit(supabase: SupabaseClient, which: string, opts: { done?: boolean; date?: string } = {}) {
+export async function checkHabit(supabase: SupabaseClient, which: string, opts: { done?: boolean; date?: string; exact?: boolean } = {}) {
   const all = await listHabits(supabase);
-  const h = findHabit(all, which);
+  const h = findHabit(all, which, opts.exact);
   if (!h) throw new HttpError(404, `No habit called "${which}".`);
   const date = opts.date ?? localParts().date;
   const done = opts.done ?? true;
@@ -124,9 +126,9 @@ export async function checkHabit(supabase: SupabaseClient, which: string, opts: 
   return { name: h.name, emoji: h.emoji, done, ...stats(h) };
 }
 
-export async function snoozeHabit(supabase: SupabaseClient, which: string, minutes = 30) {
+export async function snoozeHabit(supabase: SupabaseClient, which: string, minutes = 30, exact = false) {
   const all = await listHabits(supabase);
-  const h = findHabit(all, which);
+  const h = findHabit(all, which, exact);
   if (!h) throw new HttpError(404, "No such habit.");
   h.snoozeUntil = new Date(Date.now() + minutes * 60_000).toISOString();
   await save(supabase, all);

@@ -10,5 +10,5 @@ const Body = z.object({ done: z.boolean().optional(), date: z.string().regex(/^\
 /** Tick a habit for today (also used by the notification's "✓ Done" button, which sends no body). */
 export const POST = handle(async (req: Request, { params }: Ctx) => {
   const body = Body.parse(await req.json().catch(() => ({})));
-  return NextResponse.json(await checkHabit(db(), (await params).id, body));
+  return NextResponse.json(await checkHabit(db(), (await params).id, { ...body, exact: true }));
 });

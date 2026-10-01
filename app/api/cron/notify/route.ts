@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeEqual } from "@/lib/session";
 import { birthdaysToday, runBirthdayAlerts } from "@/lib/birthdays";
 import { db } from "@/lib/db";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
@@ -19,7 +20,7 @@ const BRIEF_HOUR = Number(process.env.BRIEF_HOUR ?? 8);
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   const given = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? new URL(req.url).searchParams.get("key");
-  if (!secret || given !== secret) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!secret || !given || !safeEqual(given, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!pushConfigured()) return NextResponse.json({ error: "VAPID keys missing" }, { status: 503 });
   const supabase = db();
 
