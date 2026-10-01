@@ -1,8 +1,8 @@
 "use client";
 
 import type { MediaConnection, Peer } from "peerjs";
-import { Copy, Mic, MicOff, Phone, PhoneOff, Send } from "lucide-react";
-import { useParams, useSearchParams } from "next/navigation";
+import { ChevronLeft, Copy, Mic, MicOff, Phone, PhoneOff, Send } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 
@@ -26,6 +26,7 @@ const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "
 function Call() {
   const { room } = useParams<{ room: string }>();
   const q = useSearchParams();
+  const router = useRouter();
   const isHost = q.get("host") === "1";
   const other = isHost ? q.get("name") || "your guest" : q.get("from") || "HIVEMIND";
   const inviteTo = q.get("to");
@@ -37,6 +38,8 @@ function Call() {
   const [seconds, setSeconds] = useState(0);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Host: back to HIVEMIND on its own a few seconds after the call ends (the page has no app nav).
+  const [leaveIn, setLeaveIn] = useState<number | null>(null);
   const peer = useRef<Peer | null>(null);
   const call = useRef<MediaConnection | null>(null);
   const mic = useRef<MediaStream | null>(null);
@@ -59,6 +62,22 @@ function Call() {
   }, [cleanup]);
 
   useEffect(() => cleanup, [cleanup]);
+
+  const goHome = useCallback(() => {
+    cleanup();
+    router.replace("/");
+  }, [cleanup, router]);
+
+  useEffect(() => {
+    if (!isHost || stage !== "ended") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- start the return countdown when the call ends
+    setLeaveIn(10);
+    const t = setInterval(() => setLeaveIn((n) => (n == null ? n : n - 1)), 1000);
+    return () => clearInterval(t);
+  }, [isHost, stage]);
+  useEffect(() => {
+    if (leaveIn === 0) goHome();
+  }, [leaveIn, goHome]);
 
   useEffect(() => {
     if (stage !== "live") return;
@@ -149,6 +168,7 @@ function Call() {
       body: JSON.stringify({ content: `Had a HIVEMIND voice call with ${other} on ${when}, lasting ${fmt(seconds)}.` }),
     });
     setSaved(r.ok);
+    if (r.ok) setLeaveIn(2);
   }
 
   const status: Record<Stage, string> = {
@@ -164,6 +184,15 @@ function Call() {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-bg px-6 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-fg">
       <audio ref={audio} autoPlay playsInline />
+      {isHost && (
+        <button
+          type="button"
+          onClick={goHome}
+          className="fixed left-4 top-[max(1rem,env(safe-area-inset-top))] flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-data"
+        >
+          <ChevronLeft size={14} /> {stage === "live" ? "End & back" : "HIVEMIND"}
+        </button>
+      )}
       <div className="font-mono text-[11px] tracking-[0.3em] text-faint">HIVEMIND · CALL</div>
 
       <div className="flex flex-col items-center gap-4 text-center">
@@ -224,11 +253,27 @@ function Call() {
         )}
       </div>
 
-      {isHost && stage === "ended" && seconds > 0 && (
-        <button type="button" onClick={saveNote} disabled={saved} className="font-mono text-[11px] uppercase tracking-wider text-data disabled:text-ok">
-          {saved ? "Saved to your memories ✓" : "Save this call to memory"}
-        </button>
+      {isHost && stage === "ended" && (
+        <div className="flex w-full max-w-xs flex-col items-center gap-3">
+          {seconds > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setLeaveIn(null);
+                void saveNote();
+              }}
+              disabled={saved}
+              className="font-mono text-[11px] uppercase tracking-wider text-data disabled:text-ok"
+            >
+              {saved ? "Saved to your memories ✓" : "Save this call to memory"}
+            </button>
+          )}
+          <button type="button" onClick={goHome} className="w-full rounded-full border border-line py-3 text-sm text-fg">
+            Back to HIVEMIND{leaveIn != null && leaveIn > 0 ? ` (${leaveIn})` : ""}
+          </button>
+        </div>
       )}
+      {!isHost && stage === "ended" && <p className="text-center text-sm text-soft">You can close this page now.</p>}
       {!isHost && <p className="max-w-xs text-center text-[11.5px] text-faint">Private browser call. Nothing is recorded. Allow the microphone when asked.</p>}
     </main>
   );
