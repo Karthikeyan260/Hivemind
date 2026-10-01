@@ -7,6 +7,7 @@ import type { ChatMessage } from "@/lib/ai/types";
 import { dbError, handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
 import type { Job } from "@/lib/external/jobs";
+import { productQuery, SHOPPING, storeSearchLinks, storesIn } from "@/lib/external/products";
 import { listProjects } from "@/lib/organizer";
 import { getPrefs, languageRule } from "@/lib/prefs";
 import { getProfile, profileForPrompt } from "@/lib/profile";
@@ -126,16 +127,29 @@ export const POST = handle(async (req: Request) => {
         } catch (err) {
           if (reply) throw err;
           console.warn("agents unavailable, plain answer:", err instanceof Error ? err.message : err);
-          // Gemini down before the first token: answer from the brain with NVIDIA/Groq, no tools.
-          const context = await searchKnowledge(supabase, message, { projectId: project_id, limit: 8 });
-          context.forEach((c, i) => sources.push({ n: i + 1, type: c.source_type, title: c.title, href: sourceHref(c), similarity: Math.round(c.similarity * 100) / 100 }));
-          const userTurn = context.length
-            ? `Context from my brain:\n${context.map((c, i) => `[${i + 1}] (${c.source_type}) ${c.title}\n${c.content.slice(0, 1500)}`).join("\n\n---\n\n")}\n\nMe: ${message}`
-            : message;
-          const res = await generateWithFallback([...history, { role: "user", content: userTurn }], { system: `${system}\n\n${closing}`, order: ["nvidia", "groq"], temperature: 0.3 });
-          reply = res.text;
-          send({ type: "delta", text: reply });
-          done = { type: "done", provider: res.provider, model: res.model, latency_ms: res.latencyMs };
+          // A shopping request still gets real store links (no AI needed), not a "nothing in your brain" reply.
+          const product = SHOPPING.test(message) ? productQuery(message) : "";
+          if (product) {
+            // find_product may have run before the model gave out: keep its product pages, add nothing twice.
+            for (const l of storeSearchLinks(product, storesIn(message))) {
+              if (!actions.some((a) => a.href === l.url)) actions.push({ label: `Search ${l.store}`, href: l.url });
+            }
+            const links = actions.filter((a) => a.href?.startsWith("http"));
+            reply = `The AI is busy right now (Google's free limit), so here are the store links for **${product}**:\n\n${links.map((l) => `- [${l.label}](${l.href})`).join("\n")}\n\nAsk again in a minute for exact product pages and prices.`;
+            send({ type: "delta", text: reply });
+            done = { type: "done", provider: "store links", model: "none", latency_ms: Date.now() - started };
+          } else {
+            // Gemini down before the first token: answer from the brain with NVIDIA/Groq, no tools.
+            const context = await searchKnowledge(supabase, message, { projectId: project_id, limit: 8 });
+            context.forEach((c, i) => sources.push({ n: i + 1, type: c.source_type, title: c.title, href: sourceHref(c), similarity: Math.round(c.similarity * 100) / 100 }));
+            const userTurn = context.length
+              ? `Context from my brain:\n${context.map((c, i) => `[${i + 1}] (${c.source_type}) ${c.title}\n${c.content.slice(0, 1500)}`).join("\n\n---\n\n")}\n\nMe: ${message}`
+              : message;
+            const res = await generateWithFallback([...history, { role: "user", content: userTurn }], { system: `${system}\n\n${closing}`, order: ["nvidia", "groq"], temperature: 0.3 });
+            reply = res.text;
+            send({ type: "delta", text: reply });
+            done = { type: "done", provider: res.provider, model: res.model, latency_ms: res.latencyMs };
+          }
         }
         // Final sources (tools add them as they run) and whether the brain changed.
         send({ type: "meta", conversation_id: conversationId!, intent, sources });

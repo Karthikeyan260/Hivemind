@@ -261,6 +261,7 @@ export const TOOLS: Record<string, Tool> = {
         summary: r.summary.slice(0, 2500),
         product_pages: r.products,
         store_search_links: r.search_links,
+        ...(r.search_unavailable ? { search_unavailable: r.search_unavailable } : {}),
         note: "Give the owner these exact URLs (product_pages first). For a store with no product page, give its store_search_links URL. Never give a store's home page or make up a link.",
       };
     },

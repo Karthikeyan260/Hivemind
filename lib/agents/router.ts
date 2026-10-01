@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { groqProvider } from "@/lib/ai/openai-compatible";
 import { parseJson } from "@/lib/ai/providers";
+import { SHOPPING } from "@/lib/external/products";
 import { agentRoster } from "./registry";
 import { AGENT_IDS, type AgentId } from "./types";
 
@@ -27,7 +28,7 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   // "open the first one" / "click the Flipkart link" right after links were shown stays with that agent.
   if ((previous === "research" || previous === "career") && /\b(open|click|tap|go to|visit)\b.*\b(link|first|second|third|fourth|fifth|last|one|it|that|\d|flipkart|amazon|meesho|page|apply)\b/.test(m)) return previous;
   // Shopping: "boAt earbuds on Flipkart", "price of iPhone 16", "buy a kurti from Meesho"
-  if (/\b(flipkart|amazon|meesho)\b|\b(buy|purchase|order)\b.*\b(link|online|from|on)\b|\b(price of|buying link|product link|where (can|to) (i )?buy)\b/.test(m)) return "research";
+  if (SHOPPING.test(m)) return "research";
   if (/^(please\s+)?(research|collect|gather|compile)\b|\b(weather|temperature|forecast|raining|humidity)\b|\b(search (the )?(web|internet)|google|latest news|news (about|on))\b/.test(m)) return "research";
   if (/\b(job analys[ie]s|job match(es)?|job description|jd\b|resume|cv\b|cover letter|interview|ats\b|hiring|apply(ing)? (for|to))\b/.test(m) || m.length > 900) return "career";
   if (/^(please\s+)?(create|start|add|new)\b.*\bproject\b|\b(my projects|list projects|project status)\b/.test(m)) return "project";

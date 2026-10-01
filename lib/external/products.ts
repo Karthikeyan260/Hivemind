@@ -36,13 +36,42 @@ function cleanUrl(u: URL, store: StoreId) {
   return `${u.origin}${u.pathname}`;
 }
 
+/** "I want to buy a cotton kurti", "boAt earbuds on Flipkart", "price of iPhone 16", "Redmi price link". */
+export const SHOPPING = /\b(flipkart|amazon|meesho)\b|\b(buy|purchase|shop for)\b|\b(price|cost) (of|for)\b|\b(price|buying|product|shopping) links?\b|\bwhere (can|to|do) (i )?buy\b/i;
+
+const FILLER =
+  /\b(hey|hi|please|pls|can you|could you|i want to|i wanna|i need to|i need|i want|help me|find|show me|show|search( for)?|look for|get me|buy|purchase|shop for|order|price( of| for)?|cost( of| for)?|buying|product|shopping|links?|online|where (can|to|do) (i )?buy|for me|on|from|in|at|flipkart|amazon(\.in)?|meesho|a|an|the|some|me)\b/gi;
+
+/** Stores named in a message ("on Flipkart", "Meesho"), or all three. */
+export function storesIn(message: string): StoreId[] {
+  const named = STORE_IDS.filter((s) => new RegExp(`\\b${s}\\b`, "i").test(message));
+  return named.length ? named : STORE_IDS;
+}
+
+/** The product words of a shopping message: "i want to buy a cotton kurti on meesho" → "cotton kurti". */
+export function productQuery(message: string) {
+  return message.replace(FILLER, " ").replace(/[?!.,]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Store search-results links for a product: always work, no AI or quota needed. */
+export function storeSearchLinks(query: string, stores: StoreId[] = STORE_IDS) {
+  return stores.map((k) => ({ store: STORES[k].name, url: STORES[k].search(query) }));
+}
+
 export async function findProduct(query: string, stores: StoreId[] = STORE_IDS) {
-  // Google's grounding varies call to call; one retry when no product page came back.
-  let r = await searchStores(query, stores);
-  if (!r.products.length) r = await searchStores(query, stores).catch(() => r);
+  // Google's grounding varies call to call; one retry when no product page came back. When the free
+  // search quota is used up, the store search links still answer the request.
+  let r: Awaited<ReturnType<typeof searchStores>> = { summary: "", products: [], other_pages: [] };
+  let limited = false;
+  try {
+    r = await searchStores(query, stores);
+    if (!r.products.length) r = await searchStores(query, stores).catch(() => r);
+  } catch {
+    limited = true;
+  }
   const found = new Set(r.products.map((p) => p.store));
-  const search_links = stores.filter((k) => !found.has(STORES[k].name)).map((k) => ({ store: STORES[k].name, url: STORES[k].search(query) }));
-  return { ...r, search_links };
+  const search_links = storeSearchLinks(query, stores).filter((l) => !found.has(l.store));
+  return { ...r, search_links, ...(limited ? { search_unavailable: "Live search is busy (Google's free limit); only the store search links are available." } : {}) };
 }
 
 async function searchStores(query: string, stores: StoreId[]) {
