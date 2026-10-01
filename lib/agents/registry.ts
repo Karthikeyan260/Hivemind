@@ -78,8 +78,8 @@ export const AGENTS: Record<AgentId, Agent> = {
     name: "Comms Agent",
     role: "Contacts, phone calls and messages ('call Arif', 'WhatsApp Vijay that…', 'Arif's number is…', 'start a call with Amma').",
     instructions:
-      "Phone call → call_contact (it also offers 'Call via HIVEMIND' when available). 'Call through the site / via HIVEMIND / from the laptop', or a foreign number → call_via_hivemind (real call from the browser, shows the owner's own number). Text / WhatsApp / SMS → message_contact with the message in the owner's words (WhatsApp unless they say SMS). An internet call inside HIVEMIND ('call through the site', 'video/voice call link', 'HIVEMIND call') → start_call. A new number → save_contact. If several numbers match, list them and ask which. Say in one line what's ready (e.g. 'Tap Call to ring Arif on +91 98765 43210'); never claim you called or sent anything: the owner taps to do it. Never write links or URLs in your reply: the buttons are already shown.",
-    tools: ["call_contact", "call_via_hivemind", "message_contact", "start_call", "save_contact", "search_brain"],
+      "Phone call → call_contact. Text / WhatsApp / SMS → message_contact with the message in the owner's words (WhatsApp unless they say SMS). An internet call inside HIVEMIND ('call through the site', 'video/voice call link', 'HIVEMIND call') → start_call. A new number → save_contact. If several numbers match, list them and ask which. Say in one line what's ready (e.g. 'Tap Call to ring Arif on +91 98765 43210'); never claim you called or sent anything: the owner taps to do it. Never write links or URLs in your reply: the buttons are already shown.",
+    tools: ["call_contact", "message_contact", "start_call", "save_contact", "search_brain"],
   },
   profile: {
     id: "profile",

@@ -8,11 +8,10 @@ import { researchAndSave, webSearch } from "@/lib/external/web";
 import { addBirthday, birthdayWish, dateLabel, listBirthdays, removeBirthday, upcomingBirthdays } from "@/lib/birthdays";
 import { saveRoom } from "@/lib/call-rooms";
 import { addHabit, checkHabit, everyHours, habitsWithStats, removeHabit } from "@/lib/habits";
-import { type Contact, findContacts, normalizePhone, pretty, pstnLink, smsLink, telLink, whatsappLink } from "@/lib/contacts";
+import { type Contact, findContacts, normalizePhone, pretty, smsLink, telLink, whatsappLink } from "@/lib/contacts";
 import { createMemory, deleteMemory, updateMemory } from "@/lib/knowledge";
 import { originOf } from "@/lib/origin";
 import { getProfile, rebuildProfile } from "@/lib/profile";
-import { twilioConfigured } from "@/lib/twilio";
 import { actOnReminder, agenda, createReminder, nowForPrompt } from "@/lib/reminders";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
 import { tailorResume } from "@/lib/resume/tailor";
@@ -553,25 +552,7 @@ export const TOOLS: Record<string, Tool> = {
       const c = await resolveContact(ctx, str(args.who), str(args.phone));
       if ("error" in c) return c;
       ctx.actions.push({ label: `Call ${c.name} · ${pretty(c.phone)}`, href: telLink(c.phone) });
-      // Also offer the browser call (Twilio) when it's set up, so the laptop can call without the phone.
-      if (twilioConfigured()) ctx.actions.push({ label: `Call via HIVEMIND`, href: pstnLink(c.phone, c.name) });
       return { ready: true, name: c.name, phone: pretty(c.phone), note: "A Call button is shown; the owner taps it to dial (browsers never dial on their own)." };
-    },
-  },
-  call_via_hivemind: {
-    name: "call_via_hivemind",
-    description:
-      "Real phone call from the browser through HIVEMIND (internet calling, no SIM): rings any Indian or international number and shows the owner's own number as caller ID. Use when they say 'call through the site', 'call via HIVEMIND', 'call from the laptop', or for international numbers. Paid per minute.",
-    parameters: obj({ who: S, phone: { type: "string", description: "Full number with country code if not saved, e.g. +14155550123" } }, ["who"]),
-    async run(args, ctx) {
-      if (!twilioConfigured()) return { error: "Calling through HIVEMIND isn't set up yet (Twilio keys missing). Use a normal phone call instead." };
-      const raw = str(args.phone);
-      // International numbers keep their own country code; plain 10-digit numbers are Indian.
-      const intl = raw.replace(/[^\d+]/g, "");
-      const c = raw && intl.startsWith("+") && !intl.startsWith("+91") ? { name: str(args.who) || intl, phone: intl } : await resolveContact(ctx, str(args.who), raw);
-      if ("error" in c) return c;
-      ctx.actions.push({ label: `Call ${c.name} via HIVEMIND`, href: pstnLink(c.phone, c.name) });
-      return { ready: true, name: c.name, phone: c.phone, note: "A call button is shown; the owner taps it to start the call in the browser." };
     },
   },
   message_contact: {

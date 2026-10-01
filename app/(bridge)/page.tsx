@@ -12,7 +12,6 @@ import { Cursor } from "@/components/bridge/cursor";
 import { Gauge, Holo, Meter } from "@/components/bridge/holo";
 import { Scramble } from "@/components/bridge/scramble";
 import { JobCards } from "@/components/career/job-cards";
-import { parsePstn, startPhoneCall } from "@/components/calls/phone-call";
 import { HabitsPanel } from "@/components/habits/panel";
 import { AgendaPanel } from "@/components/reminders/agenda";
 import type { CoreState } from "@/components/core";
@@ -655,18 +654,6 @@ function Bridge() {
                         <a key={a.label} href={a.href} download className="border border-core/50 px-2 py-0.5 font-mono text-[10.5px] text-core hover:border-core">
                           {a.label} ↓
                         </a>
-                      ) : a.href?.startsWith("pstn:") ? (
-                        <button
-                          key={a.label}
-                          type="button"
-                          onClick={() => {
-                            const p = parsePstn(a.href!);
-                            startPhoneCall(p.to, p.name);
-                          }}
-                          className="border border-ok/50 bg-ok/10 px-2 py-0.5 font-mono text-[10.5px] text-ok hover:border-ok"
-                        >
-                          {a.label} 🌐
-                        </button>
                       ) : a.href && /^(tel|sms):/.test(a.href) ? (
                         <a key={a.label} href={a.href} className="border border-ok/50 px-2 py-0.5 font-mono text-[10.5px] text-ok hover:border-ok">
                           {a.label} ☎

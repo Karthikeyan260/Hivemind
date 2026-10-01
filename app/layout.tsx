@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { PhoneCallSheet } from "@/components/calls/phone-call";
 import { MobileNav } from "@/components/mobile-nav";
 import { ServiceWorker } from "@/components/notifications";
 import { ReminderWatcher } from "@/components/reminders/watcher";
@@ -38,7 +37,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <VoiceDock />
           <HandoffCard />
           <ServiceWorker />
-          <PhoneCallSheet />
           <MobileNav canLock={passwordRequired()} />
           <ReminderWatcher />
         </VoiceProvider>

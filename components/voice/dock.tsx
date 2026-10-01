@@ -3,7 +3,6 @@
 import { AudioLines, Loader2, Mic, Phone, Send, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { parsePstn, startPhoneCall } from "@/components/calls/phone-call";
 import { cx } from "@/components/ui";
 import { isPublicPage } from "@/lib/public-paths";
 import { useVoice } from "./provider";
@@ -83,21 +82,7 @@ export function HandoffCard() {
           <X size={13} />
         </button>
       </div>
-      {v.handoff.map((h) =>
-        h.href.startsWith("pstn:") ? (
-          <button
-            key={h.href}
-            type="button"
-            onClick={() => {
-              const p = parsePstn(h.href);
-              startPhoneCall(p.to, p.name);
-              v.clearHandoff();
-            }}
-            className="flex items-center justify-center gap-2 rounded-full bg-ok/90 py-2.5 text-sm font-medium text-black"
-          >
-            <Phone size={16} /> {h.label}
-          </button>
-        ) : (
+      {v.handoff.map((h) => (
         <a
           key={h.href}
           href={h.href}
@@ -108,8 +93,7 @@ export function HandoffCard() {
         >
           {h.href.startsWith("tel:") ? <Phone size={16} /> : <Send size={16} />} {h.label}
         </a>
-        ),
-      )}
+      ))}
     </div>
   );
 }

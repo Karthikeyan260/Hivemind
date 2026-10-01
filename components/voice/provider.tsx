@@ -272,7 +272,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           each((l) => l.onBrainChanged?.());
           window.dispatchEvent(new Event(BRAIN_CHANGED));
         }
-        const taps = r.actions.filter((a): a is Handoff => !!a.href && /^(tel:|sms:|pstn:|https:\/\/wa\.me\/)/.test(a.href));
+        const taps = r.actions.filter((a): a is Handoff => !!a.href && /^(tel:|sms:|https:\/\/wa\.me\/)/.test(a.href));
         if (taps.length) setHandoff(taps);
         const go = r.actions.find((a) => a.href?.startsWith("/") && (a.navigate || OPENS_PAGE.has(name)));
         if (go?.href) routerRef.current.push(go.href);
