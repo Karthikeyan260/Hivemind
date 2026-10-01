@@ -26,7 +26,7 @@ export type StreamEvent =
   | AgentEvent
   | { type: "meta"; conversation_id: string; intent: string; sources: Source[] }
   | { type: "delta"; text: string }
-  | { type: "action"; label: string; href?: string; navigate?: boolean }
+  | { type: "action"; label: string; href?: string; navigate?: boolean; open?: boolean }
   | { type: "jobs"; jobs: Job[] }
   | { type: "done"; provider?: string; model?: string; latency_ms?: number; changed?: boolean }
   | { type: "error"; message: string };

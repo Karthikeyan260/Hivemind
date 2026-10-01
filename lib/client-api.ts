@@ -137,7 +137,7 @@ export type JobListing = {
 export type HiveEvent =
   | { type: "meta"; conversation_id: string; intent: string; sources: Source[] }
   | { type: "delta"; text: string }
-  | { type: "action"; label: string; href?: string; navigate?: boolean }
+  | { type: "action"; label: string; href?: string; navigate?: boolean; open?: boolean }
   | { type: "jobs"; jobs: JobListing[] }
   | { type: "agent"; agent: string; name: string; via: "router" | "delegation" }
   | { type: "tool"; agent: string; tool: string; status: "run" | "ok" | "error"; detail?: string }

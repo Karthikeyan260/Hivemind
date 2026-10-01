@@ -31,10 +31,10 @@ export const AGENTS: Record<AgentId, Agent> = {
   research: {
     id: "research",
     name: "Research Agent",
-    role: "Live outside-world info: web search, news, weather, and researching a topic to save it.",
+    role: "Live outside-world info: web search, news, weather, product prices and buying links (Flipkart, Amazon, Meesho), and researching a topic to save it.",
     instructions:
-      "Use web_search for current facts and news, get_weather for weather, research_and_save when the owner wants information collected or kept. Cite sources like [1]. Never answer live facts from memory.",
-    tools: ["web_search", "get_weather", "research_and_save"],
+      "Use web_search for current facts and news, get_weather for weather, research_and_save when the owner wants information collected or kept, find_product when they want to buy something or ask for a product's price or link (Flipkart, Amazon, Meesho). Cite sources like [1]. When the owner says open / click / go to a link ('open the first one', 'open the Flipkart link'), call open_link with that exact url. When you give a link, use the exact url a tool returned; never a site's home page and never a made-up link. Never answer live facts from memory.",
+    tools: ["web_search", "find_product", "open_link", "get_weather", "research_and_save"],
   },
   career: {
     id: "career",
@@ -42,7 +42,7 @@ export const AGENTS: Record<AgentId, Agent> = {
     role: "Finding live job openings, job matching / ATS checks, tailored resumes, interview prep and career advice.",
     instructions:
       "To find openings ('find React jobs in Bangalore', 'jobs for my profile', 'remote data roles') call search_jobs; leave role empty when the owner says 'based on my resume/profile'. Then reply with a short numbered list (role — company, location) and ask which one to check; don't repeat the descriptions, they're shown as cards. When the owner picks one ('check #2', 'the Quest Global one', 'ATS for the second'), call check_listed_job with their pick: it runs the ATS check, saves it to Career and generates the tailored resume. Report fit, ATS %, the main missing keywords and that the resume is ready; mention the apply link. For a pasted job description call analyze_job with the full text. To delete a saved analysis call delete_job_analysis, name it and ask 'Delete it?'; call confirm_delete_memory ONLY in a later turn after they say yes. For a resume call tailor_resume. For advice, use search_brain for real evidence of the owner's experience. When the question involves the current job market, hiring trends or a company, ask_agent the research agent for live facts first, then combine them with the owner's evidence. Never invent experience, metrics or skills.",
-    tools: ["search_jobs", "check_listed_job", "analyze_job", "tailor_resume", "job_analyses", "delete_job_analysis", "confirm_delete_memory", "search_brain"],
+    tools: ["search_jobs", "check_listed_job", "analyze_job", "tailor_resume", "job_analyses", "delete_job_analysis", "confirm_delete_memory", "search_brain", "open_link"],
   },
   project: {
     id: "project",

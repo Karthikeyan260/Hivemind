@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, Loader2, Mic, Phone, Send, X } from "lucide-react";
+import { AudioLines, ExternalLink, Loader2, Mic, Phone, Send, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { cx } from "@/components/ui";
@@ -91,7 +91,7 @@ export function HandoffCard() {
           onClick={() => setTimeout(v.clearHandoff, 300)}
           className="flex items-center justify-center gap-2 rounded-full bg-ok/90 py-2.5 text-sm font-medium text-black"
         >
-          {h.href.startsWith("tel:") ? <Phone size={16} /> : <Send size={16} />} {h.label}
+          {h.href.startsWith("tel:") ? <Phone size={16} /> : /^https?:\/\/(?!wa\.me)/.test(h.href) ? <ExternalLink size={16} /> : <Send size={16} />} {h.label}
         </a>
       ))}
     </div>

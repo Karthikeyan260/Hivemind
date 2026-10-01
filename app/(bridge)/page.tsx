@@ -23,6 +23,7 @@ import { api, type Brain as BrainT, type HiveEvent, type JobListing, type Source
 import { isMuted, setMuted, sfx } from "@/lib/sfx";
 import { useVoice, useVoiceActions } from "@/components/voice/provider";
 import type { LiveState } from "@/lib/live";
+import { openExternal } from "@/lib/open-link";
 import { SentenceStream, Speaker } from "@/lib/voice";
 
 gsap.registerPlugin(useGSAP);
@@ -297,6 +298,8 @@ function Bridge() {
           } else if (e.type === "action") {
             patch((t) => ({ ...t, actions: [...(t.actions ?? []), { label: e.label, href: e.href }] }));
             if (e.navigate && e.href?.startsWith("/")) goTo = e.href;
+            // The AI asked to open this link; if the browser blocks the new tab, the button above stays.
+            if (e.open && e.href) openExternal(e.href);
           } else if (e.type === "jobs") {
             patch((t) => ({ ...t, jobs: e.jobs }));
           } else if (e.type === "done") {

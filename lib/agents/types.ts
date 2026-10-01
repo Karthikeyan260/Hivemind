@@ -6,7 +6,8 @@ export type AgentId = (typeof AGENT_IDS)[number];
 
 export type Source = { n: number; type: string; title: string; href: string; similarity: number };
 /** navigate: the console opens it right after the answer (in-app pages only). */
-export type Action = { label: string; href?: string; navigate?: boolean };
+/** open: the browser opens href in a new tab right away (the button stays as a fallback). */
+export type Action = { label: string; href?: string; navigate?: boolean; open?: boolean };
 
 /** Streamed to the console so the owner can watch the orchestrator work. */
 export type AgentEvent =

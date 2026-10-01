@@ -11,11 +11,34 @@ const MODELS = (process.env.WEB_SEARCH_MODELS || "gemini-2.5-flash,gemini-2.5-fl
 
 export type WebResult = { answer: string; sources: { title: string; url: string }[]; model: string; searched_at: string };
 
-export async function webSearch(query: string, opts: { detailed?: boolean } = {}): Promise<WebResult> {
+/**
+ * Grounding links are Google redirect URLs titled only with the domain ("flipkart.com"). Follow each
+ * one hop to get the exact page (a product page, not the store's home page).
+ */
+async function resolveLinks(sources: { title: string; url: string }[]) {
+  const resolved = await Promise.all(
+    sources.map(async (s) => {
+      if (!/grounding-api-redirect/.test(s.url)) return s;
+      try {
+        const res = await fetch(s.url, { redirect: "manual", signal: AbortSignal.timeout(4000) });
+        const to = res.headers.get("location");
+        return to && /^https?:\/\//.test(to) ? { ...s, url: to } : s;
+      } catch {
+        return s;
+      }
+    }),
+  );
+  const seen = new Set<string>();
+  return resolved.filter((s) => !seen.has(s.url) && seen.add(s.url));
+}
+
+export async function webSearch(query: string, opts: { detailed?: boolean; prompt?: string; maxSources?: number } = {}): Promise<WebResult> {
   const today = new Date().toISOString().slice(0, 10);
-  const prompt = opts.detailed
-    ? `Research this thoroughly using web search and write a well-organised brief with headings and bullet points: key facts, figures, dates, and differing viewpoints. Today is ${today}.\n\nTopic: ${query}`
-    : `Answer using web search. Be concise and factual, include dates and numbers where relevant. Today is ${today}.\n\nQuestion: ${query}`;
+  const prompt =
+    opts.prompt ??
+    (opts.detailed
+      ? `Research this thoroughly using web search and write a well-organised brief with headings and bullet points: key facts, figures, dates, and differing viewpoints. Today is ${today}.\n\nTopic: ${query}`
+      : `Answer using web search. Be concise and factual, include dates and numbers where relevant. Today is ${today}.\n\nQuestion: ${query}`);
   let lastErr: unknown;
   // Free-tier search is rate-limited per minute: if every model is throttled, wait once and retry.
   const attempts = [...MODELS, ...MODELS.map((m) => `wait:${m}`)];
@@ -28,12 +51,8 @@ export async function webSearch(query: string, opts: { detailed?: boolean } = {}
     try {
       const r = await geminiClient().models.generateContent({ model, contents: prompt, config: { tools: [{ googleSearch: {} }], temperature: 0.2 } });
       const chunks = r.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-      const seen = new Set<string>();
-      const sources = chunks
-        .map((c) => ({ title: c.web?.title ?? "", url: c.web?.uri ?? "" }))
-        .filter((s) => s.url && !seen.has(s.title) && seen.add(s.title))
-        .slice(0, 8);
       if (!r.text) throw new Error("empty answer");
+      const sources = (await resolveLinks(chunks.map((c) => ({ title: c.web?.title ?? "", url: c.web?.uri ?? "" })).filter((s) => s.url))).slice(0, opts.maxSources ?? 8);
       return { answer: r.text.trim(), sources, model, searched_at: new Date().toISOString() };
     } catch (err) {
       lastErr = err instanceof Error ? err.message : err;

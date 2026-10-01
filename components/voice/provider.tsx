@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { BRAIN_CHANGED } from "@/lib/client-api";
 import { isPublicPage } from "@/lib/public-paths";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
+import { openExternal } from "@/lib/open-link";
 import { click, listControls, scroll, selectOption, typeText } from "./dom-tools";
 
 /** Everything a page can react to during a live conversation. */
@@ -122,7 +123,7 @@ export const summarizeTailored = (t: TailoredOut) => ({
 type AgentToolOut = {
   result: Record<string, unknown>;
   sources: LiveSource[];
-  actions: { label: string; href?: string; navigate?: boolean }[];
+  actions: { label: string; href?: string; navigate?: boolean; open?: boolean }[];
   changed: boolean;
   jobs: Record<string, unknown>[] | null;
   pending_delete: { id: string; title: string } | null;
@@ -272,10 +273,18 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           each((l) => l.onBrainChanged?.());
           window.dispatchEvent(new Event(BRAIN_CHANGED));
         }
-        const taps = r.actions.filter((a): a is Handoff => !!a.href && /^(tel:|sms:|https:\/\/wa\.me\/)/.test(a.href));
+        // Calls, messages and outside links (e.g. product pages) become tap buttons on screen.
+        const taps = r.actions.filter((a): a is Handoff => !!a.href && /^(tel:|sms:|https?:\/\/)/.test(a.href));
         if (taps.length) setHandoff(taps);
         const go = r.actions.find((a) => a.href?.startsWith("/") && (a.navigate || OPENS_PAGE.has(name)));
         if (go?.href) routerRef.current.push(go.href);
+        // open_link: open it now; when the browser blocks the tab, the tap button above is the fallback.
+        const open = r.actions.find((a) => a.open && a.href);
+        if (open?.href) {
+          const opened = openExternal(open.href);
+          if (opened) setHandoff([]);
+          return { ...r.result, opened, ...(opened ? {} : { blocked: "The browser blocked the new tab. Ask the owner to tap the green button on screen." }) };
+        }
         // Outside links can't be spoken usefully; say where they point instead.
         const links = r.actions.filter((a) => a.href?.startsWith("http")).map((a) => a.label);
         return links.length ? { ...r.result, links_shown_on_screen: links } : r.result;

@@ -4,6 +4,7 @@ import { dbError, HttpError } from "@/lib/api";
 import { analyzeJob, CAREER_SOURCE } from "@/lib/career";
 import { type Job, jobDetails, type JobQuery, searchJobs } from "@/lib/external/jobs";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
+import { findProduct, STORE_IDS, type StoreId } from "@/lib/external/products";
 import { researchAndSave, webSearch } from "@/lib/external/web";
 import { addBirthday, birthdayWish, dateLabel, listBirthdays, removeBirthday, upcomingBirthdays } from "@/lib/birthdays";
 import { saveRoom } from "@/lib/call-rooms";
@@ -224,7 +225,44 @@ export const TOOLS: Record<string, Tool> = {
     async run(args, ctx) {
       const r = await webSearch(str(args.query));
       const ns = cite(ctx, r.sources.map((s) => ({ type: "web", title: s.title, href: s.url, similarity: 1 })));
-      return { answer: r.answer, sources: r.sources.map((s, i) => `[${ns[i]}] ${s.title}`) };
+      return { answer: r.answer, sources: r.sources.map((s, i) => ({ n: ns[i], site: s.title, url: s.url })) };
+    },
+  },
+  open_link: {
+    name: "open_link",
+    description:
+      "Open a web link for the owner in a new browser tab: a product page, a job's apply link, a source. Use when they say open / click / go to a link ('open the first one', 'open the Flipkart link'). Pass the exact url from an earlier tool result or your earlier answer; never guess one.",
+    parameters: obj({ url: S, label: { type: "string", description: "Short name for the button, e.g. 'Flipkart · boAt Airdopes 141'" } }, ["url"]),
+    async run(args, ctx) {
+      let u: URL;
+      try {
+        u = new URL(str(args.url));
+      } catch {
+        return { error: "That isn't a valid link." };
+      }
+      if (u.protocol !== "https:" && u.protocol !== "http:") return { error: "Only web links can be opened." };
+      const label = (str(args.label) || u.hostname.replace(/^www\./, "")).slice(0, 50);
+      ctx.actions.push({ label: `Open ${label}`, href: u.href, open: true });
+      return { opening: u.href, note: "It opens in a new tab. If the browser blocks it, a button is shown: ask the owner to tap it." };
+    },
+  },
+  find_product: {
+    name: "find_product",
+    description:
+      "Find a product to buy on Flipkart, Amazon.in and/or Meesho: exact product page links with price. Use whenever the owner asks for a product, price or buying link. 'stores' limits it to some of flipkart, amazon, meesho (default: all three).",
+    parameters: obj({ query: S, stores: { type: "array", items: { type: "string", enum: STORE_IDS } } }, ["query"]),
+    async run(args, ctx) {
+      const stores = (Array.isArray(args.stores) ? args.stores : []).filter((s): s is StoreId => STORE_IDS.includes(s as StoreId));
+      const r = await findProduct(str(args.query), stores.length ? stores : undefined);
+      cite(ctx, [...r.products, ...r.other_pages].map((p) => ({ type: "web", title: `${p.store} · ${p.title}`, href: p.url, similarity: 1 })));
+      r.products.forEach((p, i) => ctx.actions.push({ label: `${p.store} ${i + 1} · ${p.title.slice(0, 40)}`, href: p.url }));
+      r.search_links.forEach((l) => ctx.actions.push({ label: `Search ${l.store}`, href: l.url }));
+      return {
+        summary: r.summary.slice(0, 2500),
+        product_pages: r.products,
+        store_search_links: r.search_links,
+        note: "Give the owner these exact URLs (product_pages first). For a store with no product page, give its store_search_links URL. Never give a store's home page or make up a link.",
+      };
     },
   },
   get_weather: {
