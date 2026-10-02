@@ -1,8 +1,98 @@
 // HIVEMIND service worker: shows push notifications (reminders, daily brief, incoming calls)
-// even when the app is closed, and opens the right page when one is tapped.
+// even when the app is closed, and opens the right page when one is tapped. In production
+// (registered as /sw.js?cache=1) it also keeps the app pages and build files so HIVEMIND opens
+// with no network; notes and memories themselves live in IndexedDB (lib/offline.ts).
+
+const CACHE_ON = new URL(self.location.href).searchParams.get("cache") === "1";
+const PAGES = "hivemind-pages";
+const STATIC = "hivemind-static";
 
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("activate", (e) =>
+  e.waitUntil(
+    (async () => {
+      // Dev server: never serve stale build files.
+      if (!CACHE_ON) await Promise.all([caches.delete(PAGES), caches.delete(STATIC)]);
+      await self.clients.claim();
+    })(),
+  ),
+);
+
+self.addEventListener("fetch", (e) => {
+  if (!CACHE_ON) return;
+  const req = e.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  const p = url.pathname;
+  // Build files have hashed names: once fetched they never change.
+  if (p.startsWith("/_next/static/") || p.startsWith("/icons/")) return e.respondWith(cacheFirst(req));
+  if (req.mode === "navigate" && !p.startsWith("/api/") && !p.startsWith("/unlock") && !p.startsWith("/call/")) e.respondWith(page(req));
+});
+
+async function cacheFirst(req) {
+  const c = await caches.open(STATIC);
+  const hit = await c.match(req);
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (res.ok) await putStatic(c, req, res.clone());
+  return res;
+}
+
+async function putStatic(c, req, res) {
+  await c.put(req, res);
+  // Old builds' files pile up; keep the newest few hundred.
+  const keys = await c.keys();
+  if (keys.length > 500) await Promise.all(keys.slice(0, 100).map((k) => c.delete(k)));
+}
+
+// Pages: always the network when there is one; the last good copy when there isn't.
+async function page(req) {
+  const key = new URL(req.url).pathname;
+  try {
+    const res = await fetch(req);
+    // A redirect (locked → /unlock) is never kept.
+    if (res.ok && res.type === "basic" && !res.redirected) await (await caches.open(PAGES)).put(key, res.clone());
+    return res;
+  } catch {
+    const hit = await (await caches.open(PAGES)).match(key);
+    return hit || new Response(OFFLINE_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  }
+}
+
+// The app asks for its main pages (and the build files they load) to be kept, while online.
+self.addEventListener("message", (e) => {
+  if (CACHE_ON && e.data?.type === "warm" && Array.isArray(e.data.urls)) e.waitUntil(warm(e.data.urls));
+});
+
+async function warm(urls) {
+  const pages = await caches.open(PAGES);
+  const stat = await caches.open(STATIC);
+  for (const u of urls) {
+    try {
+      const res = await fetch(u, { credentials: "same-origin" });
+      if (!res.ok || res.redirected) continue;
+      const html = await res.clone().text();
+      await pages.put(u, res);
+      const assets = [...new Set(html.match(/\/_next\/static\/[^"'\s\\)]+/g) || [])];
+      await Promise.all(
+        assets.map(async (a) => {
+          if (await stat.match(a)) return;
+          const r = await fetch(a).catch(() => null);
+          if (r?.ok) await putStatic(stat, a, r);
+        }),
+      );
+    } catch {}
+  }
+}
+
+const OFFLINE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HIVEMIND · offline</title><style>
+:root{color-scheme:dark}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d1117;color:#e6edf3;font:15px/1.5 system-ui,sans-serif;padding:16px}
+main{max-width:360px;text-align:center}h1{font:600 13px ui-monospace,monospace;letter-spacing:.3em;margin:0 0 16px}
+p{color:#8b949e;margin:0 0 20px}a,button{display:inline-block;margin:4px;padding:8px 14px;border:1px solid #30363d;border-radius:6px;color:#e6edf3;background:#161b22;text-decoration:none;font:inherit;cursor:pointer}
+</style></head><body><main><h1>HIVEMIND</h1><p>You're offline and this page isn't saved on this device yet. Your notes and memories still work.</p>
+<a href="/notes">Notes</a><a href="/memories">Memories</a><button onclick="location.reload()">Try again</button></main></body></html>`;
 
 self.addEventListener("push", (e) => {
   let n = {};

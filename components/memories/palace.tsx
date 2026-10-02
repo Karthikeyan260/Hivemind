@@ -48,9 +48,10 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose }: P
     setTouch(matchMedia("(pointer: coarse)").matches);
     (async () => {
       await document.fonts?.ready;
-      const mod = await import("./palace-scene");
-      if (!alive || !canvas.current) return;
       try {
+        // Offline before the palace was ever opened, its 3D code isn't on this device yet.
+        const mod = await import("./palace-scene");
+        if (!alive || !canvas.current) return;
         s = new mod.PalaceScene(canvas.current, items, {
           onOpen: (id) => openRef.current(id),
           onClose: (id) => closeRef.current(id),

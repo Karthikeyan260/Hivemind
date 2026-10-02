@@ -1,23 +1,50 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { canCache, canQueue, isNetworkError, offlineRead, queueWrite, readCache, rememberWrite, resolvePath, writeCache } from "@/lib/offline";
 
 export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, ...rest } = init;
-  const res = await fetch(path, {
-    ...rest,
-    headers: json !== undefined ? { "Content-Type": "application/json", ...rest.headers } : rest.headers,
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
+  const method = (rest.method ?? "GET").toUpperCase();
+  path = await resolvePath(path);
+  // Offline, or editing something whose create hasn't synced yet: notes and memories work locally.
+  if (!navigator.onLine || path.includes("/local-")) return offline<T>(method, path, json);
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...rest,
+      headers: json !== undefined ? { "Content-Type": "application/json", ...rest.headers } : rest.headers,
+      body: json !== undefined ? JSON.stringify(json) : rest.body,
+    });
+  } catch (e) {
+    if (isNetworkError(e)) return offline<T>(method, path, json);
+    throw e;
+  }
   if (res.status === 401) {
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- plain helper, no router here
     window.location.assign("/unlock");
     throw new Error("Locked");
   }
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) {
+    if (canQueue(method, path)) await rememberWrite(method, path);
+    return undefined as T;
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+  if (method === "GET" && canCache(path)) void writeCache(path, data);
+  else if (canQueue(method, path)) await rememberWrite(method, path, data);
   return data as T;
+}
+
+/** No network: answer reads from this device and queue note/memory writes until it's back. */
+async function offline<T>(method: string, path: string, json: unknown): Promise<T> {
+  if (method === "GET" && canCache(path)) {
+    const cached = await offlineRead<T>(path);
+    if (cached !== undefined) return cached;
+    throw new Error("You're offline, and this wasn't saved on this device yet.");
+  }
+  if (canQueue(method, path)) return (await queueWrite(method as "POST" | "PUT" | "DELETE", path, json as Record<string, unknown>)) as T;
+  throw new Error("You're offline. This needs a connection.");
 }
 
 /** Fired when the brain changes outside the page's own actions (e.g. by voice). */
@@ -31,8 +58,13 @@ export function useFetch<T>(path: string | null) {
   const reload = useCallback(async () => {
     if (!path) return;
     setLoading(true);
+    // Show this device's copy at once while the network answers.
+    let fresh = false;
+    if (canCache(path)) void readCache<T>(path).then((c) => c !== undefined && !fresh && setData((d) => d ?? c));
     try {
-      setData(await api<T>(path));
+      const next = await api<T>(path);
+      fresh = true;
+      setData(next);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

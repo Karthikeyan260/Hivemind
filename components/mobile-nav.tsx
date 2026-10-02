@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cx } from "@/components/ui";
 import { isPublicPage } from "@/lib/public-paths";
+import { clearOfflineCache } from "@/lib/offline";
 
 const TABS = [
   { label: "Home", href: "/", icon: Sparkles },
@@ -44,6 +45,7 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
 
   async function lock() {
     await fetch("/api/unlock", { method: "DELETE" });
+    await clearOfflineCache();
     router.replace("/unlock");
     router.refresh();
   }

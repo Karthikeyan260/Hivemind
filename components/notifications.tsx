@@ -4,14 +4,19 @@ import { Bell, BellOff, BellRing } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { cx } from "@/components/ui";
+import { startOfflineSync } from "@/lib/offline";
 import { isPublicPage } from "@/lib/public-paths";
 
-/** Registers the service worker that shows notifications while HIVEMIND is closed. */
+/** Production builds also cache the app for offline use; the dev server never does (stale chunks). */
+const SW_URL = process.env.NODE_ENV === "production" ? "/sw.js?cache=1" : "/sw.js";
+
+/** Registers the service worker (notifications while HIVEMIND is closed, offline pages) and offline sync. */
 export function ServiceWorker() {
   const path = usePathname();
   useEffect(() => {
-    if (isPublicPage(path) || !("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    if (isPublicPage(path)) return;
+    startOfflineSync();
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register(SW_URL).catch(() => {});
   }, [path]);
   return null;
 }
@@ -75,7 +80,7 @@ export function NotificationsCard() {
     setMsg("");
     try {
       if ((await Notification.requestPermission()) !== "granted") return setState("denied");
-      const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register("/sw.js"));
+      const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register(SW_URL));
       await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(key!) });
       const r = await fetch("/api/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: sub.toJSON(), device: deviceName() }) });

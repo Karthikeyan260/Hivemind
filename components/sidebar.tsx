@@ -4,6 +4,7 @@ import { Brain, Briefcase, CalendarHeart, FileText, FolderKanban, GitBranch, Loc
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cx } from "@/components/ui";
+import { clearOfflineCache } from "@/lib/offline";
 
 const NAV = [
   { label: "HIVEMIND", href: "/", icon: Sparkles },
@@ -26,6 +27,7 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
 
   async function lock() {
     await fetch("/api/unlock", { method: "DELETE" });
+    await clearOfflineCache();
     router.replace("/unlock");
     router.refresh();
   }
