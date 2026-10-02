@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { useVoice } from "@/components/voice/provider";
-import { MUSIC_EVENT } from "@/lib/client-api";
+import { MEDIA_START_EVENT, MUSIC_EVENT } from "@/lib/client-api";
 import { isPublicPage } from "@/lib/public-paths";
 
 /**
@@ -101,10 +101,13 @@ export function MusicPlayer() {
     [link],
   );
 
-  const search = useCallback(async (q: string, n = 20) => {
-    const r = await fetch(`/api/music/search?q=${encodeURIComponent(q)}&n=${n}`);
+  // How the last request was understood: a plain search, an editors' playlist, or AI-picked songs.
+  const picked = useRef<{ how?: string; label?: string }>({});
+  const search = useCallback(async (q: string, n = 20, raw = false) => {
+    const r = await fetch(`/api/music/search?q=${encodeURIComponent(q)}&n=${n}${raw ? "&raw=1" : ""}`);
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.error ?? "Music search failed.");
+    if (!raw) picked.current = { how: data.how, label: data.label };
     return (data.songs ?? []) as Song[];
   }, []);
 
@@ -114,7 +117,7 @@ export function MusicPlayer() {
     // End of the queue: keep going with more by the same artists.
     const cur = q[i];
     if (!cur) return false;
-    const more = (await search(`${cur.artists.split(",")[0]} songs`, 15).catch(() => [])).filter((s) => !q.some((x) => x.id === s.id));
+    const more = (await search(`${cur.artists.split(",")[0]} songs`, 15, true).catch(() => [])).filter((s) => !q.some((x) => x.id === s.id));
     if (!more.length) return false;
     return playAt([...q, ...more], i + 1);
   }, [playAt, search]);
@@ -165,6 +168,9 @@ export function MusicPlayer() {
           return {
             playing: about(songs[0]),
             up_next: songs.slice(1, 4).map((s) => s.title),
+            // Say where the songs came from: an editors' playlist, or picked to match the mood.
+            ...(picked.current.how === "playlist" ? { from_playlist: picked.current.label } : picked.current.how === "ai" ? { picked_to_match: q } : {}),
+            queue_length: songs.length,
             ...(ok ? {} : { note: "The browser needs one tap: ask the owner to tap Play on the music bar at the bottom." }),
           };
         }
@@ -212,10 +218,16 @@ export function MusicPlayer() {
       return { error: "Unknown music action." };
     };
     const fromChat = (e: Event) => void control?.((e as CustomEvent<MusicCommand>).detail).catch(() => {});
+    // A video started: pause the music (one thing plays at a time).
+    const other = (e: Event) => {
+      if ((e as CustomEvent<{ source: string }>).detail?.source !== "music") audio.current?.pause();
+    };
     window.addEventListener(MUSIC_EVENT, fromChat);
+    window.addEventListener(MEDIA_START_EVENT, other);
     return () => {
       control = null;
       window.removeEventListener(MUSIC_EVENT, fromChat);
+      window.removeEventListener(MEDIA_START_EVENT, other);
     };
   }, [search, playAt, next, previous]);
 
@@ -273,7 +285,10 @@ export function MusicPlayer() {
       <audio
         ref={audio}
         preload="auto"
-        onPlay={() => setPlaying(true)}
+        onPlay={() => {
+          setPlaying(true);
+          window.dispatchEvent(new CustomEvent(MEDIA_START_EVENT, { detail: { source: "music" } }));
+        }}
         onPause={() => setPlaying(false)}
         onEnded={() => void next()}
         onError={() => void onError()}

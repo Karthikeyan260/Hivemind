@@ -951,6 +951,20 @@ export const TOOLS: Record<string, Tool> = {
     },
   },
 
+  play_video: {
+    name: "play_video",
+    description:
+      "Play a video in HIVEMIND's video window on the owner's screen (YouTube's player, free): trailers, video songs, how-tos, clips. Also next / previous / pause / resume / close / fullscreen. NEVER use web_task or links for videos. action: play (with query), add (play next), next, previous, pause, resume, stop, fullscreen.",
+    parameters: obj({ action: { type: "string", enum: ["play", "add", "next", "previous", "pause", "resume", "stop", "fullscreen"] }, query: S }, ["action"]),
+    async run(args, ctx) {
+      const action = str(args.action) || "play";
+      const query = str(args.query);
+      if ((action === "play" || action === "add") && !query) return { error: "Say what to watch." };
+      ctx.actions.push({ label: query ? `▶ ${query}` : `▶ ${action}`, href: `video:${encodeURIComponent(JSON.stringify({ action, query }))}` });
+      return { done: action, query, note: "It opens in the video window on screen. Say it in a few words; don't add links." };
+    },
+  },
+
   /* ───── web agent (imported lazily: it pulls in the browser driver) ───── */
   web_task: {
     name: "web_task",

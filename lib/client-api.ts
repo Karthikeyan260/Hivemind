@@ -53,6 +53,10 @@ export const BRAIN_CHANGED = "hivemind:brain-changed";
 export const WEB_TASK_EVENT = "hivemind:web-task";
 /** A music request from chat (play_music): the on-screen player acts on it. */
 export const MUSIC_EVENT = "hivemind:music";
+/** A video request from chat (play_video): the on-screen video player acts on it. */
+export const VIDEO_EVENT = "hivemind:video";
+/** Music or video started: the other player pauses (one thing plays at a time). detail: { source } */
+export const MEDIA_START_EVENT = "hivemind:media-start";
 
 export function useFetch<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
@@ -209,10 +213,11 @@ export async function streamHivemind(body: object, onEvent: (e: HiveEvent) => vo
       buf = buf.slice(nl + 1);
       if (!line) continue;
       const e = JSON.parse(line) as HiveEvent;
-      // play_music: hand it to the on-screen player instead of showing a link.
-      if (e.type === "action" && e.href?.startsWith("music:")) {
+      // play_music / play_video: hand it to the on-screen player instead of showing a link.
+      const media = e.type === "action" && e.href?.match(/^(music|video):(.*)$/);
+      if (media) {
         try {
-          window.dispatchEvent(new CustomEvent(MUSIC_EVENT, { detail: JSON.parse(decodeURIComponent(e.href.slice(6))) }));
+          window.dispatchEvent(new CustomEvent(media[1] === "music" ? MUSIC_EVENT : VIDEO_EVENT, { detail: JSON.parse(decodeURIComponent(media[2])) }));
         } catch {}
         continue;
       }
