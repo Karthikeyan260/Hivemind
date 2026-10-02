@@ -86,6 +86,104 @@ export async function searchSongs(query: string, count = 20): Promise<Song[]> {
 
 const LANGUAGES = ["tamil", "telugu", "hindi", "malayalam", "kannada", "english", "punjabi", "bengali", "marathi"];
 
+// ---------- understanding the request ("amma sentiment", "gana", "90s melody") ----------
+
+/** Words that describe a mood, theme or genre rather than name a song. */
+const MOOD =
+  /\b(sentiment(al)?|emotional|sad|pain|breakup|love|romantic|melody|melodies|gana|kuthu|folk|devotional|bhakti|amma|appa|mother|father|friend(ship)?|motivational|inspir\w*|workout|gym|party|dance|mass|rain|night|sleep|lullaby|wedding|marriage|festival|happy|feel ?good|chill|relax\w*|calm|soothing|old|classic|evergreen|retro|vintage|\d0s|\d{4}s|bgm|instrumental|trending|viral|latest|new releases?|top|hits)\b/i;
+const FILLER = new Set(["song", "songs", "music", "track", "tracks", "play", "some", "the", "a", "an", "of", "for", "me", "my", "any", "good", "best", "nice", "please", "pls", "list", "playlist", "video", ...["tamil", "telugu", "hindi", "malayalam", "kannada", "english", "punjabi", "bengali", "marathi"]]);
+const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9஀-௿ ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !FILLER.has(w));
+
+type Pick = { songs: Song[]; how: "search" | "playlist" | "ai"; label?: string };
+
+/**
+ * What to play for a request. A song or artist name plays as found; a mood or theme ("amma
+ * sentiment", "gana", "90s melody") plays a matching JioSaavn editors' playlist, or songs the AI
+ * knows fit (each one checked against JioSaavn, so only real, playable songs are queued).
+ */
+export async function smartSongs(query: string): Promise<Pick> {
+  const topic = words(query);
+  const language = LANGUAGES.find((l) => new RegExp(`\\b${l}\\b`, "i").test(query)) ?? (process.env.MUSIC_LANGUAGE || "tamil");
+  const direct = await searchSongs(query).catch(() => [] as Song[]);
+  // Named a song / artist / film: every topic word shows up in the top results.
+  const hay = (s: Song) => `${s.title} ${s.artists} ${s.album}`.toLowerCase();
+  const named = direct.slice(0, 3).some((s) => topic.length > 0 && topic.every((w) => hay(s).includes(w)));
+  if (!MOOD.test(query) && (named || !topic.length) && direct.length) return { songs: direct, how: "search" };
+
+  // Only the meaningful words: JioSaavn's playlist search gets lost on "song", "play", "some".
+  const list = await moodPlaylist(`${topic.join(" ")} ${language}`.trim(), topic, language).catch(() => null);
+  if (list && list.songs.length >= 5) return list;
+
+  const ai = await aiSongs(query, language).catch(() => [] as Song[]);
+  if (ai.length >= 3) return { songs: ai, how: "ai" };
+  return { songs: list?.songs.length ? list.songs : direct, how: list?.songs.length ? "playlist" : "search", label: list?.label };
+}
+
+/** The best JioSaavn editors' playlist whose name shares a word with the request. */
+async function moodPlaylist(query: string, topic: string[], language: string): Promise<Pick | null> {
+  const r = await call<{ results?: { id: string; title: string; more_info?: { language?: string; song_count?: string; firstname?: string } }[] }>({ __call: "search.getPlaylistResults", ctx: "web6dot0", q: query, n: "10", p: "1" });
+  const scored = (r.results ?? [])
+    .map((p) => {
+      const name = words(unescape(p.title));
+      // The same word counts most ("Amma Amma" for amma); a close one less ("Amman", a devotional list).
+      const exact = topic.filter((w) => name.includes(w)).length;
+      const close = topic.filter((w) => !name.includes(w) && name.some((n) => n.startsWith(w.slice(0, 5)) || w.startsWith(n.slice(0, 5)))).length;
+      const lang = (p.more_info?.language ?? "").toLowerCase();
+      return { p, score: exact * 10 + close * 6 + (lang === language ? 3 : 0) + (p.more_info?.firstname === "JioSaavn" ? 2 : 0) };
+    })
+    .filter((x) => x.score >= 6) // at least one word of the request (or a close form) in the playlist's name
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0]?.p;
+  if (!best) return null;
+  const d = await call<{ list?: Raw[] }>({ __call: "playlist.getDetails", ctx: "web6dot0", listid: best.id, n: "40", p: "1" });
+  const songs = (d.list ?? []).map(toSong).filter((s): s is Song => !!s);
+  // A different order each time, so "play amma songs" doesn't always start the same way.
+  for (let i = songs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [songs[i], songs[j]] = [songs[j], songs[i]];
+  }
+  return { songs, how: "playlist", label: unescape(best.title) };
+}
+
+/** Songs the AI knows fit the mood, kept only if JioSaavn really has them. */
+async function aiSongs(query: string, language: string): Promise<Song[]> {
+  const { generateWithFallback, parseJson } = await import("@/lib/ai/providers");
+  const { z } = await import("zod");
+  const r = await generateWithFallback(
+    [{ role: "user", content: `Request: "${query}"` }],
+    {
+      system: `You know Indian film and independent music very well. List 12 real, well-known ${language} songs that best match the request (mood, theme, genre or era). Only songs you are sure exist; prefer popular ones. JSON only: {"songs":[{"title":"","film":"","artist":""}]}`,
+      json: true,
+      temperature: 0.4,
+      maxTokens: 900,
+      // Knowing real Tamil film songs takes a well-read model: the small fast ones invent titles.
+      order: ["gemini", "github", "openrouter", "nvidia"],
+    },
+  );
+  const out = parseJson(r.text, z.object({ songs: z.array(z.object({ title: z.string(), film: z.string().optional().default(""), artist: z.string().optional().default("") })).max(15) }));
+  if (!out) return [];
+  const norm = (s: string) => s.toLowerCase().replace(/\(.*?\)|[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  const found = await Promise.all(
+    out.songs.map(async (t) => {
+      const hits = await searchSongs(`${t.title} ${t.film}`.trim(), 5).catch(() => [] as Song[]);
+      const want = norm(t.title);
+      const film = norm(t.film).split(" ")[0] ?? "";
+      const artist = norm(t.artist).split(" ").find((w) => w.length > 3) ?? "";
+      // The full title, and (when the AI named them) the film or the artist too: no look-alikes.
+      return (
+        hits.find((h) => {
+          if (!norm(h.title).startsWith(want)) return false;
+          if (!film && !artist) return true;
+          const where = `${norm(h.album)} ${norm(h.artists)}`;
+          return (!!film && where.includes(film)) || (!!artist && where.includes(artist));
+        }) ?? null
+      );
+    }),
+  );
+  const seen = new Set<string>();
+  return found.filter((s): s is Song => !!s && !seen.has(s.id) && !!seen.add(s.id));
+}
+
 /**
  * A fresh link to the full song (320 kbps when available). The app route's links play from any site;
  * the website's need a jiosaavn.com referrer. Links expire after a few hours, so fetch at play time.
