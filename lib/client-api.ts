@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getFix, lastFix } from "@/lib/location";
+
+/** Chat messages about places or the way somewhere: worth asking the device where it is. */
+const LOCATION_WORDS = /\b(where am i|my location|near me|nearby|nearest|how far|directions?|way to|route to|reach|navigate)\b/i;
 import { canCache, canQueue, isNetworkError, offlineRead, queueWrite, readCache, rememberWrite, resolvePath, writeCache } from "@/lib/offline";
 
 export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
@@ -185,11 +189,13 @@ export type HiveEvent =
   | { type: "error"; message: string };
 
 /** Streams HIVEMIND's newline-delimited JSON events. */
-export async function streamHivemind(body: object, onEvent: (e: HiveEvent) => void) {
+export async function streamHivemind(body: { message?: string } & Record<string, unknown>, onEvent: (e: HiveEvent) => void) {
+  // Asking about places or the way somewhere: send where this device is (the browser asks the first time).
+  const fix = LOCATION_WORDS.test(body.message ?? "") ? await getFix() : lastFix();
   const res = await fetch("/api/hivemind", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, ...(fix ? { location: { lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy, device: fix.device } } : {}) }),
   });
   if (res.status === 401) {
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- plain helper, no router here

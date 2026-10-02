@@ -8,8 +8,8 @@ const SECURITY_HEADERS = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // Mic for voice and calls, camera for future photo capture: this site only. Nothing else.
-  { key: "Permissions-Policy", value: "microphone=(self), camera=(self), geolocation=(), payment=(), usb=(), interest-cohort=()" },
+  // Mic for voice and calls, camera for future photo capture, location for maps and directions: this site only.
+  { key: "Permissions-Policy", value: "microphone=(self), camera=(self), geolocation=(self), payment=(), usb=(), interest-cohort=()" },
 ];
 
 const nextConfig: NextConfig = {

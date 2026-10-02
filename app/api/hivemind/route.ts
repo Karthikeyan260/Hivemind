@@ -21,6 +21,7 @@ const Body = z.object({
   message: z.string().trim().min(1).max(4000),
   conversation_id: z.uuid().nullable().optional(),
   project_id: z.uuid().nullable().optional(),
+  location: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().min(0).max(100_000).optional(), device: z.string().max(60).optional() }).nullable().optional(),
 });
 
 export type StreamEvent =
@@ -55,7 +56,7 @@ If the brain doesn't contain the answer, say so plainly and suggest what to save
  */
 export const POST = handle(async (req: Request) => {
   const supabase = db();
-  const { message, conversation_id, project_id } = await parseBody(req, Body);
+  const { message, conversation_id, project_id, location } = await parseBody(req, Body);
 
   let conversationId = conversation_id ?? null;
   let history: ChatMessage[] = [];
@@ -101,7 +102,7 @@ export const POST = handle(async (req: Request) => {
         via = route.via;
         send({ type: "meta", conversation_id: conversationId!, intent, sources });
 
-        const ctx: RunContext = { supabase, projectId: project_id ?? null, conversationId: conversationId!, origin: process.env.APP_URL || new URL(req.url).origin, sources, actions, changed: false, jobs: null, pendingDelete: null, emit: (e) => {
+        const ctx: RunContext = { supabase, projectId: project_id ?? null, conversationId: conversationId!, origin: process.env.APP_URL || new URL(req.url).origin, sources, actions, changed: false, jobs: null, pendingDelete: null, location: location ?? undefined, emit: (e) => {
             trace.push(e);
             send(e);
           } };

@@ -14,6 +14,7 @@
     "@react-pdf/renderer": "^4.9.0",
     "@supabase/supabase-js": "^2.117.2",
     "gsap": "^3.15.0",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.48.0",
     "mammoth": "^1.13.0",
     "next": "16.3.6",
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

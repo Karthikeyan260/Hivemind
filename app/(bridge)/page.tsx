@@ -51,6 +51,7 @@ const NAV = [
   { href: "/", label: "Overview" },
   { href: "/autopilot", label: "Autopilot" },
   { href: "/web", label: "Web" },
+  { href: "/map", label: "Map" },
   { href: "/projects", label: "Projects" },
   { href: "/career", label: "Career" },
   { href: "/journey", label: "Journey" },

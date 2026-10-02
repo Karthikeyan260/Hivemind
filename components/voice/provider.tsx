@@ -8,6 +8,10 @@ import { type VideoCommand, videoCommand } from "@/components/video/player";
 import { isPublicPage } from "@/lib/public-paths";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
 import { SentenceStream, Speaker } from "@/lib/voice";
+import { getFix } from "@/lib/location";
+
+/** Tools that use where this device is. */
+const LOCATION_TOOLS = new Set(["where_am_i", "places_nearby", "directions"]);
 import { openExternal } from "@/lib/open-link";
 import { click, listControls, scroll, selectOption, typeText } from "./dom-tools";
 
@@ -144,7 +148,7 @@ const SLEEP_WORDS = {
     /^\W*(ok(ay)?\W+)?(good ?night|bye[ -]?bye|goodbye|bye)(\W+(hivemind|for now|then))?\W*$/i.test(q.trim()),
 };
 
-const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/habits", "/notes", "/documents", "/sources", "/search", "/settings", "/autopilot", "/web"];
+const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/habits", "/notes", "/documents", "/sources", "/search", "/settings", "/autopilot", "/web", "/map"];
 
 /**
  * One Gemini Live session for the whole site. It lives in the root layout, so the conversation keeps
@@ -283,10 +287,12 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         const vague = !/[a-z]{4,}/i.test(String(args.which ?? "").replace(/\b(this|that|current|open|one|analysis|job|delete)\b/gi, ""));
         if (name === "delete_job_analysis" && !args.id && openId && location.pathname.startsWith("/career") && vague) args = { ...args, id: openId };
         if (name === "open_source" && !args.about && !turn.current.sources.length && lastSources.current[0]) args = { ...args, about: lastSources.current[0].title };
+        // Map tools need to know where this device is (the browser asks the first time).
+        const fix = LOCATION_TOOLS.has(name) ? await getFix() : null;
         const r = (await call("/api/agent-tool", "POST", {
           name,
           args,
-          state: { jobs: st.jobs, pending_delete: pending },
+          state: { jobs: st.jobs, pending_delete: pending, ...(fix ? { location: { lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy, device: fix.device } } : {}) },
         })) as unknown as AgentToolOut;
         if (r.jobs) st.jobs = r.jobs;
         // The floating browser window picks up a new / answered web task at once.

@@ -19,6 +19,7 @@ const Body = z.object({
         .object({ id: z.uuid(), title: z.string() })
         .nullable()
         .optional(),
+      location: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().min(0).max(100_000).optional(), device: z.string().max(60).optional() }).optional(),
     })
     .default({}),
 });
@@ -48,6 +49,7 @@ export const POST = handle(async (req: Request) => {
       pendingDelete: state.pending_delete ?? undefined,
     },
     emit: () => {},
+    location: state.location,
   };
   const result = await tool.run(args, ctx);
   return NextResponse.json({

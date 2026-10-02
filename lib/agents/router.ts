@@ -34,6 +34,8 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (/\b(jobs|job (openings?|search|listings?|vacanc(y|ies))|openings|vacanc(y|ies))\b/.test(m)) return "career";
   // "open the first one" / "click the Flipkart link" right after links were shown stays with that agent.
   if ((previous === "research" || previous === "career") && /\b(open|click|tap|go to|visit)\b.*\b(link|first|second|third|fourth|fifth|last|one|it|that|\d|flipkart|amazon|meesho|zepto|blinkit|instamart|bigbasket|page|apply)\b/.test(m)) return previous;
+  // Maps: "where am I", "parks near me", "how far is AGS Villivakkam", "where's my phone".
+  if (/\b(where am i|my (current )?location|near me|nearby|nearest|how far|directions?|way to|route to|how (do|can) i (go|get|reach|walk)|navigate|where('s| is) my (phone|laptop|mobile))\b/.test(m)) return "research";
   // Videos open in HIVEMIND's video window: "play the Leo trailer", "show me Vibe Venuma video".
   if (/\b(play|watch|show( me)?|put on|open)\b.*\b(videos?|trailers?|teasers?|clips?|vlogs?|how[- ]to)\b|\b(next|previous|pause|resume|close|stop)( the)? video\b|\bfull ?screen\b/.test(m)) return "core";
   if (/\b(videos?|trailers?|teasers?)\b/.test(m) && !/\b(video ?call|call)\b/.test(m)) return "core";

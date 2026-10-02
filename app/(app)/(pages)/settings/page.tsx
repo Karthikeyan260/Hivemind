@@ -1,5 +1,6 @@
 import { LanguageCard } from "@/components/language";
 import { MyVoiceCard } from "@/components/my-voice";
+import { LocationCard } from "@/components/location-card";
 import { NotificationsCard } from "@/components/notifications";
 import { providers } from "@/lib/ai/providers";
 
@@ -43,6 +44,8 @@ export default function SettingsPage() {
       <LanguageCard />
 
       <MyVoiceCard />
+
+      <LocationCard />
 
       <NotificationsCard />
 

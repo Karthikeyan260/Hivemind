@@ -31,6 +31,8 @@ export type RunContext = {
   pendingDelete: { id: string; title: string } | null;
   /** State from earlier turns kept by the caller instead of chat history (live voice keeps it in the browser). */
   carried?: { jobs?: Job[]; pendingDelete?: { id: string; title: string } };
+  /** Where the device asking is (sent by the browser when the owner allowed location), for maps and directions. */
+  location?: { lat: number; lng: number; accuracy?: number; device?: string };
   emit: (e: AgentEvent) => void;
 };
 

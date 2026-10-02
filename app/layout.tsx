@@ -6,6 +6,7 @@ import { OfflineStatusPill } from "@/components/offline-status";
 import { WebTaskWindow } from "@/components/web/live-window";
 import { MusicPlayer } from "@/components/music/player";
 import { VideoPlayer } from "@/components/video/player";
+import { LocationReporter } from "@/components/location-card";
 import { ReminderWatcher } from "@/components/reminders/watcher";
 import { HandoffCard, VoiceDock } from "@/components/voice/dock";
 import { VoiceProvider } from "@/components/voice/provider";
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <WebTaskWindow />
           <MusicPlayer />
           <VideoPlayer />
+          <LocationReporter />
           <MobileNav canLock={passwordRequired()} />
           <ReminderWatcher />
         </VoiceProvider>
