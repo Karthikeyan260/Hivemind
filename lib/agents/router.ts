@@ -12,6 +12,8 @@ const RouteSchema = z.object({ agent: z.enum(AGENT_IDS) });
 export function ruleBasedAgent(message: string, previous?: AgentId | null): AgentId | null {
   const m = message.trim().toLowerCase();
   if (/^(hi|hello|hey|thanks|thank you|good (morning|night|evening))\b[\s!.]*$/.test(m)) return "core";
+  // Self-built apps: "make me an app to track petrol", "delete the gym app", "what apps do I have".
+  if (/\b(make|build|create|design)\b.*\b(app|tool|tracker)\b|\b(open|delete|remove|change|update|fix)\b.*\bapp\b|\b(my|what) apps\b/.test(m)) return "core";
   if (/\bauto ?pilot\b|\b(anything|what) (i should know|needs my attention)\b/.test(m)) return "core";
   if (/\b(birthdays?|bday|anniversar(y|ies)|habits?|streaks?)\b|^i (just )?(did|finished|completed) (my |the )?\w+|^done with (my |the )?\w+|\b(track|log)\b.*\b(daily|every|habit)\b/.test(m)) return "scheduler";
   if (/\b(remind(er)?s?|schedule|meeting|appointment|deadline|agenda|calendar|my day|on today|on tomorrow)\b|\bmark\b.*\b(done|complete)\b|\b(cancel|reschedule|postpone|move)\b.*\b(meeting|call|reminder|appointment|it)\b|\b(plans?|free|busy)\b.*\b(today|tomorrow|tonight)\b|\b(today|tomorrow)\b.*\b(at \d|am\b|pm\b)/.test(m)) return "scheduler";

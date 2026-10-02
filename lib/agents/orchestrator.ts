@@ -5,6 +5,7 @@ import type { ChatMessage } from "@/lib/ai/types";
 import { nowForPrompt } from "@/lib/reminders";
 import { agentRoster, AGENTS } from "./registry";
 import { TOOLS } from "./tools";
+import { intentCheck } from "./intent";
 import { AGENT_IDS, type Agent, type AgentId, type RunContext } from "./types";
 
 const MODELS = [...new Set([process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite", process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash"])];
@@ -54,6 +55,8 @@ const DESTRUCTIVE = new Set([
   "web_task_answer",
   "web_task_delete",
   "autopilot_update",
+  "change_app",
+  "delete_app",
 ]);
 
 type RunOpts = {
@@ -166,6 +169,9 @@ export async function runAgent(o: RunOpts): Promise<{ text: string; model: strin
           } else if ((depth > 0 || o.agent) && DESTRUCTIVE.has(name)) {
             // A delegated run works from a colleague's instructions, which may carry text from the web.
             throw new Error(`"${name}" needs the owner's direct request; ask them instead.`);
+          } else if (agent.tools.includes(name) && intentCheck(name, o.message)) {
+            // A web page / document / search result asked for it, not the owner: refuse.
+            throw new Error(intentCheck(name, o.message)!);
           } else if (agent.tools.includes(name)) {
             response = await TOOLS[name].run(args, o.ctx);
           } else {

@@ -37,6 +37,13 @@ const ICONS: Record<string, typeof Compass> = {
 };
 const PRIORITY = { 3: { label: "Today", tone: "core" }, 2: { label: "This week", tone: "data" }, 1: { label: "FYI", tone: "neutral" } } as const;
 
+/** Marks a one-tap request as coming from HIVEMIND itself, so the home page runs it (links from outside only fill the box). */
+function armAsk(text: string) {
+  try {
+    sessionStorage.setItem("hivemind-ask", text);
+  } catch {}
+}
+
 export default function AutopilotPage() {
   const router = useRouter();
   const feed = useFetch<Feed>("/api/autopilot");
@@ -87,6 +94,7 @@ export default function AutopilotPage() {
         if (!i) return { error: "No open insight like that.", open: open.map((x) => x.title) };
         if (!i.ask) return { error: `"${i.title}" has no one-tap request.`, link: i.link?.url };
         void mark(i.id, "done");
+        armAsk(i.ask);
         router.push(`/?ask=${encodeURIComponent(i.ask)}`);
         return { running: i.ask };
       },
@@ -194,7 +202,7 @@ export default function AutopilotPage() {
                     {i.body && <p className="mt-1 text-sm leading-relaxed text-soft">{i.body}</p>}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       {i.ask && (
-                        <Link href={`/?ask=${encodeURIComponent(i.ask)}`} onClick={() => mark(i.id, "done")} className="inline-flex h-7 items-center gap-1.5 rounded-md bg-core px-2.5 text-xs font-medium text-core-ink hover:bg-core/85" title={i.ask}>
+                        <Link href={`/?ask=${encodeURIComponent(i.ask)}`} onClick={() => { armAsk(i.ask!); void mark(i.id, "done"); }} className="inline-flex h-7 items-center gap-1.5 rounded-md bg-core px-2.5 text-xs font-medium text-core-ink hover:bg-core/85" title={i.ask}>
                           <Sparkles size={13} /> Do it
                         </Link>
                       )}

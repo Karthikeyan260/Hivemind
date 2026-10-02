@@ -1,16 +1,18 @@
 "use client";
 
-import { Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
+import { Blocks, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cx } from "@/components/ui";
 import { clearOfflineCache } from "@/lib/offline";
+import { useMyApps } from "@/components/apps/nav-apps";
 
 const NAV = [
   { label: "HIVEMIND", href: "/", icon: Sparkles },
   { label: "Autopilot", href: "/autopilot", icon: Compass },
   { label: "Web tasks", href: "/web", icon: Globe },
   { label: "Map", href: "/map", icon: MapIcon },
+  { label: "Apps", href: "/apps", icon: Blocks },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Memories", href: "/memories", icon: Brain },
   { label: "Career", href: "/career", icon: Briefcase },
@@ -25,6 +27,7 @@ const NAV = [
 
 export function Sidebar({ canLock }: { canLock: boolean }) {
   const path = usePathname();
+  const myApps = useMyApps();
   const router = useRouter();
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
@@ -61,6 +64,22 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
               {label}
             </Link>
           ))}
+          {/* Apps HIVEMIND built: each one gets its own menu entry. */}
+          {myApps.length > 0 && (
+            <div className="mt-1 border-t border-line/60 pt-1">
+              {myApps.map((a) => (
+                <Link
+                  key={a.id}
+                  href={`/apps/${a.id}`}
+                  aria-current={path === `/apps/${a.id}` ? "page" : undefined}
+                  className={cx("flex items-center gap-3 rounded-md px-3 py-1.5 text-[13px]", path === `/apps/${a.id}` ? "bg-raised text-fg" : "text-soft hover:bg-raised/60 hover:text-fg")}
+                >
+                  <span className="w-4 text-center text-sm leading-none">{a.emoji}</span>
+                  <span className="truncate">{a.name}</span>
+                </Link>
+              ))}
+            </div>
+          )}
         </nav>
         {canLock && (
           <button onClick={lock} className="mx-3 mb-4 flex items-center gap-3 rounded-md px-3 py-2 text-sm text-faint hover:bg-raised/60 hover:text-fg">

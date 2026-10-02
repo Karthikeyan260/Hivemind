@@ -9,6 +9,7 @@ import { isPublicPage } from "@/lib/public-paths";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
 import { SentenceStream, Speaker } from "@/lib/voice";
 import { deviceName, getFix, setSharing } from "@/lib/location";
+import { intentCheck } from "@/lib/agents/intent";
 import { clearOfflineCache } from "@/lib/offline";
 
 /** Tools that use where this device is. */
@@ -149,7 +150,7 @@ const SLEEP_WORDS = {
     /^\W*(ok(ay)?\W+)?(good ?night|bye[ -]?bye|goodbye|bye)(\W+(hivemind|for now|then))?\W*$/i.test(q.trim()),
 };
 
-const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/habits", "/notes", "/documents", "/sources", "/search", "/settings", "/autopilot", "/web", "/map"];
+const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/habits", "/notes", "/documents", "/sources", "/search", "/settings", "/autopilot", "/web", "/map", "/apps"];
 
 /**
  * One Gemini Live session for the whole site. It lives in the root layout, so the conversation keeps
@@ -276,6 +277,9 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         if (name === "web_task_answer" && args.decision === "approve" && !/\b(approve[ds]?|yes|yeah|yep|go ahead|do it|submit|confirm|ok(ay)?|sure|proceed|haan|seri|sari)\b/i.test(turn.current.q)) {
           return { error: "Only the owner can approve. Tell them the step and ask 'Should I approve it?', then wait for their answer." };
         }
+        // Deleting, messaging, calling, changing: only when the owner's own words asked for it.
+        const refused = intentCheck(name, turn.current.q);
+        if (refused) return { error: refused };
         // A delete only goes through after the owner spoke again since it was proposed.
         const pending = st.pending && turns.current > st.pending.turn ? { id: st.pending.id, title: st.pending.title } : null;
         if (name === "confirm_delete_memory" && st.pending && !pending)
@@ -467,6 +471,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         music: (args) => musicCommand(args as MusicCommand),
         // Settings by voice, on this device.
         location_sharing: async (args) => {
+          if (!/\b(location|share|sharing|gps|where)\b|லொகேஷன்/i.test(turn.current.q)) return { error: "Only when the owner asks to share or stop sharing location." };
           const on = args.on === true || /^(on|yes|true|start)$/i.test(String(args.on));
           const fix = await setSharing(on);
           if (on && !fix) {
@@ -476,6 +481,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           return { sharing: on, device: deviceName() };
         },
         my_voice: async (args) => {
+          if (!/\b(voice|speak|talk|sound)\b|குரல்|வாய்ஸ்/i.test(turn.current.q)) return { error: "Only when the owner asks to change the voice." };
           const on = args.on === true || /^(on|yes|true|start)$/i.test(String(args.on));
           const r = await fetch("/api/voice/mine", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: on }) });
           const data = await r.json().catch(() => ({}));
@@ -486,6 +492,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           return { my_voice: on, note: on ? "From your next reply you speak in the owner's own voice." : "Back to the usual voice from the next reply." };
         },
         lock_app: () => {
+          if (!/\b(lock|close|exit)\b|லாக்/i.test(turn.current.q)) return { error: "Only when the owner asks to lock HIVEMIND." };
           // After the goodbye: lock, forget cached data on this device, end the voice session.
           sleepAfterTurn.current = true;
           setTimeout(async () => {

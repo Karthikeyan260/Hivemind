@@ -197,6 +197,10 @@ const Output = z.object({
     }).slice(0, 5)),
 });
 
+/** One-tap requests that must never come from Autopilot (it reads web pages that could plant them). */
+const UNSAFE_ASK =
+  /\b(delete|remove|erase|forget|clear|wipe|send|message|text|whatsapp|email|mail|call|ring|pay|transfer|buy|order|book|approve|submit|share|post|publish|password|otp|lock|unlock|reset)\b|அழி|நீக்கு|அனுப்பு/i;
+
 /** Provider errors arrive as raw JSON; the feed shows a short sentence. */
 function plainError(err: unknown) {
   const m = err instanceof Error ? err.message : String(err);
@@ -306,7 +310,9 @@ export async function runAutopilot(supabase: SupabaseClient, opts: { manual?: bo
         title: i.title,
         body: i.body,
         ...(i.link?.url && safeUrl(i.link.url) ? { link: { label: i.link.label || "Open", url: i.link.url } } : {}),
-        ...(i.ask ? { ask: i.ask } : {}),
+        // A one-tap request is run as if the owner said it: never one that deletes, sends, calls,
+        // pays, approves or shares (web text Autopilot read could have planted it).
+        ...(i.ask && !UNSAFE_ASK.test(i.ask) ? { ask: i.ask } : {}),
         created_at: now,
         status: "new" as const,
       }));

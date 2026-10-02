@@ -1,12 +1,13 @@
 "use client";
 
-import { Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
+import { Blocks, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cx } from "@/components/ui";
 import { isPublicPage } from "@/lib/public-paths";
 import { clearOfflineCache } from "@/lib/offline";
+import { useMyApps } from "@/components/apps/nav-apps";
 
 const TABS = [
   { label: "Home", href: "/", icon: Sparkles },
@@ -19,6 +20,7 @@ const MORE = [
   { label: "Autopilot", href: "/autopilot", icon: Compass },
   { label: "Web tasks", href: "/web", icon: Globe },
   { label: "Map", href: "/map", icon: MapIcon },
+  { label: "Apps", href: "/apps", icon: Blocks },
   { label: "Habits", href: "/habits", icon: CalendarHeart },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Notes", href: "/notes", icon: StickyNote },
@@ -31,6 +33,7 @@ const MORE = [
 /** Phone navigation like a native app: a bottom tab bar, with the rest of the pages in a "More" sheet. */
 export function MobileNav({ canLock }: { canLock: boolean }) {
   const path = usePathname();
+  const myApps = useMyApps();
   const router = useRouter();
   const [more, setMore] = useState(false);
   const hidden = isPublicPage(path);
@@ -77,6 +80,16 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
                 >
                   <Icon size={20} strokeWidth={1.75} className={active(href) ? "text-core" : ""} />
                   {label}
+                </Link>
+              ))}
+              {myApps.map((a) => (
+                <Link
+                  key={a.id}
+                  href={`/apps/${a.id}`}
+                  className={cx("flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3.5 text-[12.5px]", active(`/apps/${a.id}`) ? "border-core/50 bg-core/10 text-fg" : "border-line text-soft active:bg-raised")}
+                >
+                  <span className="text-xl leading-none">{a.emoji}</span>
+                  <span className="max-w-full truncate">{a.name}</span>
                 </Link>
               ))}
             </nav>

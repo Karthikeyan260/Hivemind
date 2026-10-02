@@ -52,6 +52,7 @@ const NAV = [
   { href: "/autopilot", label: "Autopilot" },
   { href: "/web", label: "Web" },
   { href: "/map", label: "Map" },
+  { href: "/apps", label: "Apps" },
   { href: "/projects", label: "Projects" },
   { href: "/career", label: "Career" },
   { href: "/journey", label: "Journey" },
@@ -336,14 +337,22 @@ function Bridge() {
     [state, conversationId, focus, brain, galaxy, getSpeaker, speakAll, voice, router],
   );
 
-  // "/?ask=…" (an Autopilot insight's one-tap request): send it once, then clean the address.
+  // "/?ask=…": an Autopilot insight's one-tap request. It runs by itself only when HIVEMIND's own
+  // "Do it" button set it up in this tab (session storage: other sites can't write it). A link from
+  // anywhere else only fills the box, so a link like "/?ask=delete all my notes" can't act for you.
   const asked = useRef(false);
   const ask = params.get("ask");
   useEffect(() => {
     if (!ask || asked.current || state !== "idle") return;
     asked.current = true;
     router.replace("/");
-    void send(ask);
+    let ours = false;
+    try {
+      ours = sessionStorage.getItem("hivemind-ask") === ask;
+      sessionStorage.removeItem("hivemind-ask");
+    } catch {}
+    if (ours) void send(ask);
+    else setInput(ask);
   }, [ask, state, send, router]);
 
   /* ───── Live voice: the site-wide Gemini Live session, mirrored into this console ───── */

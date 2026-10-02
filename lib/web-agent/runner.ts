@@ -27,6 +27,32 @@ const RISKY = /\b(submit|apply|send|pay|payment|place order|buy|checkout|check o
 const BLOCKER =
   /confirm you['’]re not a (bot|robot)|verify (that )?you(['’]re| are) (a )?human|are you a robot|unusual traffic from your computer|captcha|press (&|and) hold|checking your browser before|access denied|sign in to continue|log ?in to continue/i;
 
+/**
+ * Would this action carry the owner's details off to a website? Emails, phone numbers, or facts the
+ * agent looked up from the brain (task.notes), typed into a page or packed into a URL. Returns why.
+ */
+export function leaksOwnerData(task: WebTask, a: Action): string | null {
+  const text = a.type === "type" ? a.text : a.type === "goto" ? decodeURIComponent(a.url.replace(/\+/g, " ")) : "";
+  if (!text) return null;
+  if (a.type === "goto") {
+    const q = a.url.split("?")[1] ?? "";
+    if (q.length > 300) return "a long, data-carrying web address";
+  }
+  if (/[\w.+-]+@[\w-]+\.[\w.]+/.test(text)) return "an email address";
+  if (/(?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}\b/.test(text)) return "a phone number";
+  // Facts from the owner's brain ("email → x", "experience → …"): any 4 words in a row from them.
+  const words = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}@.]+/gu, " ").split(" ").filter(Boolean);
+  const said = ` ${words(text).join(" ")} `;
+  for (const note of task.notes ?? []) {
+    const w = words(note.split("→")[1] ?? "");
+    for (let i = 0; i + 4 <= w.length; i++) {
+      const run = w.slice(i, i + 4);
+      if (run.join("").length >= 14 && said.includes(` ${run.join(" ")} `)) return "details from your brain";
+    }
+  }
+  return null;
+}
+
 const Decision = z.object({
   thought: z.string().catch(""),
   risky: z.boolean().catch(false).optional(),
@@ -178,8 +204,13 @@ export async function runTask(supabase: SupabaseClient, id: string, origin: stri
         return pause(supabase, task, "needs_you", { question: "This needs your password. Please log in using the live view, then tap Continue." });
       }
       const label = describeAction(action, target);
-      if (d.risky || (action.type === "click" && RISKY.test(target ?? ""))) {
-        return pause(supabase, task, "needs_approval", { pending: { action, label, thought: d.thought } });
+      // A page can try to talk the agent into sending the owner's details somewhere: anything that
+      // would carry them out (typed text, a URL), or submits a form, waits for the owner's Approve.
+      const leak = leaksOwnerData(task, action);
+      const submits = action.type === "type" && !!action.enter && !/search|query|find|\bq\b/i.test(target ?? "");
+      if (d.risky || leak || submits || (action.type === "click" && RISKY.test(target ?? ""))) {
+        if (leak && !d.risky) task.steps.push({ at: now(), thought: d.thought, did: "held for your approval", ok: true, note: leak });
+        return pause(supabase, task, "needs_approval", { pending: { action, label: leak ? `${label} (sends ${leak} to the site)` : label, thought: d.thought } });
       }
       await doStep(task, d.thought, label, () => act(page, action));
       await beat(supabase, task);
