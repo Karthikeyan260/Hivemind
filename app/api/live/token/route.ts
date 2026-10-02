@@ -4,6 +4,7 @@ import { geminiClient } from "@/lib/ai/gemini";
 import { handle } from "@/lib/api";
 import { db } from "@/lib/db";
 import { listProjects } from "@/lib/organizer";
+import { activeVoiceId } from "@/lib/my-voice";
 import { getPrefs, languageRule } from "@/lib/prefs";
 import { getProfile, profileForPrompt } from "@/lib/profile";
 import { agenda, agendaForPrompt, nowForPrompt } from "@/lib/reminders";
@@ -345,6 +346,8 @@ In voice, speak Tamil naturally like a Chennai friend would (not formal written 
   return NextResponse.json({
     token: token.name,
     model: MODEL,
+    // "Speak in my voice": Live's own voice is muted and its transcript is spoken in the owner's clone.
+    myVoice: !!(await activeVoiceId()),
     config: {
       responseModalities: ["AUDIO"],
       speechConfig: {

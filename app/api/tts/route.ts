@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { geminiClient } from "@/lib/ai/gemini";
 import { handle, HttpError, parseBody } from "@/lib/api";
+import { activeVoiceId } from "@/lib/my-voice";
 
 export const maxDuration = 30;
 
@@ -12,13 +13,16 @@ const Body = z.object({ text: z.string().trim().min(1).max(1200) });
 /** Natural speech for one sentence. A 429 tells the client to fall back to the browser's voice. */
 export const POST = handle(async (req: Request) => {
   const { text } = await parseBody(req, Body);
+  // "Speak in my voice" on: the owner's cloned voice, speaking like them (no fast-narrator style).
+  const mine = await activeVoiceId();
   try {
     const res = await geminiClient().models.generateContent({
       model: MODEL,
-      contents: [{ role: "user", parts: [{ text: `Say at a brisk, energetic, fast pace: ${text}` }] }],
+      // A cloned voice reads any style hint aloud: give it only the words (it keeps the owner's own way of speaking).
+      contents: [{ role: "user", parts: [{ text: mine ? text : `Say at a brisk, energetic, fast pace: ${text}` }] }],
       config: {
         responseModalities: ["AUDIO"],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE } } },
+        speechConfig: { voiceConfig: mine ? { voice: mine } : { prebuiltVoiceConfig: { voiceName: VOICE } } },
       },
     });
     const part = res.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);

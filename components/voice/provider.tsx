@@ -7,6 +7,7 @@ import { type MusicCommand, musicCommand } from "@/components/music/player";
 import { type VideoCommand, videoCommand } from "@/components/video/player";
 import { isPublicPage } from "@/lib/public-paths";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
+import { SentenceStream, Speaker } from "@/lib/voice";
 import { openExternal } from "@/lib/open-link";
 import { click, listControls, scroll, selectOption, typeText } from "./dom-tools";
 
@@ -180,6 +181,18 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     routerRef.current = router;
   }, [router]);
 
+  // "Speak in my voice": a player for the owner's cloned voice, fed with Live's transcript.
+  const myVoiceRef = useRef<{ speaker: Speaker; stream: SentenceStream } | null>(null);
+  const mine = useCallback(() => {
+    if (!myVoiceRef.current) {
+      const speaker = new Speaker();
+      speaker.rate = 1; // their own voice at their own pace
+      speaker.onSpeakingChange = (on) => liveRef.current?.externalSpeaking(on);
+      myVoiceRef.current = { speaker, stream: new SentenceStream((s) => speaker.speak(s)) };
+    }
+    return myVoiceRef.current;
+  }, []);
+
   const getLive = useCallback(() => {
     if (liveRef.current) return liveRef.current;
     const each = (fn: (l: VoiceListener) => void) => listeners.current.forEach(fn);
@@ -199,8 +212,17 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         turn.current.a += delta;
         setLast({ q: turn.current.q, a: turn.current.a, done: false });
         each((l) => l.onModelText?.(delta));
+        // Speak in my voice: the reply is spoken sentence by sentence in the owner's cloned voice.
+        if (liveRef.current?.muted) mine().stream.push(delta);
       },
       onTurnEnd: (interrupted) => {
+        if (liveRef.current?.muted) {
+          const m = mine();
+          if (interrupted) {
+            m.speaker.stop();
+            m.stream = new SentenceStream((s) => m.speaker.speak(s));
+          } else m.stream.flush();
+        }
         const t = turn.current;
         turns.current++;
         if (t.sources.length) lastSources.current = t.sources;
@@ -452,7 +474,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       },
     });
     return liveRef.current;
-  }, []);
+  }, [mine]);
 
   const start = useCallback(() => {
     const live = getLive();
@@ -460,9 +482,14 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setLast(null);
     convId.current = null;
+    // The mic tap is the gesture browsers need before the owner's voice can play.
+    mine().speaker.unlock();
     void live.start();
-  }, [getLive]);
-  const stop = useCallback(() => liveRef.current?.stop(), []);
+  }, [getLive, mine]);
+  const stop = useCallback(() => {
+    myVoiceRef.current?.speaker.stop();
+    liveRef.current?.stop();
+  }, []);
   const toggle = useCallback(() => (liveRef.current?.active ? stop() : start()), [start, stop]);
   const sendText = useCallback((text: string) => {
     const live = liveRef.current;

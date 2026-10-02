@@ -69,6 +69,8 @@ export class LiveVoice {
   private modelSpeaking = false;
   private state: LiveState = "off";
   private closedByUs = false;
+  /** "Speak in my voice": Gemini's audio is not played; the page speaks the transcript in the owner's voice. */
+  muted = false;
 
   constructor(private h: Handlers) {}
 
@@ -97,7 +99,8 @@ export class LiveVoice {
 
       const res = await fetch("/api/live/token", { method: "POST" });
       if (!res.ok) throw new Error(res.status === 401 ? "Locked: unlock HIVEMIND first." : "Couldn't start a live session.");
-      const { token, model, config } = (await res.json()) as { token: string; model: string; config: LiveConnectConfig };
+      const { token, model, config, myVoice } = (await res.json()) as { token: string; model: string; config: LiveConnectConfig; myVoice?: boolean };
+      this.muted = !!myVoice;
 
       const ai = new GoogleGenAI({ apiKey: token, httpOptions: { apiVersion: "v1alpha" } });
       this.session = await ai.live.connect({
@@ -211,6 +214,8 @@ export class LiveVoice {
     for (const part of sc?.modelTurn?.parts ?? []) {
       if (part.inlineData?.data && part.inlineData.mimeType?.startsWith("audio/")) {
         this.modelSpeaking = true;
+        // My voice: the page speaks the transcript instead (and reports speaking via externalSpeaking).
+        if (this.muted) continue;
         this.play(fromBase64(part.inlineData.data), Number(part.inlineData.mimeType.match(/rate=(\d+)/)?.[1] ?? 24000));
         this.set("speaking");
       }
@@ -224,10 +229,19 @@ export class LiveVoice {
     if (m.goAway) this.h.onError("Live session is about to end (time limit). Start it again to keep talking.");
   }
 
+  /** My voice: the page's player started / finished speaking HIVEMIND's reply. */
+  externalSpeaking(on: boolean) {
+    if (!this.active) return;
+    if (on) this.set("speaking");
+    else if (this.state === "speaking") this.set("listening");
+  }
+
   private endTurn(interrupted: boolean) {
     this.h.onTurnEnd(interrupted);
     this.userText = "";
     this.modelSpeaking = false;
+    // My voice: the page's player decides when speaking ends.
+    if (!interrupted && this.muted) return;
     if (!interrupted) {
       // Return to listening once the queued audio finishes.
       const wait = Math.max(0, (this.nextTime - (this.outCtx?.currentTime ?? 0)) * 1000);
