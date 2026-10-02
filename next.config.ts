@@ -19,7 +19,18 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@react-pdf/renderer"],
   poweredByHeader: false,
   async headers() {
-    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+    return [
+      { source: "/:path*", headers: SECURITY_HEADERS },
+      // The Career page previews the resume PDF in an iframe: allow framing by HIVEMIND itself only.
+      // Listed last so these override the same keys above.
+      {
+        source: "/api/career/:id/resume",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'; base-uri 'self'; form-action 'self'" },
+        ],
+      },
+    ];
   },
 };
 
