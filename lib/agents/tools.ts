@@ -266,7 +266,7 @@ export const TOOLS: Record<string, Tool> = {
   find_product: {
     name: "find_product",
     description:
-      "Find a product to buy on Flipkart, Amazon.in and/or Meesho: exact product page links with price. Use whenever the owner asks for a product, price or buying link. 'stores' limits it to some of flipkart, amazon, meesho (default: all three).",
+      "Find a product to buy: exact product page links with price. Marketplaces: flipkart, amazon, meesho (the default). Quick-delivery apps: zepto, blinkit, instamart (Swiggy), bigbasket; pass these in 'stores' when the owner names one, says quick / 10-minute delivery, or wants groceries or everyday items delivered fast (Zomato's grocery app is blinkit). Use whenever the owner asks for a product, price or buying link.",
     parameters: obj({ query: S, stores: { type: "array", items: { type: "string", enum: STORE_IDS } } }, ["query"]),
     async run(args, ctx) {
       const stores = (Array.isArray(args.stores) ? args.stores : []).filter((s): s is StoreId => STORE_IDS.includes(s as StoreId));

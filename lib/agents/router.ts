@@ -32,7 +32,7 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (previous === "career" && m.length < 160 && /#?\b\d{1,2}\b|\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|that|this) (one|job|role)\b|\b(check|pick|choose|select|analy[sz]e|ats|go with)\b/.test(m)) return "career";
   if (/\b(jobs|job (openings?|search|listings?|vacanc(y|ies))|openings|vacanc(y|ies))\b/.test(m)) return "career";
   // "open the first one" / "click the Flipkart link" right after links were shown stays with that agent.
-  if ((previous === "research" || previous === "career") && /\b(open|click|tap|go to|visit)\b.*\b(link|first|second|third|fourth|fifth|last|one|it|that|\d|flipkart|amazon|meesho|page|apply)\b/.test(m)) return previous;
+  if ((previous === "research" || previous === "career") && /\b(open|click|tap|go to|visit)\b.*\b(link|first|second|third|fourth|fifth|last|one|it|that|\d|flipkart|amazon|meesho|zepto|blinkit|instamart|bigbasket|page|apply)\b/.test(m)) return previous;
   // Shopping: "boAt earbuds on Flipkart", "price of iPhone 16", "buy a kurti from Meesho"
   if (SHOPPING.test(m)) return "research";
   if (/^(please\s+)?(research|collect|gather|compile)\b|\b(weather|temperature|forecast|raining|humidity)\b|\b(search (the )?(web|internet)|google|latest news|news (about|on))\b/.test(m)) return "research";
