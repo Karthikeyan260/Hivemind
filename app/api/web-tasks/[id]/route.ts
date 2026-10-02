@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
 import { decideTask, runTask } from "@/lib/web-agent/runner";
-import { getTask } from "@/lib/web-agent/store";
+import { ACTIVE, deleteTasks, getTask } from "@/lib/web-agent/store";
 
 export const maxDuration = 60;
 type Ctx = { params: Promise<{ id: string }> };
@@ -27,4 +27,15 @@ export const POST = handle(async (req: Request, { params }: Ctx) => {
     after(() => runTask(db(), id, origin));
   }
   return NextResponse.json(r.task);
+});
+
+/** Delete a task from the list. A task still working is stopped first (its cloud browser released). */
+export const DELETE = handle(async (_req: Request, { params }: Ctx) => {
+  const { id } = await params;
+  const supabase = db();
+  const task = await getTask(supabase, id);
+  if (!task) throw new HttpError(404, "Task not found");
+  if (ACTIVE.includes(task.status)) await decideTask(supabase, id, "cancel");
+  await deleteTasks(supabase, [id]);
+  return new NextResponse(null, { status: 204 });
 });

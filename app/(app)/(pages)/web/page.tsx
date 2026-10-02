@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleAlert, ExternalLink, Globe, Hand, Loader2, MonitorPlay, Play, RotateCcw, Square, X } from "lucide-react";
+import { Check, CircleAlert, ExternalLink, Globe, Hand, Loader2, MonitorPlay, Play, RotateCcw, Square, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, Textarea } from "@/components/ui";
@@ -96,6 +96,36 @@ function WebTasks() {
     }
   }
 
+  const finishedCount = tasks.filter((t) => !ACTIVE.includes(t.status)).length;
+
+  async function remove(t: Task) {
+    const working = ACTIVE.includes(t.status);
+    if (!confirm(working ? "This task is still working. Stop it and delete it?" : "Delete this task?")) return;
+    setError(null);
+    // Gone from the list at once; the server catches up.
+    list.setData((d) => (d ? { ...d, tasks: d.tasks.filter((x) => x.id !== t.id) } : d));
+    if (t.id === openId) router.replace("/web");
+    try {
+      await api(`/api/web-tasks/${t.id}`, { method: "DELETE" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      await list.reload();
+    }
+  }
+
+  async function clearFinished() {
+    if (!confirm(`Delete ${finishedCount} finished task${finishedCount === 1 ? "" : "s"}? Tasks still working stay.`)) return;
+    setError(null);
+    list.setData((d) => (d ? { ...d, tasks: d.tasks.filter((x) => ACTIVE.includes(x.status)) } : d));
+    if (task && !ACTIVE.includes(task.status)) router.replace("/web");
+    try {
+      await api("/api/web-tasks", { method: "DELETE" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      await list.reload();
+    }
+  }
+
   async function decide(decision: "approve" | "reject" | "continue" | "cancel" | "retry") {
     if (!task) return;
     setError(null);
@@ -163,18 +193,34 @@ function WebTasks() {
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
         <ul className="space-y-2">
           {tasks.length === 0 && !list.loading && <Empty>No web tasks yet.</Empty>}
+          {finishedCount > 0 && (
+            <li className="flex justify-end">
+              <button type="button" onClick={clearFinished} className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-soft hover:text-alert">
+                <Trash2 size={12} /> Clear finished ({finishedCount})
+              </button>
+            </li>
+          )}
           {tasks.map((t) => (
-            <li key={t.id}>
+            <li key={t.id} className="group relative">
               <button
                 type="button"
                 onClick={() => router.replace(`/web?task=${t.id}`)}
-                className={cx("w-full rounded-md border p-3 text-left", t.id === openId ? "border-core bg-core/5" : "border-line bg-raised hover:border-line-strong")}
+                className={cx("w-full rounded-md border p-3 pr-9 text-left", t.id === openId ? "border-core bg-core/5" : "border-line bg-raised hover:border-line-strong")}
               >
                 <div className="line-clamp-2 text-sm">{t.goal}</div>
                 <div className="mt-2 flex items-center gap-2">
                   <Badge tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Badge>
                   <span className="font-mono text-[10.5px] text-faint">{timeAgo(t.updated_at)}</span>
                 </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(t)}
+                title="Delete this task"
+                aria-label={`Delete task: ${t.goal}`}
+                className="absolute right-2 top-2 rounded p-1 text-faint hover:bg-alert/10 hover:text-alert"
+              >
+                <Trash2 size={14} />
               </button>
             </li>
           ))}

@@ -4,7 +4,7 @@ import { handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
 import { runTask } from "@/lib/web-agent/runner";
 import { steelConfigured } from "@/lib/web-agent/steel";
-import { createTask, listTasks } from "@/lib/web-agent/store";
+import { ACTIVE, createTask, deleteTasks, listTasks } from "@/lib/web-agent/store";
 
 export const maxDuration = 60;
 
@@ -22,4 +22,11 @@ export const POST = handle(async (req: Request) => {
   const origin = process.env.APP_URL || new URL(req.url).origin;
   after(() => runTask(db(), task.id, origin));
   return NextResponse.json(task, { status: 201 });
+});
+
+/** "Clear finished": deletes every task that is done, stopped or cancelled. Active tasks stay. */
+export const DELETE = handle(async () => {
+  const supabase = db();
+  const finished = (await listTasks(supabase)).filter((t) => !ACTIVE.includes(t.status)).map((t) => t.id);
+  return NextResponse.json({ deleted: await deleteTasks(supabase, finished) });
 });

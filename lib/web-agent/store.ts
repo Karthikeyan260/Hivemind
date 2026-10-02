@@ -78,5 +78,15 @@ export async function createTask(supabase: SupabaseClient, goal: string, startUr
   return task;
 }
 
-export const saveShot = (supabase: SupabaseClient, id: string, jpg: Buffer) => writeFile(supabase, shotPath(id), jpg, "image/jpeg");
+/** Removes tasks from the list along with their files (state, screenshot, stop marker). */
+export async function deleteTasks(supabase: SupabaseClient, ids: string[]) {
+  if (!ids.length) return 0;
+  const gone = new Set(ids);
+  const index = await readJSON<string[]>(supabase, INDEX, []);
+  await writeJSON(supabase, INDEX, index.filter((id) => !gone.has(id)));
+  await removeFiles(supabase, ids.flatMap((id) => [`${taskKey(id)}.json`, shotPath(id), stopPath(id)])).catch(() => {});
+  return ids.length;
+}
+
+export const saveShot =(supabase: SupabaseClient, id: string, jpg: Buffer) => writeFile(supabase, shotPath(id), jpg, "image/jpeg");
 export const readShot = (supabase: SupabaseClient, id: string) => readFile(supabase, shotPath(id));
