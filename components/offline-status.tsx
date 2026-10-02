@@ -33,7 +33,7 @@ export function OfflineStatusPill() {
       title={s.online ? "Sync now" : "Changes sync when you're back online"}
       className={cx(
         "fixed left-4 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-2 border bg-[#0b1016]/95 px-3 py-1.5 font-mono text-[11px] tracking-wide backdrop-blur-md",
-        "bottom-[calc(var(--tabbar-h)+1rem)] md:bottom-4 md:left-56",
+        "bottom-[calc(var(--tabbar-h)+var(--music-h,0px)+1rem)] md:bottom-[calc(1rem+var(--music-h,0px))] md:left-56",
         s.error && s.online ? "border-alert/50 text-alert" : "border-line text-soft",
       )}
     >

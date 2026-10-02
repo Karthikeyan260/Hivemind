@@ -34,6 +34,8 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (/\b(jobs|job (openings?|search|listings?|vacanc(y|ies))|openings|vacanc(y|ies))\b/.test(m)) return "career";
   // "open the first one" / "click the Flipkart link" right after links were shown stays with that agent.
   if ((previous === "research" || previous === "career") && /\b(open|click|tap|go to|visit)\b.*\b(link|first|second|third|fourth|fifth|last|one|it|that|\d|flipkart|amazon|meesho|zepto|blinkit|instamart|bigbasket|page|apply)\b/.test(m)) return previous;
+  // Music plays in HIVEMIND's own player: "play a Tamil song", "next song", "paattu podu".
+  if (/\b(play|listen to|put on|hear)\b.*\b(songs?|music|tracks?|album|playlist|hits|melod(y|ies))\b|\b(next|previous|skip( this)?|pause( the)?|resume( the)?|stop( the)?) (song|music|track)\b|\bpaatt?u\b/.test(m)) return "core";
   // Browser work: "go to the Zoho careers site and…", "fill this form", "use the browser to…"
   if (/\b(browser|web task|fill (out |in )?(the |this |a )?form|go to (the )?\S+\.(com|in|org|io|ai)|on (the|their) (website|site|portal))\b/.test(m)) return "research";
   // Shopping: "boAt earbuds on Flipkart", "price of iPhone 16", "buy a kurti from Meesho"

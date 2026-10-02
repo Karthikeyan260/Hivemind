@@ -31,7 +31,7 @@ export function VoiceDock() {
   const text = v.last?.a || v.last?.q;
 
   return (
-    <div className="pointer-events-none fixed bottom-[calc(var(--tabbar-h)+1rem)] right-4 md:bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 flex max-w-[min(26rem,calc(100vw-2rem))] flex-col items-end gap-2">
+    <div className="pointer-events-none fixed bottom-[calc(var(--tabbar-h)+var(--music-h,0px)+1rem)] right-4 md:bottom-[calc(max(1rem,env(safe-area-inset-bottom))+var(--music-h,0px))] z-50 flex max-w-[min(26rem,calc(100vw-2rem))] flex-col items-end gap-2">
       {(v.on || v.error) && (
         <div className="pointer-events-auto w-full border border-data/30 bg-[#0b1016]/90 p-3 shadow-[0_0_30px_-8px_rgba(56,189,248,0.35)] backdrop-blur-md">
           <div className="flex items-center justify-between gap-3">
@@ -75,7 +75,7 @@ export function HandoffCard() {
   const v = useVoice();
   if (!v.handoff.length || isPublicPage(path)) return null;
   return (
-    <div className="fixed inset-x-4 bottom-[calc(var(--tabbar-h)+5rem)] z-50 mx-auto flex max-w-sm flex-col gap-2 border border-ok/40 bg-[#0b1016]/95 p-3 shadow-[0_0_30px_-8px_rgba(74,222,128,0.35)] backdrop-blur-md md:bottom-24">
+    <div className="fixed inset-x-4 bottom-[calc(var(--tabbar-h)+var(--music-h,0px)+5rem)] z-50 mx-auto flex max-w-sm flex-col gap-2 border border-ok/40 bg-[#0b1016]/95 p-3 shadow-[0_0_30px_-8px_rgba(74,222,128,0.35)] backdrop-blur-md md:bottom-[calc(6rem+var(--music-h,0px))]">
       <div className="flex items-center justify-between">
         <span className="font-mono text-[10px] tracking-[0.2em] text-ok">TAP TO CONTINUE</span>
         <button type="button" onClick={v.clearHandoff} aria-label="Dismiss" className="text-faint hover:text-fg">

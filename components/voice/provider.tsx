@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { BRAIN_CHANGED, WEB_TASK_EVENT } from "@/lib/client-api";
+import { type MusicCommand, musicCommand } from "@/components/music/player";
 import { isPublicPage } from "@/lib/public-paths";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
 import { openExternal } from "@/lib/open-link";
@@ -433,6 +434,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         scroll,
         type_text: typeText,
         select_option: selectOption,
+        music: (args) => musicCommand(args as MusicCommand),
         go_to_sleep: () => {
           sleepAfterTurn.current = true;
           return { sleeping: true, note: "Say a very short goodbye; the mic turns off when you finish." };

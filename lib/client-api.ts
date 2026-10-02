@@ -51,6 +51,8 @@ async function offline<T>(method: string, path: string, json: unknown): Promise<
 export const BRAIN_CHANGED = "hivemind:brain-changed";
 /** A web task was started or answered (the floating browser window refreshes at once). */
 export const WEB_TASK_EVENT = "hivemind:web-task";
+/** A music request from chat (play_music): the on-screen player acts on it. */
+export const MUSIC_EVENT = "hivemind:music";
 
 export function useFetch<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
@@ -205,7 +207,16 @@ export async function streamHivemind(body: object, onEvent: (e: HiveEvent) => vo
     while ((nl = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
-      if (line) onEvent(JSON.parse(line) as HiveEvent);
+      if (!line) continue;
+      const e = JSON.parse(line) as HiveEvent;
+      // play_music: hand it to the on-screen player instead of showing a link.
+      if (e.type === "action" && e.href?.startsWith("music:")) {
+        try {
+          window.dispatchEvent(new CustomEvent(MUSIC_EVENT, { detail: JSON.parse(decodeURIComponent(e.href.slice(6))) }));
+        } catch {}
+        continue;
+      }
+      onEvent(e);
     }
   }
 }
