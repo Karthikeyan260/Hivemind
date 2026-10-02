@@ -1,4 +1,4 @@
-export type ProviderName = "gemini" | "nvidia" | "groq";
+export type ProviderName = "gemini" | "nvidia" | "groq" | "openrouter" | "github";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 

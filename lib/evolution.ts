@@ -82,6 +82,7 @@ async function chapters(supabase: SupabaseClient, nodes: EvoNode[]): Promise<Evo
         json: true,
         temperature: 0.4,
         maxTokens: 700,
+        order: ["openrouter", "groq", "github", "gemini", "nvidia"],
       },
     );
     const parsed = parseJson(res.text, Chapters);

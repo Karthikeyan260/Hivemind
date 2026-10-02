@@ -1,13 +1,15 @@
 import "server-only";
 import { z } from "zod";
 import { geminiProvider } from "./gemini";
-import { groqProvider, nvidiaProvider } from "./openai-compatible";
+import { githubProvider, groqProvider, nvidiaProvider, openrouterProvider } from "./openai-compatible";
 import type { AIProvider, ChatMessage, GenerateOptions, GenerateResult, ProviderName } from "./types";
 
 export const providers: Record<ProviderName, AIProvider> = {
   gemini: geminiProvider,
   nvidia: nvidiaProvider,
   groq: groqProvider,
+  openrouter: openrouterProvider,
+  github: githubProvider,
 };
 
 export const ANSWER_PROVIDERS = ["gemini", "nvidia"] as const;
@@ -20,7 +22,7 @@ export async function generateWithFallback(
   messages: ChatMessage[],
   opts: GenerateOptions & { prefer?: ProviderName; order?: ProviderName[] } = {},
 ): Promise<GenerateResult> {
-  const order = opts.order ?? ["gemini", "nvidia", "groq"];
+  const order = opts.order ?? ["gemini", "nvidia", "openrouter", "github", "groq"];
   const chain = [opts.prefer, ...order].filter(
     (p, i, arr): p is ProviderName => !!p && arr.indexOf(p) === i && providers[p].isConfigured(),
   );

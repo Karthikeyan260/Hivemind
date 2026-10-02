@@ -145,7 +145,7 @@ export const POST = handle(async (req: Request) => {
             const userTurn = context.length
               ? `Context from my brain:\n${context.map((c, i) => `[${i + 1}] (${c.source_type}) ${c.title}\n${c.content.slice(0, 1500)}`).join("\n\n---\n\n")}\n\nMe: ${message}`
               : message;
-            const res = await generateWithFallback([...history, { role: "user", content: userTurn }], { system: `${system}\n\n${closing}`, order: ["nvidia", "groq"], temperature: 0.3 });
+            const res = await generateWithFallback([...history, { role: "user", content: userTurn }], { system: `${system}\n\n${closing}`, order: ["nvidia", "openrouter", "github", "groq"], temperature: 0.3 });
             reply = res.text;
             send({ type: "delta", text: reply });
             done = { type: "done", provider: res.provider, model: res.model, latency_ms: res.latencyMs };

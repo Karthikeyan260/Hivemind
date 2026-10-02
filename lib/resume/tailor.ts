@@ -112,7 +112,7 @@ ${evidenceText || "(none)"}
 MASTER RESUME JSON:
 ${JSON.stringify({ headline: master.resume.headline, sections: master.resume.sections })}`;
 
-  const res = await generateWithFallback([{ role: "user", content: prompt }], { system: SYSTEM, json: true, temperature: 0.2, maxTokens: 6000, order: ["gemini", "nvidia"] });
+  const res = await generateWithFallback([{ role: "user", content: prompt }], { system: SYSTEM, json: true, temperature: 0.2, maxTokens: 6000, order: ["gemini", "nvidia", "openrouter"] });
   const out = parseJson(res.text, Tailored);
   if (!out) throw new HttpError(502, "The model returned an unreadable resume. Try again.");
   const sections = out.sections as Section[];

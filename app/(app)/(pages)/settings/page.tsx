@@ -4,10 +4,12 @@ import { providers } from "@/lib/ai/providers";
 
 export default function SettingsPage() {
   const rows = [
-    { role: "Answers, summaries, tags", p: providers.gemini },
+    { role: "Agents and answers", p: providers.gemini },
     { role: "Embeddings (fixed, 768-dim)", p: { ...providers.gemini, model: process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001" } },
-    { role: "Fallback / alternative answers", p: providers.nvidia },
-    { role: "Intent router", p: providers.groq },
+    { role: "Fallback answers", p: providers.nvidia },
+    { role: "Free fallback, Autopilot backup", p: providers.openrouter },
+    { role: "Free fallback, small tasks", p: providers.github },
+    { role: "Intent router, summaries & tags", p: providers.groq },
   ];
 
   return (

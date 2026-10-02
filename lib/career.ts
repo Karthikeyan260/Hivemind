@@ -140,7 +140,7 @@ ${evidence}`;
     json: true,
     temperature: 0.25,
     maxTokens: 5000,
-    order: ["gemini", "nvidia", "groq"],
+    order: ["gemini", "nvidia", "openrouter", "github", "groq"],
   });
   const parsed = parseJson(res.text, Analysis);
   if (!parsed) throw new HttpError(502, "The model returned an unreadable analysis. Try again.");
