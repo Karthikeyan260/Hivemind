@@ -81,3 +81,10 @@ export async function removeFiles(supabase: SupabaseClient, paths: string[]) {
   await ensureBucket(supabase);
   if (paths.length) await supabase.storage.from(BUCKET).remove(paths);
 }
+
+/** File names directly under a folder (e.g. a web task's step screenshots). */
+export async function listFiles(supabase: SupabaseClient, folder: string) {
+  await ensureBucket(supabase);
+  const { data } = await supabase.storage.from(BUCKET).list(folder, { limit: 1000 });
+  return (data ?? []).map((f) => `${folder}/${f.name}`);
+}

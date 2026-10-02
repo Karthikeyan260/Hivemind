@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, Textarea } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { api, timeAgo, useFetch } from "@/lib/client-api";
+import { api, timeAgo, useFetch, WEB_TASK_EVENT } from "@/lib/client-api";
 
 type Step = { at: string; thought: string; did: string; ok: boolean; note?: string };
 type Task = {
@@ -20,6 +20,7 @@ type Task = {
   url?: string;
   title?: string;
   has_shot?: boolean;
+  shots?: number[];
   pending?: { label: string; thought: string };
   question?: string;
   result?: string;
@@ -59,7 +60,10 @@ function WebTasks() {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [live, setLive] = useState(false);
+  // What the viewer shows, per task: null = automatic (live while working, latest after).
+  const [pickFor, setPickFor] = useState<{ id: string; v: number | "latest" | null } | null>(null);
+  const [controlFor, setControlFor] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
   const [tick, setTick] = useState(0);
 
   const tasks = list.data?.tasks ?? [];
@@ -67,15 +71,50 @@ function WebTasks() {
   const task = tasks.find((t) => t.id === openId) ?? null;
   const anyActive = tasks.some((t) => ACTIVE.includes(t.status));
 
-  // Follow the agent while it works.
+  // Viewer: live browser while it works (watch-only unless the owner takes control), then the
+  // latest screenshot, or any step's screenshot for the replay.
+  const canLive = !!task?.live_url && ACTIVE.includes(task.status);
+  const view = task && pickFor?.id === task.id ? pickFor.v : null;
+  const showLive = canLive && view === null;
+  const control = !!task && controlFor === task.id;
+  const shots = [...(task?.shots ?? [])].sort((a, b) => a - b);
+  const lastShot = shots[shots.length - 1] ?? 0;
+  const setView = (v: number | "latest" | null) => task && setPickFor({ id: task.id, v });
+  const setControl = (on: boolean) => setControlFor(on && task ? task.id : null);
+  /** "Look first" / "Take over": open the live browser with control. */
+  const setLive = (on: boolean) => {
+    setView(on ? null : "latest");
+    setControl(on);
+  };
+  const replay = () => {
+    if (!shots.length) return;
+    setView(shots[0]);
+    setPlaying(true);
+  };
+  // Replay: step through the screenshots, about one a second.
+  const replayFrom = typeof view === "number" ? view : null;
+  useEffect(() => {
+    if (!playing || replayFrom === null || !task) return;
+    const next = shots.find((k) => k > replayFrom);
+    const t = setTimeout(() => (next === undefined ? setPlaying(false) : setPickFor({ id: task.id, v: next })), 1100);
+    return () => clearTimeout(t);
+  }, [playing, replayFrom, shots, task]);
+
+  // Follow the agent while it works; keep an eye out for tasks started elsewhere (voice, chat,
+  // another device) even when nothing here is running, and pick them up at once when voice starts one.
   const reload = list.reload;
   useEffect(() => {
-    if (!anyActive) return;
     const t = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void reload();
       setTick((n) => n + 1);
-    }, 2500);
-    return () => clearInterval(t);
+    }, anyActive ? 2500 : 10_000);
+    const now = () => void reload();
+    window.addEventListener(WEB_TASK_EVENT, now);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener(WEB_TASK_EVENT, now);
+    };
   }, [anyActive, reload]);
 
   async function start(g = goal) {
@@ -305,41 +344,99 @@ function WebTasks() {
             )}
 
             <div className="overflow-hidden rounded-xl border border-line bg-panel">
-              <div className="flex items-center gap-2 border-b border-line px-3 py-2 font-mono text-[11px] text-soft">
-                <Globe size={13} />
-                <span className="truncate">{task.url ?? task.start_url ?? "about:blank"}</span>
-                {task.live_url && ACTIVE.includes(task.status) && (
-                  <button type="button" onClick={() => setLive(!live)} className="ml-auto flex shrink-0 items-center gap-1 text-data hover:underline">
-                    <MonitorPlay size={13} /> {live ? "Screenshot" : "Live view"}
+              <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 font-mono text-[11px] text-soft">
+                {showLive ? (
+                  <span className="flex items-center gap-1.5 text-alert">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-alert" /> LIVE
+                  </span>
+                ) : typeof view === "number" ? (
+                  <span className="text-data">
+                    STEP {view} OF {lastShot}
+                  </span>
+                ) : (
+                  <Globe size={13} />
+                )}
+                <span className="min-w-0 flex-1 truncate">{task.url ?? task.start_url ?? "about:blank"}</span>
+                {canLive && (
+                  <button type="button" onClick={() => setView(showLive ? "latest" : null)} className="flex shrink-0 items-center gap-1 text-data hover:underline">
+                    <MonitorPlay size={13} /> {showLive ? "Screenshot" : "Live"}
+                  </button>
+                )}
+                {showLive && (
+                  <button type="button" onClick={() => setControl(!control)} className={cx("flex shrink-0 items-center gap-1 hover:underline", control ? "text-core" : "text-soft")} title="Use the browser yourself (log in, enter an OTP, pass a check)">
+                    <Hand size={13} /> {control ? "You're in control" : "Take control"}
+                  </button>
+                )}
+                {shots.length > 1 && !showLive && (
+                  <button type="button" onClick={() => (playing ? setPlaying(false) : replay())} className="flex shrink-0 items-center gap-1 text-data hover:underline">
+                    {playing ? <Square size={11} /> : <Play size={12} />} {playing ? "Stop" : "Replay"}
                   </button>
                 )}
                 {task.url && (
-                  <a href={task.url} target="_blank" rel="noopener noreferrer" className={cx("flex shrink-0 items-center gap-1 hover:text-data", !(task.live_url && ACTIVE.includes(task.status)) && "ml-auto")}>
+                  <a href={task.url} target="_blank" rel="noopener noreferrer" className="flex shrink-0 items-center gap-1 hover:text-data" title="Open this page in your browser">
                     <ExternalLink size={12} />
                   </a>
                 )}
               </div>
-              {live && task.live_url && ACTIVE.includes(task.status) ? (
-                <iframe src={`${task.live_url}${task.live_url.includes("?") ? "&" : "?"}interactive=true`} title="Live browser" className="aspect-[16/10] w-full bg-black" allow="clipboard-read; clipboard-write" />
+              {showLive ? (
+                <iframe
+                  key={control ? "control" : "watch"}
+                  src={task.live_url + (task.live_url!.includes("?") ? "&" : "?") + "interactive=" + (control ? "true" : "false")}
+                  title="Live browser"
+                  className="aspect-[16/10] w-full bg-black"
+                  allow="clipboard-read; clipboard-write"
+                />
+              ) : typeof view === "number" ? (
+                // eslint-disable-next-line @next/next/no-img-element -- private step screenshot
+                <img src={"/api/web-tasks/" + task.id + "/shot?step=" + view} alt={"After step " + view} className="w-full" />
               ) : task.has_shot ? (
                 // eslint-disable-next-line @next/next/no-img-element -- private, frequently changing screenshot
-                <img src={`/api/web-tasks/${task.id}/shot?t=${task.updated_at}-${tick}`} alt={task.title ?? "Browser screenshot"} className="w-full" />
+                <img src={"/api/web-tasks/" + task.id + "/shot?t=" + task.updated_at + "-" + tick} alt={task.title ?? "Browser screenshot"} className="w-full" />
               ) : (
                 <div className="flex aspect-[16/10] items-center justify-center text-sm text-soft">
                   {ACTIVE.includes(task.status) ? <Loader2 size={18} className="animate-spin" /> : "No screenshot"}
+                </div>
+              )}
+              {shots.length > 1 && (
+                <div className="flex gap-1 overflow-x-auto border-t border-line p-2">
+                  {shots.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => {
+                        setPlaying(false);
+                        setView(k);
+                      }}
+                      className={cx("shrink-0 border", view === k ? "border-core" : "border-line opacity-70 hover:opacity-100")}
+                      title={k === 0 ? "Start" : "After step " + k + ": " + (task.steps[k - 1]?.did ?? "")}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- private step thumbnail */}
+                      <img src={"/api/web-tasks/" + task.id + "/shot?step=" + k} alt="" className="h-12 w-20 object-cover object-top" loading="lazy" />
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
 
             <ol className="space-y-1.5">
               {task.steps.map((s, i) => (
-                <li key={`${s.at}-${i}`} className="flex gap-2 text-sm">
-                  <span className="w-6 shrink-0 text-right font-mono text-[11px] text-faint">{i + 1}</span>
-                  <div className="min-w-0">
-                    <span className={s.ok ? "" : "text-alert"}>{s.did}</span>
-                    {s.note && <span className="text-alert"> · {s.note}</span>}
-                    {s.thought && <div className="text-xs text-soft">{s.thought}</div>}
-                  </div>
+                <li key={s.at + "-" + i}>
+                  <button
+                    type="button"
+                    disabled={!shots.includes(i + 1)}
+                    onClick={() => {
+                      setPlaying(false);
+                      setView(i + 1);
+                    }}
+                    className={cx("flex w-full gap-2 rounded px-1 py-0.5 text-left text-sm enabled:hover:bg-raised", view === i + 1 && "bg-core/10")}
+                  >
+                    <span className="w-6 shrink-0 text-right font-mono text-[11px] text-faint">{i + 1}</span>
+                    <span className="min-w-0">
+                      <span className={s.ok ? "" : "text-alert"}>{s.did}</span>
+                      {s.note && <span className="text-alert"> · {s.note}</span>}
+                      {s.thought && <span className="block text-xs text-soft">{s.thought}</span>}
+                    </span>
+                  </button>
                 </li>
               ))}
               {task.status === "running" && (

@@ -39,7 +39,9 @@ export function WebTaskWindow() {
   const voice = useVoice();
   const [task, setTask] = useState<Task | null>(null);
   const [min, setMin] = useState(false);
-  const [live, setLive] = useState(false);
+  // Live browser by default while it works; "shot" = the owner chose the screenshot. Control = interactive.
+  const [shotFor, setShotFor] = useState<string | null>(null);
+  const [controlFor, setControlFor] = useState<string | null>(null);
   const [hidden, setHidden] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const seen = useRef<Record<string, string>>({});
@@ -112,6 +114,12 @@ export function WebTaskWindow() {
 
   if (off || onWebPage || !task || hidden === task.id) return null;
   const working = ACTIVE.includes(task.status);
+  const live = !!task.live_url && working && shotFor !== task.id;
+  const control = live && controlFor === task.id;
+  const takeOver = () => {
+    setShotFor(null);
+    setControlFor(task.id);
+  };
   const last = task.steps[task.steps.length - 1];
   const needs = task.status === "needs_approval" || task.status === "needs_you";
   const label =
@@ -123,7 +131,7 @@ export function WebTaskWindow() {
         type="button"
         onClick={() => setMin(false)}
         className={cx(
-          "fixed bottom-[calc(var(--tabbar-h)+1rem)] left-4 z-50 flex max-w-[calc(100vw-6rem)] items-center gap-2 border bg-[#0b1016]/95 px-3 py-2 font-mono text-[11px] backdrop-blur-md md:bottom-4 md:left-56",
+          "fixed bottom-[calc(var(--tabbar-h)+var(--music-h,0px)+1rem)] left-4 z-50 flex max-w-[calc(100vw-6rem)] items-center gap-2 border bg-[#0b1016]/95 px-3 py-2 font-mono text-[11px] backdrop-blur-md md:bottom-[calc(1rem+var(--music-h,0px))] md:left-56",
           needs ? "border-core text-core" : "border-data/40 text-data",
         )}
       >
@@ -140,7 +148,7 @@ export function WebTaskWindow() {
     <section
       aria-label="Web task in progress"
       className={cx(
-        "fixed bottom-[calc(var(--tabbar-h)+1rem)] left-4 z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden border bg-[#0b1016]/95 shadow-[0_0_40px_-12px_rgba(56,189,248,0.4)] backdrop-blur-md md:bottom-4 md:left-56",
+        "fixed bottom-[calc(var(--tabbar-h)+var(--music-h,0px)+1rem)] left-4 z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden border bg-[#0b1016]/95 shadow-[0_0_40px_-12px_rgba(56,189,248,0.4)] backdrop-blur-md md:bottom-[calc(1rem+var(--music-h,0px))] md:left-56",
         needs ? "border-core/70" : "border-data/40",
       )}
     >
@@ -166,7 +174,12 @@ export function WebTaskWindow() {
       {working && (
         <div className="relative bg-black">
           {live && task.live_url ? (
-            <iframe src={`${task.live_url}${task.live_url.includes("?") ? "&" : "?"}interactive=true`} title="Live browser" className="aspect-[16/10] w-full" />
+            <iframe
+              key={control ? "control" : "watch"}
+              src={task.live_url + (task.live_url.includes("?") ? "&" : "?") + "interactive=" + (control ? "true" : "false")}
+              title="Live browser"
+              className="aspect-[16/10] w-full"
+            />
           ) : task.has_shot ? (
             // eslint-disable-next-line @next/next/no-img-element -- private, constantly changing screenshot
             <img src={`/api/web-tasks/${task.id}/shot?t=${encodeURIComponent(task.updated_at)}`} alt="What the browser shows" className="aspect-[16/10] w-full object-cover object-top" />
@@ -175,10 +188,15 @@ export function WebTaskWindow() {
               <Loader2 size={14} className="mr-2 animate-spin" /> starting the browser…
             </div>
           )}
+          {live && (
+            <span className="pointer-events-none absolute left-2 top-2 flex items-center gap-1 bg-black/70 px-2 py-1 font-mono text-[10px] text-alert">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-alert" /> LIVE
+            </span>
+          )}
           {task.live_url && (
             <button
               type="button"
-              onClick={() => setLive(!live)}
+              onClick={() => setShotFor(live ? task.id : null)}
               className="absolute right-2 top-2 flex items-center gap-1 bg-black/70 px-2 py-1 font-mono text-[10px] text-data hover:text-fg"
             >
               <MonitorPlay size={11} /> {live ? "Screenshot" : "Live"}
@@ -206,8 +224,8 @@ export function WebTaskWindow() {
           <>
             <p>{task.question}</p>
             <div className="flex gap-2">
-              {task.live_url && !live && (
-                <button type="button" onClick={() => setLive(true)} className="flex h-7 items-center gap-1 border border-line-strong px-3 text-xs hover:border-data hover:text-data">
+              {task.live_url && !control && (
+                <button type="button" onClick={takeOver} className="flex h-7 items-center gap-1 border border-line-strong px-3 text-xs hover:border-data hover:text-data">
                   <MonitorPlay size={12} /> Take over
                 </button>
               )}

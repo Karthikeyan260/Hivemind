@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { readFile, readJSON, removeFiles, writeFile, writeJSON } from "@/lib/private-store";
+import { listFiles, readFile, readJSON, removeFiles, writeFile, writeJSON } from "@/lib/private-store";
 import type { Action } from "./page";
 
 /** One web task: a goal HIVEMIND carries out in a cloud browser, step by step, pausing for the owner. */
@@ -20,6 +20,8 @@ export type WebTask = {
   url?: string;
   title?: string;
   has_shot?: boolean;
+  /** Step screenshots saved for the replay: k = the page after step k (0 = before the first). */
+  shots?: number[];
   /** Whoever is driving right now, and when they last checked in (one driver at a time). */
   runner?: string;
   heartbeat?: string;
@@ -35,7 +37,7 @@ export type WebTask = {
 const INDEX = "web-tasks/index";
 const KEEP = 30;
 const taskKey = (id: string) => `web-tasks/${id}`;
-export const shotPath = (id: string) => `web-tasks/${id}.jpg`;
+export const shotPath = (id: string, step?: number) => (step === undefined ? `web-tasks/${id}.jpg` : `web-tasks/${id}/s${step}.jpg`);
 /** Cancel marker: a separate file the driver never writes, so a cancel can't be overwritten mid-step. */
 const stopPath = (id: string) => `web-tasks/${id}.stop`;
 
@@ -74,7 +76,7 @@ export async function createTask(supabase: SupabaseClient, goal: string, startUr
   await writeJSON(supabase, INDEX, keep.slice(0, KEEP));
   // Old tasks fall off the list: drop their files too.
   const old = keep.slice(KEEP);
-  if (old.length) await removeFiles(supabase, old.flatMap((id) => [`${taskKey(id)}.json`, shotPath(id), stopPath(id)])).catch(() => {});
+  if (old.length) await removeTaskFiles(supabase, old);
   return task;
 }
 
@@ -84,9 +86,14 @@ export async function deleteTasks(supabase: SupabaseClient, ids: string[]) {
   const gone = new Set(ids);
   const index = await readJSON<string[]>(supabase, INDEX, []);
   await writeJSON(supabase, INDEX, index.filter((id) => !gone.has(id)));
-  await removeFiles(supabase, ids.flatMap((id) => [`${taskKey(id)}.json`, shotPath(id), stopPath(id)])).catch(() => {});
+  await removeTaskFiles(supabase, ids);
   return ids.length;
 }
 
-export const saveShot =(supabase: SupabaseClient, id: string, jpg: Buffer) => writeFile(supabase, shotPath(id), jpg, "image/jpeg");
-export const readShot = (supabase: SupabaseClient, id: string) => readFile(supabase, shotPath(id));
+export const saveShot = (supabase: SupabaseClient, id: string, jpg: Buffer, step?: number) => writeFile(supabase, shotPath(id, step), jpg, "image/jpeg");
+export const readShot = (supabase: SupabaseClient, id: string, step?: number) => readFile(supabase, shotPath(id, step));
+
+async function removeTaskFiles(supabase: SupabaseClient, ids: string[]) {
+  const steps = (await Promise.all(ids.map((id) => listFiles(supabase, `web-tasks/${id}`).catch(() => [])))).flat();
+  await removeFiles(supabase, [...ids.flatMap((id) => [`${taskKey(id)}.json`, shotPath(id), stopPath(id)]), ...steps]).catch(() => {});
+}
