@@ -49,6 +49,7 @@ type MobileTab = "console" | "operator" | "log";
 
 const NAV = [
   { href: "/", label: "Overview" },
+  { href: "/autopilot", label: "Autopilot" },
   { href: "/projects", label: "Projects" },
   { href: "/career", label: "Career" },
   { href: "/journey", label: "Journey" },
@@ -332,6 +333,16 @@ function Bridge() {
     },
     [state, conversationId, focus, brain, galaxy, getSpeaker, speakAll, voice, router],
   );
+
+  // "/?ask=…" (an Autopilot insight's one-tap request): send it once, then clean the address.
+  const asked = useRef(false);
+  const ask = params.get("ask");
+  useEffect(() => {
+    if (!ask || asked.current || state !== "idle") return;
+    asked.current = true;
+    router.replace("/");
+    void send(ask);
+  }, [ask, state, send, router]);
 
   /* ───── Live voice: the site-wide Gemini Live session, mirrored into this console ───── */
   const liveState: LiveState = voice.state;

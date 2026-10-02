@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { autopilotDue, runAutopilot } from "@/lib/autopilot";
 import { safeEqual } from "@/lib/session";
 import { birthdaysToday, runBirthdayAlerts } from "@/lib/birthdays";
 import { db } from "@/lib/db";
@@ -8,13 +9,15 @@ import { readJSON, writeJSON } from "@/lib/private-store";
 import { notify, pushConfigured } from "@/lib/push";
 import { agenda, dueAlerts, HOME_TZ } from "@/lib/reminders";
 
-export const maxDuration = 30;
+// Autopilot runs after the response (see below) and needs the extra time.
+export const maxDuration = 60;
 
 const BRIEF_HOUR = Number(process.env.BRIEF_HOUR ?? 8);
 
 /**
  * Called every few minutes by an external scheduler (cron-job.org: Vercel's free plan only runs
- * its own cron once a day). Pushes reminders that just came due, and the morning brief once a day.
+ * its own cron once a day). Pushes reminders that just came due, and the morning brief once a day,
+ * and starts an Autopilot run every few hours.
  * Auth: "Authorization: Bearer <CRON_SECRET>" or ?key=<CRON_SECRET>.
  */
 export async function GET(req: Request) {
@@ -53,5 +56,9 @@ export async function GET(req: Request) {
   // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
   await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), lastRun: now.toISOString(), lastSent: due.length });
 
-  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits });
+  // 4. Autopilot: after the response, so the scheduler's request stays fast.
+  const autopilot = await autopilotDue(supabase, now).catch(() => false);
+  if (autopilot) after(() => runAutopilot(db(), { origin: new URL(req.url).origin }).then(() => undefined, (e) => console.warn("autopilot:", e)));
+
+  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot });
 }

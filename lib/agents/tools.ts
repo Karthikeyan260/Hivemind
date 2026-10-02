@@ -935,6 +935,35 @@ export const TOOLS: Record<string, Tool> = {
       return { refreshed: true, profile: await getProfile(ctx.supabase) };
     },
   },
+
+  /* ───── autopilot (imported lazily: Autopilot itself runs agents) ───── */
+  autopilot_feed: {
+    name: "autopilot_feed",
+    description: "What Autopilot (HIVEMIND working on its own in the background) noticed lately and hasn't been dealt with: insights with links and one-tap requests. Use for 'what did autopilot find', 'anything I should know', 'what needs my attention'.",
+    parameters: obj({}),
+    async run(_args, ctx) {
+      const { getFeed } = await import("@/lib/autopilot");
+      const f = await getFeed(ctx.supabase);
+      ctx.actions.push({ label: "Open Autopilot", href: "/autopilot" });
+      return {
+        last_run: f.lastRun,
+        enabled: f.settings.enabled,
+        open_insights: f.items.filter((i) => i.status === "new").slice(0, 8).map((i) => ({ title: i.title, body: i.body, priority: i.priority, link: i.link?.url, ask: i.ask })),
+      };
+    },
+  },
+  run_autopilot: {
+    name: "run_autopilot",
+    description: "Run Autopilot now: it looks across the owner's whole brain (schedule, habits, birthdays, projects, job hunt) plus the web and reports what needs attention. Takes up to a minute. Use when they say 'run autopilot' or 'check everything for me'.",
+    parameters: obj({}),
+    async run(_args, ctx) {
+      const { runAutopilot } = await import("@/lib/autopilot");
+      const r = await runAutopilot(ctx.supabase, { manual: true, origin: ctx.origin });
+      ctx.actions.push({ label: "Open Autopilot", href: "/autopilot" });
+      if ("skipped" in r) return { error: "Autopilot is already running; try again in a minute." };
+      return { found: r.insights.map((i) => ({ title: i.title, body: i.body, priority: i.priority, link: i.link?.url })), ...(r.error ? { error: r.error } : {}) };
+    },
+  },
 };
 
 export function toolOrThrow(name: string) {

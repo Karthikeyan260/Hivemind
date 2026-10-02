@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, Briefcase, CalendarHeart, FileText, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
+import { Brain, Briefcase, CalendarHeart, Compass, FileText, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -16,6 +16,7 @@ const TABS = [
 ] as const;
 
 const MORE = [
+  { label: "Autopilot", href: "/autopilot", icon: Compass },
   { label: "Habits", href: "/habits", icon: CalendarHeart },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Notes", href: "/notes", icon: StickyNote },

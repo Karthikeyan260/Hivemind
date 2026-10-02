@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, Briefcase, CalendarHeart, FileText, FolderKanban, GitBranch, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
+import { Brain, Briefcase, CalendarHeart, Compass, FileText, FolderKanban, GitBranch, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cx } from "@/components/ui";
@@ -8,6 +8,7 @@ import { clearOfflineCache } from "@/lib/offline";
 
 const NAV = [
   { label: "HIVEMIND", href: "/", icon: Sparkles },
+  { label: "Autopilot", href: "/autopilot", icon: Compass },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Memories", href: "/memories", icon: Brain },
   { label: "Career", href: "/career", icon: Briefcase },

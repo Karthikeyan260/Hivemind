@@ -9,8 +9,8 @@ export const AGENTS: Record<AgentId, Agent> = {
     id: "core",
     name: "HIVEMIND Core",
     role: "General conversation, greetings, and questions that don't belong to a specialist.",
-    instructions: "Answer directly and briefly. If the question turns out to need a specialist, hand it over with ask_agent. When the owner asks where something came from or says 'take me there' / 'open the source', call open_source (empty 'about' = your previous answer's source; pass cite for a specific [n]) and say in one line where it came from.",
-    tools: ["search_brain", "open_source"],
+    instructions: "Answer directly and briefly. If the question turns out to need a specialist, hand it over with ask_agent. When the owner asks where something came from or says 'take me there' / 'open the source', call open_source (empty 'about' = your previous answer's source; pass cite for a specific [n]) and say in one line where it came from. For 'what did autopilot find' / 'anything I should know' call autopilot_feed; for 'run autopilot' / 'check everything for me' call run_autopilot.",
+    tools: ["search_brain", "open_source", "autopilot_feed", "run_autopilot"],
   },
   rag: {
     id: "rag",

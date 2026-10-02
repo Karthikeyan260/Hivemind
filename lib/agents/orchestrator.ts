@@ -5,7 +5,7 @@ import type { ChatMessage } from "@/lib/ai/types";
 import { nowForPrompt } from "@/lib/reminders";
 import { agentRoster, AGENTS } from "./registry";
 import { TOOLS } from "./tools";
-import { AGENT_IDS, type AgentId, type RunContext } from "./types";
+import { AGENT_IDS, type Agent, type AgentId, type RunContext } from "./types";
 
 const MODELS = [...new Set([process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite", process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash"])];
 const MAX_STEPS = 6;
@@ -54,6 +54,8 @@ const DESTRUCTIVE = new Set([
 
 type RunOpts = {
   agentId: AgentId;
+  /** Run this agent instead of a registered one (Autopilot). It never delegates or deletes. */
+  agent?: Agent;
   message: string;
   history: ChatMessage[];
   persona: string;
@@ -113,16 +115,17 @@ async function step(contents: Content[], system: string, tools: FunctionDeclarat
  */
 export async function runAgent(o: RunOpts): Promise<{ text: string; model: string }> {
   const depth = o.depth ?? 0;
-  const agent = AGENTS[o.agentId];
+  const agent = o.agent ?? AGENTS[o.agentId];
   o.ctx.emit({ type: "agent", agent: agent.id, name: agent.name, via: depth ? "delegation" : "router" });
 
   const declarations: FunctionDeclaration[] = agent.tools.map((n) => ({ name: n, description: TOOLS[n].description, parametersJsonSchema: TOOLS[n].parameters }));
-  if (depth === 0) declarations.push(ASK_AGENT);
+  const delegates = depth === 0 && !o.agent;
+  if (delegates) declarations.push(ASK_AGENT);
   const system = [
     o.persona,
     `You are acting as HIVEMIND's ${agent.name}: ${agent.role}`,
     agent.instructions,
-    depth === 0 ? `Colleagues you can hand work to with ask_agent:\n${agentRoster()}` : "You were asked by a colleague; return a complete, factual answer to their task.",
+    delegates ? `Colleagues you can hand work to with ask_agent:\n${agentRoster()}` : o.agent ? "" : "You were asked by a colleague; return a complete, factual answer to their task.",
     RULES,
     `Current local time: ${nowForPrompt()}.`,
     // Sub-agents report to the top agent, which writes the final answer in the owner's language.
@@ -151,12 +154,12 @@ export async function runAgent(o: RunOpts): Promise<{ text: string; model: strin
         o.ctx.emit({ type: "tool", agent: agent.id, tool: name, status: "run", detail: summarize(args) });
         try {
           let response: Record<string, unknown>;
-          if (name === "ask_agent" && depth === 0) {
+          if (name === "ask_agent" && delegates) {
             const target = String(args.agent) as AgentId;
             if (!AGENTS[target] || target === agent.id) throw new Error(`Can't delegate to "${args.agent}".`);
             const sub = await runAgent({ ...o, agentId: target, message: String(args.task ?? o.message), history: [], depth: 1, onText: undefined });
             response = { answer: sub.text };
-          } else if (depth > 0 && DESTRUCTIVE.has(name)) {
+          } else if ((depth > 0 || o.agent) && DESTRUCTIVE.has(name)) {
             // A delegated run works from a colleague's instructions, which may carry text from the web.
             throw new Error(`"${name}" needs the owner's direct request; ask them instead.`);
           } else if (agent.tools.includes(name)) {
