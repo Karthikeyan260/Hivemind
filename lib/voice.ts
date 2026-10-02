@@ -61,7 +61,7 @@ export class SentenceStream {
 const MALE_VOICES = [
   /Prabhat.*Natural/i,
   /Microsoft Ravi/i,
-  /Rishi/i,
+  /\bRishi\b/i,
   /Guy.*Natural/i,
   /Andrew.*Natural/i,
   /Brian.*Natural/i,
@@ -69,8 +69,8 @@ const MALE_VOICES = [
   /Ryan.*Natural/i,
   /Google UK English Male/i,
   /Microsoft (David|Mark|George)/i,
-  /Daniel/i,
-  /Alex/i,
+  /\bDaniel\b/i,
+  /\bAlex\b/i,
 ];
 
 /** Splits on sentence ends before a capital, so "1.6M" or "e.g." mid-sentence stay together. */
