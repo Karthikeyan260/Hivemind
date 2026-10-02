@@ -50,6 +50,10 @@ const DESTRUCTIVE = new Set([
   "update_project",
   "delete_project",
   "set_language",
+  // Approving a browser step or deleting/changing Autopilot is the owner's call, never a page's or a colleague's.
+  "web_task_answer",
+  "web_task_delete",
+  "autopilot_update",
 ]);
 
 type RunOpts = {

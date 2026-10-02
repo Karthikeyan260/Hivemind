@@ -955,6 +955,74 @@ export const TOOLS: Record<string, Tool> = {
     },
   },
 
+  web_tasks_status: {
+    name: "web_tasks_status",
+    description:
+      "The owner's web tasks (HIVEMIND driving a cloud browser): which are working, which wait for their Approve or for them to take over, and the results of finished ones. Use for 'how's the web task going', 'what did the browser find', 'anything waiting for me'.",
+    parameters: obj({}),
+    async run(_args, ctx) {
+      const { listTasks } = await import("@/lib/web-agent/store");
+      const tasks = await listTasks(ctx.supabase);
+      ctx.actions.push({ label: "Open Web tasks", href: "/web" });
+      return {
+        tasks: tasks.slice(0, 8).map((t, i) => ({
+          n: i + 1,
+          goal: t.goal,
+          status: t.status,
+          waiting_for_approval: t.status === "needs_approval" ? t.pending?.label : undefined,
+          needs_owner: t.status === "needs_you" ? t.question : undefined,
+          steps: t.steps.length,
+          result: t.result?.slice(0, 600),
+          error: t.error,
+        })),
+      };
+    },
+  },
+  web_task_answer: {
+    name: "web_task_answer",
+    description:
+      "Answer or control a web task: 'approve' / 'reject' the step it paused on, 'continue' after the owner took over (logged in, entered an OTP), 'cancel' to stop it, 'retry' a stopped one. 'which' = words from its goal; empty = the task that most recently needs attention. Only on the owner's own request.",
+    parameters: obj({ decision: { type: "string", enum: ["approve", "reject", "continue", "cancel", "retry"] }, which: S }, ["decision"]),
+    async run(args, ctx) {
+      const [{ listTasks, ACTIVE }, { decideTask, kick }] = await Promise.all([import("@/lib/web-agent/store"), import("@/lib/web-agent/runner")]);
+      const decision = str(args.decision) as "approve" | "reject" | "continue" | "cancel" | "retry";
+      const tasks = await listTasks(ctx.supabase);
+      const words = str(args.which).toLowerCase();
+      const wants = { approve: ["needs_approval"], reject: ["needs_approval"], continue: ["needs_you"], cancel: ACTIVE, retry: ["failed", "cancelled", "done", "needs_you"] }[decision];
+      const pool = words ? tasks.filter((t) => t.goal.toLowerCase().includes(words) || words.split(/\s+/).every((w) => t.goal.toLowerCase().includes(w))) : tasks;
+      const task = pool.find((t) => wants.includes(t.status));
+      if (!task) return { error: words ? `No web task matching "${words}" can be ${decision}d right now.` : `No web task is waiting for "${decision}".` };
+      const r = await decideTask(ctx.supabase, task.id, decision);
+      if (!r) return { error: "That task is gone." };
+      if (r.run) await kick(ctx.origin, task.id);
+      ctx.changed = true;
+      ctx.actions.push({ label: "Watch it", href: `/web?task=${task.id}` });
+      return { task: task.goal, decision, now: r.run ? "working again" : r.task.status, step: decision === "approve" || decision === "reject" ? task.pending?.label : undefined };
+    },
+  },
+  web_task_delete: {
+    name: "web_task_delete",
+    description: "Delete a web task from the list ('which' = words from its goal), or every finished one with which='finished'. A task still working is stopped first. Only on the owner's own request.",
+    parameters: obj({ which: S }, ["which"]),
+    async run(args, ctx) {
+      const { listTasks, deleteTasks, ACTIVE } = await import("@/lib/web-agent/store");
+      const { decideTask } = await import("@/lib/web-agent/runner");
+      const tasks = await listTasks(ctx.supabase);
+      const words = str(args.which).toLowerCase();
+      if (/^(all )?(finished|done|completed|old)( ones| tasks)?$/.test(words)) {
+        const n = await deleteTasks(ctx.supabase, tasks.filter((t) => !ACTIVE.includes(t.status)).map((t) => t.id));
+        ctx.changed = true;
+        return { deleted: n, note: "Tasks still working were kept." };
+      }
+      const task = tasks.find((t) => t.goal.toLowerCase().includes(words)) ?? tasks.find((t) => words.split(/\s+/).every((w) => t.goal.toLowerCase().includes(w)));
+      if (!task) return { error: `No web task matching "${words}".`, tasks: tasks.slice(0, 6).map((t) => t.goal) };
+      if (ACTIVE.includes(task.status)) await decideTask(ctx.supabase, task.id, "cancel");
+      await deleteTasks(ctx.supabase, [task.id]);
+      ctx.changed = true;
+      return { deleted: task.goal };
+    },
+  },
+
   /* ───── autopilot (imported lazily: Autopilot itself runs agents) ───── */
   autopilot_feed: {
     name: "autopilot_feed",
@@ -969,6 +1037,40 @@ export const TOOLS: Record<string, Tool> = {
         enabled: f.settings.enabled,
         open_insights: f.items.filter((i) => i.status === "new").slice(0, 8).map((i) => ({ title: i.title, body: i.body, priority: i.priority, link: i.link?.url, ask: i.ask })),
       };
+    },
+  },
+  autopilot_update: {
+    name: "autopilot_update",
+    description:
+      "Change Autopilot: mark an insight 'done' or 'dismissed' (not useful: it won't suggest anything like it again) using words from its title in 'which' (or 'all' to mark every open one done); and/or change settings: enabled (run on its own), every_hours (1-24), push (notify when urgent). Only on the owner's own request.",
+    parameters: obj({
+      which: S,
+      status: { type: "string", enum: ["done", "dismissed"] },
+      enabled: { type: "boolean" },
+      every_hours: { type: "number" },
+      push: { type: "boolean" },
+    }),
+    async run(args, ctx) {
+      const { getFeed, saveSettings, setInsightStatus } = await import("@/lib/autopilot");
+      const out: Record<string, unknown> = {};
+      const settings: Record<string, unknown> = {};
+      if (typeof args.enabled === "boolean") settings.enabled = args.enabled;
+      if (typeof args.push === "boolean") settings.push = args.push;
+      if (typeof args.every_hours === "number") settings.every_hours = Math.min(24, Math.max(1, Math.round(args.every_hours)));
+      if (Object.keys(settings).length) out.settings = await saveSettings(ctx.supabase, settings);
+      const status = str(args.status) as "done" | "dismissed";
+      if (status) {
+        const open = (await getFeed(ctx.supabase)).items.filter((i) => i.status === "new");
+        const words = str(args.which).toLowerCase();
+        const hits = /^(all|everything)$/.test(words) ? open : open.filter((i) => words && `${i.title} ${i.body}`.toLowerCase().includes(words)).slice(0, 1);
+        if (!hits.length) return { ...out, error: `No open insight matching "${words}".`, open: open.map((i) => i.title) };
+        for (const i of hits) await setInsightStatus(ctx.supabase, i.id, status);
+        out.marked = hits.map((i) => i.title);
+        out.as = status;
+      }
+      if (!Object.keys(out).length) return { error: "Say which insight to mark, or which setting to change." };
+      ctx.changed = true;
+      return out;
     },
   },
   run_autopilot: {

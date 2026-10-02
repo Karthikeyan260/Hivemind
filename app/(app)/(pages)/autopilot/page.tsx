@@ -2,6 +2,7 @@
 
 import { Bell, BookOpen, Briefcase, Check, Compass, ExternalLink, FolderKanban, Globe, HeartPulse, Loader2, Play, ShoppingBag, Sparkles, Users, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge, Button, cx, Empty, ErrorText, PageHeader, Select } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
@@ -37,6 +38,7 @@ const ICONS: Record<string, typeof Compass> = {
 const PRIORITY = { 3: { label: "Today", tone: "core" }, 2: { label: "This week", tone: "data" }, 1: { label: "FYI", tone: "neutral" } } as const;
 
 export default function AutopilotPage() {
+  const router = useRouter();
   const feed = useFetch<Feed>("/api/autopilot");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +80,35 @@ export default function AutopilotPage() {
         return { found: r?.insights.map((i) => i.title) ?? [] };
       },
     },
+    insight_do: {
+      description: "Autopilot page: run an insight's one-tap request (its 'Do it' button) in HIVEMIND. input: the insight's number in the list (1 = top) or words from its title.",
+      run: ({ input }) => {
+        const i = pick(String(input ?? ""));
+        if (!i) return { error: "No open insight like that.", open: open.map((x) => x.title) };
+        if (!i.ask) return { error: `"${i.title}" has no one-tap request.`, link: i.link?.url };
+        void mark(i.id, "done");
+        router.push(`/?ask=${encodeURIComponent(i.ask)}`);
+        return { running: i.ask };
+      },
+    },
+    insight_open_link: {
+      description: "Autopilot page: open an insight's link. input: its number (1 = top) or words from its title.",
+      run: ({ input }) => {
+        const i = pick(String(input ?? ""));
+        if (!i?.link) return { error: "No open insight with a link like that." };
+        if (i.link.url.startsWith("http")) window.open(i.link.url, "_blank", "noopener");
+        else router.push(i.link.url);
+        return { opened: i.link.label };
+      },
+    },
   });
+  const open = (f?.items ?? []).filter((i) => i.status === "new");
+  function pick(q: string) {
+    const n = Number(q.match(/\d+/)?.[0]);
+    if (n) return open[n - 1];
+    const words = q.toLowerCase().trim();
+    return words ? open.find((i) => `${i.title} ${i.body}`.toLowerCase().includes(words)) : open[0];
+  }
 
   const items = (f?.items ?? []).filter((i) => (showAll ? true : i.status === "new"));
   const hidden = (f?.items.length ?? 0) - (f?.items.filter((i) => i.status === "new").length ?? 0);

@@ -29,6 +29,8 @@ const PAGES = [
   { path: "/sources", what: "data sources and imports" },
   { path: "/search", what: "search" },
   { path: "/settings", what: "settings" },
+  { path: "/autopilot", what: "Autopilot: what HIVEMIND noticed on its own, run it now, its schedule" },
+  { path: "/web", what: "Web tasks: HIVEMIND driving a cloud browser, approvals, live view" },
 ];
 
 const VOICE_TOOLS = [
@@ -289,6 +291,8 @@ Tools:
 - Notes: create_note to write one; list_notes to read them out; update_note to change or append ("add milk to my shopping note"); delete_note.
 - Documents: list_documents; delete_document. Projects: update_project (rename, describe, status active/paused/done); delete_project.
 - Language: "reply in Tamil / English / match me" → set_language ('ta', 'en', 'auto').
+- Autopilot (HIVEMIND working on its own; page /autopilot): "open autopilot" → navigate /autopilot; "what did autopilot find / anything I should know" → autopilot_feed, read out the top items briefly; "run autopilot / check everything for me" → say "Checking everything, about half a minute", then run_autopilot; "mark the gift one done" / "that's not useful" → autopilot_update (which + status done/dismissed); "turn autopilot off / run every 6 hours / stop autopilot notifications" → autopilot_update (enabled / every_hours / push). On the Autopilot page, do_page_action insight_do runs an insight's one-tap request.
+- Web tasks (HIVEMIND driving a real cloud browser; page /web): "go to <site> and …", "fill this form", "use the browser to …" → web_task with a complete goal, then say it's working and you'll ask before anything irreversible; "open web tasks" → navigate /web; "how's the web task / what did it find / anything waiting" → web_tasks_status; "approve it / go ahead / submit it" → web_task_answer approve (say the step first if they haven't heard it); "no / don't" → reject; "I've logged in / done, continue" → continue; "stop the web task" → cancel; "try again" → retry; "delete the X task / clear finished tasks" → web_task_delete. Approve only when the owner clearly says so, never on your own. On the Web page: web_task_open (show a task), web_task_live (live view on/off).
 - Deleting a note, document or project: call it once without confirm, read out its name and ask "Delete it?"; call again with confirm=true ONLY after they say yes.
 - Memory Palace (Palace view of the Memories page, a walkable 3D museum of their memories) has its own actions via page_actions / do_page_action: palace_go ('knowledge', 'experience', 'projects', 'ideas', 'self', 'rotunda'), palace_walk ('forward 5', 'left', 'back 2'), palace_turn ('left', 'right 45', 'around'), palace_open (words from a memory, e.g. 'Zinnov'), palace_next / palace_previous (the next frame along the wall), palace_find (light up all matches and go to the best), palace_close, palace_where ('where am I', 'what's around me'). Navigate to /memories first if they're on another page; if it shows the List, call memories_view 'palace' first. Narrate briefly: "Heading to the Hall of Knowledge."
 For general questions unrelated to the owner, just answer.

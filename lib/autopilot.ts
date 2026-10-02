@@ -166,7 +166,7 @@ Your job: find the 0 to 4 most useful things to tell them RIGHT NOW, the kind a 
 Rules:
 - Quality over quantity. If nothing is genuinely useful, return an empty list. Never filler, never generic advice.
 - Reminder alerts, birthday alerts, habit reminders and the morning brief are already sent by other systems: don't just repeat them; add something new (a link, a plan, a connection).
-- Never repeat an earlier insight (see the list). Never suggest anything like one the owner DISMISSED.
+- Never repeat an earlier insight (see the list). Same person, event, job or project as an earlier insight = a repeat, however you word it: skip it, or if you truly have something NEW about it (a gift link, a deadline moved), reuse that insight's exact key. Never suggest anything like one the owner DISMISSED.
 - Links must be exact URLs returned by a tool in this run, or an in-app path ("/career", "/habits", "/projects", "/memories", "/notes"). Never invent a URL.
 - "ask" is a request the owner can send to HIVEMIND with one tap, written as the owner would say it ("Tailor my resume for the Zoho ML Engineer job"). Only when it helps.
 - Use tools to verify and enrich (search_brain, web_search, search_jobs, find_product, etc.). You cannot change or delete anything.
@@ -230,6 +230,20 @@ function salvage(text: string): z.infer<typeof Output> | null {
   return out.success && out.data.insights.length ? out.data : null;
 }
 
+/** The AI sometimes re-words an earlier insight under a new key: compare titles too (last 14 days). */
+const STOP_WORDS = new Set(["the", "a", "an", "is", "on", "in", "for", "to", "of", "your", "you", "and", "up", "coming", "with", "at"]);
+const words = (s: string) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(" ").filter((w) => w.length > 1 && !STOP_WORDS.has(w)));
+function similarToRecent(title: string, items: Insight[]) {
+  const a = words(title);
+  const since = Date.now() - 14 * 86_400_000;
+  return items.some((i) => {
+    if (+new Date(i.created_at) < since) return false;
+    const b = words(i.title);
+    const shared = [...a].filter((w) => b.has(w)).length;
+    return shared / Math.max(1, Math.min(a.size, b.size)) >= 0.6;
+  });
+}
+
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 const safeUrl = (u: string) => /^https:\/\/[^\s]+$/.test(u) || /^\/[a-z0-9/?=&_-]*$/i.test(u);
 
@@ -283,7 +297,7 @@ export async function runAutopilot(supabase: SupabaseClient, opts: { manual?: bo
     const now = new Date().toISOString();
     fresh = out.insights
       .map((i) => ({ ...i, key: slug(i.key) || slug(i.title) }))
-      .filter((i) => !known.has(i.key))
+      .filter((i) => !known.has(i.key) && !similarToRecent(i.title, state.items))
       .map((i) => ({
         id: crypto.randomUUID(),
         key: i.key,

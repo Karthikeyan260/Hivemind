@@ -137,21 +137,27 @@ function WebTasks() {
     }
   }
 
+  // Starting, approving, cancelling and deleting work by voice from any page (server tools);
+  // these are the things only this page can do.
   useVoiceActions({
-    web_task_start: {
-      description: "Web page: start a browser task. input: what to do on the web (e.g. 'compare the price of X on Amazon and Flipkart').",
-      run: async ({ input }) => {
-        const t = await start(String(input ?? ""));
-        return t ? { started: t.goal, note: "Working in the cloud browser; risky steps will ask for approval." } : { error: "Couldn't start it." };
+    web_task_open: {
+      description: "Web page: show one task. input: its number in the list (1 = newest) or words from its goal.",
+      run: ({ input }) => {
+        const q = String(input ?? "").toLowerCase().trim();
+        const n = Number(q.match(/\d+/)?.[0]);
+        const t = n ? tasks[n - 1] : tasks.find((x) => x.goal.toLowerCase().includes(q)) ?? tasks[0];
+        if (!t) return { error: "No task like that.", tasks: tasks.map((x) => x.goal) };
+        router.replace(`/web?task=${t.id}`);
+        return { showing: t.goal, status: t.status, result: t.result };
       },
     },
-    web_task_decide: {
-      description: "Web page: answer the open task. input: approve, reject, continue, cancel or retry.",
-      run: async ({ input }) => {
-        const d = String(input ?? "").toLowerCase().match(/approve|reject|continue|cancel|retry/)?.[0] as "approve" | "reject" | "continue" | "cancel" | "retry" | undefined;
-        if (!d) return { error: "Say approve, reject, continue, cancel or retry." };
-        await decide(d);
-        return { done: d };
+    web_task_live: {
+      description: "Web page: switch the open task between its live browser view and the screenshot. input: 'on' or 'off'.",
+      run: ({ input }) => {
+        if (!task?.live_url || !ACTIVE.includes(task.status)) return { error: "No live browser for this task (it isn't running)." };
+        const on = !/off|close|hide|screenshot/i.test(String(input ?? ""));
+        setLive(on);
+        return { live: on };
       },
     },
   });
