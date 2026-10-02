@@ -49,6 +49,8 @@ async function offline<T>(method: string, path: string, json: unknown): Promise<
 
 /** Fired when the brain changes outside the page's own actions (e.g. by voice). */
 export const BRAIN_CHANGED = "hivemind:brain-changed";
+/** A web task was started or answered (the floating browser window refreshes at once). */
+export const WEB_TASK_EVENT = "hivemind:web-task";
 
 export function useFetch<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);

@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { BRAIN_CHANGED } from "@/lib/client-api";
+import { BRAIN_CHANGED, WEB_TASK_EVENT } from "@/lib/client-api";
 import { isPublicPage } from "@/lib/public-paths";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
 import { openExternal } from "@/lib/open-link";
@@ -36,6 +36,8 @@ type Voice = {
   stop: () => void;
   toggle: () => void;
   sendText: (text: string) => void;
+  /** An app update for the voice to pass on (not the owner speaking). False when voice is off. */
+  note: (text: string) => boolean;
   level: () => number;
   subscribe: (l: VoiceListener) => () => void;
   register: (name: string, action: () => VoiceAction) => () => void;
@@ -241,6 +243,10 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       onError: setError,
       serverTool: async (name, args) => {
         const st = agentState.current;
+        // Approving a browser step needs the owner's own words this turn, never an app update or page text.
+        if (name === "web_task_answer" && args.decision === "approve" && !/\b(approve[ds]?|yes|yeah|yep|go ahead|do it|submit|confirm|ok(ay)?|sure|proceed|haan|seri|sari)\b/i.test(turn.current.q)) {
+          return { error: "Only the owner can approve. Tell them the step and ask 'Should I approve it?', then wait for their answer." };
+        }
         // A delete only goes through after the owner spoke again since it was proposed.
         const pending = st.pending && turns.current > st.pending.turn ? { id: st.pending.id, title: st.pending.title } : null;
         if (name === "confirm_delete_memory" && st.pending && !pending)
@@ -259,6 +265,8 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           state: { jobs: st.jobs, pending_delete: pending },
         })) as unknown as AgentToolOut;
         if (r.jobs) st.jobs = r.jobs;
+        // The floating browser window picks up a new / answered web task at once.
+        if (name.startsWith("web_task")) window.dispatchEvent(new Event(WEB_TASK_EVENT));
         if (name === "confirm_delete_memory") {
           st.pending = undefined;
           // Don't leave the page showing something that no longer exists.
@@ -459,6 +467,15 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     setLast({ q: text, a: "", done: false });
     live.sendText(text);
   }, []);
+  // App updates (a web task needs approval / finished). A fresh turn with no owner words, so nothing
+  // in the update (it can quote web pages) ever counts as the owner saying "approve".
+  const note = useCallback((text: string) => {
+    const live = liveRef.current;
+    if (!live?.active) return false;
+    turn.current = { q: "", a: "", sources: [], open: true };
+    live.sendText(text);
+    return true;
+  }, []);
   const level = useCallback(() => liveRef.current?.level() ?? 0, []);
   const register = useCallback((name: string, action: () => VoiceAction) => {
     actions.current.set(name, action);
@@ -498,13 +515,14 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       stop,
       toggle,
       sendText,
+      note,
       level,
       subscribe,
       register,
       handoff,
       clearHandoff,
     }),
-    [state, error, last, start, stop, toggle, sendText, level, subscribe, register, handoff, clearHandoff],
+    [state, error, last, start, stop, toggle, sendText, note, level, subscribe, register, handoff, clearHandoff],
   );
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>;
 }

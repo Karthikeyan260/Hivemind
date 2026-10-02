@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { MobileNav } from "@/components/mobile-nav";
 import { ServiceWorker } from "@/components/notifications";
 import { OfflineStatusPill } from "@/components/offline-status";
+import { WebTaskWindow } from "@/components/web/live-window";
 import { ReminderWatcher } from "@/components/reminders/watcher";
 import { HandoffCard, VoiceDock } from "@/components/voice/dock";
 import { VoiceProvider } from "@/components/voice/provider";
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <HandoffCard />
           <ServiceWorker />
           <OfflineStatusPill />
+          <WebTaskWindow />
           <MobileNav canLock={passwordRequired()} />
           <ReminderWatcher />
         </VoiceProvider>

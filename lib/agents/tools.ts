@@ -950,8 +950,9 @@ export const TOOLS: Record<string, Tool> = {
       const startUrl = /^https?:\/\//.test(str(args.start_url)) ? str(args.start_url) : undefined;
       const task = await createTask(ctx.supabase, goal, startUrl);
       await kick(ctx.origin, task.id);
-      ctx.actions.push({ label: "Watch it work", href: `/web?task=${task.id}`, navigate: true });
-      return { started: goal, note: "It's working in a cloud browser now. Tell the owner it runs in the background, they can watch on the Web tasks page, and you'll ask before anything irreversible." };
+      // No page change: a small live browser window appears on whatever page the owner is on.
+      ctx.actions.push({ label: "Watch it work", href: `/web?task=${task.id}` });
+      return { started: goal, note: "It's working in a cloud browser now. Tell the owner they can watch it live in the small browser window on screen, and you'll ask before anything irreversible." };
     },
   },
 
