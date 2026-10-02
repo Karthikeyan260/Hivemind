@@ -63,3 +63,21 @@ export async function writeJSON(supabase: SupabaseClient, key: string, value: un
     .upload(`${key}.json`, new Blob([JSON.stringify(value)], { type: "application/json" }), { upsert: true, contentType: "application/json" });
   if (error) throw new Error(`store write failed: ${error.message}`);
 }
+
+/** A binary file (e.g. a web-task screenshot) next to the JSON state. */
+export async function writeFile(supabase: SupabaseClient, path: string, body: Blob | Buffer | Uint8Array, contentType: string) {
+  await ensureBucket(supabase);
+  const { error } = await supabase.storage.from(BUCKET).upload(path, body, { upsert: true, contentType });
+  if (error) throw new Error(`store write failed: ${error.message}`);
+}
+
+export async function readFile(supabase: SupabaseClient, path: string) {
+  await ensureBucket(supabase);
+  const { data, error } = await supabase.storage.from(BUCKET).download(path);
+  return error || !data ? null : data;
+}
+
+export async function removeFiles(supabase: SupabaseClient, paths: string[]) {
+  await ensureBucket(supabase);
+  if (paths.length) await supabase.storage.from(BUCKET).remove(paths);
+}

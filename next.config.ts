@@ -16,7 +16,8 @@ const nextConfig: NextConfig = {
   // A stray package-lock.json in the home folder otherwise confuses root detection.
   turbopack: { root: __dirname },
   // PDF rendering uses Node-only internals (fonts, streams); load it at runtime instead of bundling.
-  serverExternalPackages: ["@react-pdf/renderer"],
+  // playwright-core (web agent) only drives a remote browser; keep it out of the bundle too.
+  serverExternalPackages: ["@react-pdf/renderer", "playwright-core"],
   poweredByHeader: false,
   async headers() {
     return [

@@ -8,6 +8,8 @@ import { runHabitAlerts } from "@/lib/habits";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { notify, pushConfigured } from "@/lib/push";
 import { agenda, dueAlerts, HOME_TZ } from "@/lib/reminders";
+import { resumeStalled } from "@/lib/web-agent/runner";
+import { ACTIVE, listTasks } from "@/lib/web-agent/store";
 
 // Autopilot runs after the response (see below) and needs the extra time.
 export const maxDuration = 60;
@@ -60,5 +62,9 @@ export async function GET(req: Request) {
   const autopilot = await autopilotDue(supabase, now).catch(() => false);
   if (autopilot) after(() => runAutopilot(db(), { origin: new URL(req.url).origin }).then(() => undefined, (e) => console.warn("autopilot:", e)));
 
-  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot });
+  // 5. Web tasks: restart any whose driver stopped; close out pauses the browser didn't outlive.
+  const active = (await listTasks(supabase).catch(() => [])).filter((t) => ACTIVE.includes(t.status));
+  const web = active.length ? await resumeStalled(supabase, active, process.env.APP_URL || new URL(req.url).origin).catch(() => 0) : 0;
+
+  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot, web });
 }

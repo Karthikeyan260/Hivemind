@@ -119,6 +119,22 @@ self.addEventListener("push", (e) => {
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   if (e.action === "dismiss" || e.action === "decline") return;
+  // Web task Approve / Reject straight from the notification.
+  const webTask = e.notification.data?.webTask;
+  if (webTask && (e.action === "web-approve" || e.action === "web-reject")) {
+    const approve = e.action === "web-approve";
+    e.waitUntil(
+      fetch(`/api/web-tasks/${webTask}`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: approve ? "approve" : "reject" }),
+      })
+        .then((r) => (r.ok ? self.registration.showNotification(approve ? "▶️ Approved, continuing" : "✋ Rejected", { body: "Open HIVEMIND to watch.", icon: "/icons/icon-192.png", tag: `web-${webTask}`, data: { url: `/web?task=${webTask}` } }) : Promise.reject(r.status)))
+        .catch(() => self.clients.openWindow(`/web?task=${webTask}`)),
+    );
+    return;
+  }
   // Habit buttons work without opening the app.
   const habit = e.notification.data?.habit;
   if (habit && (e.action === "habit-done" || e.action === "habit-snooze")) {

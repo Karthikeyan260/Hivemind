@@ -936,6 +936,25 @@ export const TOOLS: Record<string, Tool> = {
     },
   },
 
+  /* ───── web agent (imported lazily: it pulls in the browser driver) ───── */
+  web_task: {
+    name: "web_task",
+    description:
+      "Operate a real web browser for the owner: open sites, search inside them, click through pages, fill forms, compare prices across store pages, collect details that need clicking around. Runs in the background and shows live on the Web tasks page; anything irreversible (submit, pay, send, delete) waits for the owner's Approve, and logins/OTPs are handed to them. Use when the job needs actually using a website, not just a web search. 'goal' is a complete instruction; 'start_url' optional.",
+    parameters: obj({ goal: S, start_url: S }, ["goal"]),
+    async run(args, ctx) {
+      const [{ steelConfigured }, { createTask }, { kick }] = await Promise.all([import("@/lib/web-agent/steel"), import("@/lib/web-agent/store"), import("@/lib/web-agent/runner")]);
+      if (!steelConfigured()) return { error: "The web agent isn't set up yet (STEEL_API_KEY missing)." };
+      const goal = str(args.goal);
+      if (goal.length < 3) return { error: "Say what to do on the web." };
+      const startUrl = /^https?:\/\//.test(str(args.start_url)) ? str(args.start_url) : undefined;
+      const task = await createTask(ctx.supabase, goal, startUrl);
+      await kick(ctx.origin, task.id);
+      ctx.actions.push({ label: "Watch it work", href: `/web?task=${task.id}`, navigate: true });
+      return { started: goal, note: "It's working in a cloud browser now. Tell the owner it runs in the background, they can watch on the Web tasks page, and you'll ask before anything irreversible." };
+    },
+  },
+
   /* ───── autopilot (imported lazily: Autopilot itself runs agents) ───── */
   autopilot_feed: {
     name: "autopilot_feed",
