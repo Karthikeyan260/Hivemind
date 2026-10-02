@@ -148,8 +148,73 @@ function MapView() {
       run: ({ input }) => {
         if (!to) return { error: "No route is open." };
         const m2 = /walk/i.test(String(input ?? "")) ? "walk" : "car";
-        go({ to, mode: m2 });
+        go({ to, name: toName, mode: m2 });
         return { mode: m2 };
+      },
+    },
+    map_locate: {
+      description: "Map page: find where I am now and centre the map on me.",
+      run: async () => {
+        const f = await locate();
+        if (!f) return { error: "Location is blocked for this site: allow it in the browser." };
+        map.current?.setView([f.lat, f.lng], 16);
+        return { located: true, accuracy_m: Math.round(f.accuracy) };
+      },
+    },
+    map_nearby: {
+      description: "Map page: show a kind of place near me on the map and in the list. input: park, atm, petrol bunk, hospital, medical shop, restaurant, tea shop, cinema, temple…",
+      run: ({ input }) => {
+        const what = String(input ?? "").trim();
+        if (!what) return { error: "Say what to look for." };
+        go({ near: what });
+        return { showing: what, note: "The list fills in a moment; read it with map_list." };
+      },
+    },
+    map_list: {
+      description: "Map page: read what's listed now: the nearby places (nearest first) or the open route's distance, time and steps.",
+      run: () => ({
+        places: places?.slice(0, 8).map((p, i) => `${i + 1}. ${p.name}, ${p.km} km, ${p.walk_min} min walk`) ?? null,
+        route: route ? { to: route.to.name, km: route.km, minutes: route.minutes, mode: route.mode, steps: route.steps.map((s) => s.text) } : null,
+      }),
+    },
+    map_way_to: {
+      description: "Map page: show the route to a place. input: the place ('AGS Cinemas Villivakkam'), or a number to route to that place in the list ('2'). Add 'walk' for walking.",
+      run: ({ input }) => {
+        const q = String(input ?? "").trim();
+        const walk = /\bwalk(ing)?\b/i.test(q);
+        const n = Number(q.match(/^\s*(?:number\s*)?(\d+)/i)?.[1]);
+        if (n && places?.[n - 1]) {
+          const p = places[n - 1];
+          go({ to: `${p.lat},${p.lng}`, name: p.name, mode: walk || p.km < 1.5 ? "walk" : "car" });
+          return { route_to: p.name };
+        }
+        const place = q.replace(/\b(walk(ing)?|by car|on foot)\b/gi, "").trim();
+        if (!place) return { error: "Say where to." };
+        go({ to: place, mode: walk ? "walk" : "car" });
+        return { route_to: place };
+      },
+    },
+    map_start_navigation: {
+      description: "Map page: start turn-by-turn navigation for the open route in Google Maps.",
+      run: () => {
+        if (!route) return { error: "No route is open. Ask for the way somewhere first." };
+        const w = window.open(route.navigate, "_blank", "noopener");
+        return w ? { opened: "Google Maps" } : { blocked: "The browser blocked it: ask the owner to tap Start navigation on screen." };
+      },
+    },
+    map_zoom: {
+      description: "Map page: zoom the map. input: 'in' or 'out'.",
+      run: ({ input }) => {
+        if (/out/i.test(String(input ?? ""))) map.current?.zoomOut();
+        else map.current?.zoomIn();
+        return { zoom: map.current?.getZoom() };
+      },
+    },
+    map_devices: {
+      description: "Map page: show all my devices on the map and say where each one last was.",
+      run: () => {
+        go({});
+        return { devices: devices.map((d) => `${d.name}, last seen ${timeAgo(d.at)}`) };
       },
     },
   });

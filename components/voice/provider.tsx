@@ -8,7 +8,8 @@ import { type VideoCommand, videoCommand } from "@/components/video/player";
 import { isPublicPage } from "@/lib/public-paths";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
 import { SentenceStream, Speaker } from "@/lib/voice";
-import { getFix } from "@/lib/location";
+import { deviceName, getFix, setSharing } from "@/lib/location";
+import { clearOfflineCache } from "@/lib/offline";
 
 /** Tools that use where this device is. */
 const LOCATION_TOOLS = new Set(["where_am_i", "places_nearby", "directions"]);
@@ -464,6 +465,38 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         type_text: typeText,
         select_option: selectOption,
         music: (args) => musicCommand(args as MusicCommand),
+        // Settings by voice, on this device.
+        location_sharing: async (args) => {
+          const on = args.on === true || /^(on|yes|true|start)$/i.test(String(args.on));
+          const fix = await setSharing(on);
+          if (on && !fix) {
+            await setSharing(false);
+            return { error: "Location is blocked for this site on this device. Ask the owner to allow it in the browser (the lock icon by the address)." };
+          }
+          return { sharing: on, device: deviceName() };
+        },
+        my_voice: async (args) => {
+          const on = args.on === true || /^(on|yes|true|start)$/i.test(String(args.on));
+          const r = await fetch("/api/voice/mine", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: on }) });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) return { error: data.error ?? "Couldn't change the voice. Set it up in Settings → My voice first." };
+          // Takes effect right away in this conversation.
+          if (liveRef.current) liveRef.current.muted = on;
+          if (!on) myVoiceRef.current?.speaker.stop();
+          return { my_voice: on, note: on ? "From your next reply you speak in the owner's own voice." : "Back to the usual voice from the next reply." };
+        },
+        lock_app: () => {
+          // After the goodbye: lock, forget cached data on this device, end the voice session.
+          sleepAfterTurn.current = true;
+          setTimeout(async () => {
+            await fetch("/api/unlock", { method: "DELETE" }).catch(() => {});
+            await clearOfflineCache();
+            liveRef.current?.stop();
+            routerRef.current.replace("/unlock");
+            routerRef.current.refresh();
+          }, 3500);
+          return { locking: true, note: "Say a very short goodbye; HIVEMIND locks after that." };
+        },
         video: (args) => videoCommand(args as VideoCommand),
         go_to_sleep: () => {
           sleepAfterTurn.current = true;
