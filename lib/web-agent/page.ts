@@ -1,5 +1,5 @@
 import "server-only";
-import { chromium, type Browser, type Page } from "playwright-core";
+import type { Browser, Page } from "playwright-core";
 import { cdpUrl } from "./steel";
 
 /**
@@ -9,6 +9,8 @@ import { cdpUrl } from "./steel";
 export type Snapshot = { url: string; title: string; elements: string; text: string };
 
 export async function attach(sessionId: string): Promise<{ browser: Browser; page: Page }> {
+  // Loaded only when a task runs: routes that merely import the web agent (the scheduler) never need it.
+  const { chromium } = await import("playwright-core");
   const browser = await chromium.connectOverCDP(cdpUrl(sessionId), { timeout: 20_000 });
   const context = browser.contexts()[0] ?? (await browser.newContext());
   const pages = context.pages();

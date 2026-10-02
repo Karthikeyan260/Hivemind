@@ -18,6 +18,11 @@ const nextConfig: NextConfig = {
   // PDF rendering uses Node-only internals (fonts, streams); load it at runtime instead of bundling.
   // playwright-core (web agent) only drives a remote browser; keep it out of the bundle too.
   serverExternalPackages: ["@react-pdf/renderer", "playwright-core"],
+  // ...so ship its files with the routes that drive the browser (the tracer misses its lazy requires).
+  outputFileTracingIncludes: {
+    "/api/web-tasks/**": ["./node_modules/playwright-core/**/*"],
+    "/api/cron/web-task": ["./node_modules/playwright-core/**/*"],
+  },
   poweredByHeader: false,
   async headers() {
     return [
