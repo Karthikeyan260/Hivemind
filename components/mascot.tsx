@@ -32,6 +32,21 @@ const SQUASH: Keyframe[] = [
   { transform: "scale(1, 1)" },
 ];
 
+export const MASCOT_SHEETS = SHEETS;
+export type MascotFrameName = Direction | Reaction;
+
+/** Where one named frame sits: which sheet, and its cell (0-8). */
+export function frameCell(frame: MascotFrameName) {
+  const d = DIRECTIONS.indexOf(frame as Direction);
+  return d >= 0 ? { sheet: SHEETS.directions, index: d } : { sheet: SHEETS.reactions, index: Math.max(0, REACTIONS.indexOf(frame as Reaction)) };
+}
+
+/** One still frame of the mascot (comic panels). */
+export function MascotFrame({ frame, size = 140, className }: { frame: MascotFrameName; size?: number; className?: string }) {
+  const { sheet, index } = frameCell(frame);
+  return <span role="img" aria-label={frame} className={className} style={{ ...layer, position: "relative", display: "block", width: size, height: size, backgroundImage: `url(${sheet})`, ...cell(index) }} />;
+}
+
 /** The owner's mascot, alive with the voice. Put it inside a button if tapping should do something. */
 export function VoiceMascot({ size = 140, className, onBoop }: { size?: number; className?: string; onBoop?: () => void }) {
   const voice = useVoice();

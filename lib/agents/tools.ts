@@ -1093,6 +1093,25 @@ export const TOOLS: Record<string, Tool> = {
     },
   },
 
+  /* ───── your day as a comic ───── */
+  day_comic: {
+    name: "day_comic",
+    description: "Show (and draw, if needed) the owner's day as a 4-panel comic starring their mascot ('make my comic', 'today's comic', 'show yesterday's comic'). date = YYYY-MM-DD, empty = today.",
+    parameters: obj({ date: S, redraw: { type: "boolean" } }),
+    async run(args, ctx) {
+      const { getComic, makeComic, todayIST } = await import("@/lib/comic");
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(str(args.date)) ? str(args.date) : todayIST();
+      let comic = args.redraw === true ? null : await getComic(ctx.supabase, date);
+      if (!comic) {
+        const p = await getProfile(ctx.supabase).catch(() => null);
+        comic = await makeComic(ctx.supabase, date, p?.name?.split(" ")[0] || "the owner");
+      }
+      ctx.actions.push({ label: "Open the comic", href: date === todayIST() ? "/comic" : `/comic?date=${date}`, navigate: true });
+      if (!comic) return { error: "Not much happened that day yet to make a comic." };
+      return { title: comic.title, panels: comic.panels.map((p) => `${p.caption}: ${p.bubble}`), note: "It's open on screen. Read the four panels out in a fun way, briefly." };
+    },
+  },
+
   /* ───── kitchen / hands-free mode (full-screen voice, screen stays on) ───── */
   kitchen_mode: {
     name: "kitchen_mode",
