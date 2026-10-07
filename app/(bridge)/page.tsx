@@ -19,6 +19,8 @@ import { Decrypt } from "@/components/fx";
 import { Galaxy, type GNode, type GProject } from "@/components/galaxy/galaxy";
 import type { GalaxyScene, Telemetry } from "@/components/galaxy/scene";
 import { VoiceMascot } from "@/components/mascot";
+import { ActionChips } from "@/components/home/action-chips";
+import { HomePanels } from "@/components/home/panels";
 import { cx, RichText } from "@/components/ui";
 import { api, type Brain as BrainT, type HiveEvent, type JobListing, type Source, streamHivemind, useFetch } from "@/lib/client-api";
 import { isMuted, setMuted, sfx } from "@/lib/sfx";
@@ -46,7 +48,7 @@ type Turn = {
 };
 type Step = { kind: "agent"; name: string; delegated: boolean } | { kind: "tool"; tool: string; status: "run" | "ok" | "error"; detail?: string };
 type GalaxyData = { nodes: GNode[]; projects: GProject[] };
-type MobileTab = "console" | "operator" | "log";
+type MobileTab = "console" | "panels" | "operator" | "log";
 
 const NAV = [
   { href: "/", label: "Overview" },
@@ -741,6 +743,7 @@ function Bridge() {
         }}
         className="border-t border-data/15 p-3"
       >
+        <ActionChips onAsk={(t) => void send(t)} busy={state !== "idle"} />
         {focus && (
           <button
             type="button"
@@ -889,9 +892,12 @@ function Bridge() {
         <aside
           className={cx(
             "in-left no-scrollbar order-3 min-h-0 flex-col gap-3 overflow-y-auto lg:order-none lg:flex",
-            tab === "operator" || tab === "log" ? "flex" : "hidden",
+            tab === "operator" || tab === "log" || tab === "panels" ? "flex" : "hidden",
           )}
         >
+          <div className={tab === "panels" ? "block" : "hidden lg:block"}>
+            <HomePanels onAsk={(t) => void send(t)} />
+          </div>
           <div className={cx("flex-col gap-3", tab === "operator" ? "flex" : "hidden lg:flex")}>{operator}</div>
           <div className={tab === "log" ? "block" : "hidden lg:block"}>{activityLog}</div>
         </aside>
@@ -1013,6 +1019,7 @@ function Bridge() {
           {(
             [
               ["console", "Console"],
+              ["panels", "Panels"],
               ["operator", "Profile"],
               ["log", "Activity"],
             ] as const

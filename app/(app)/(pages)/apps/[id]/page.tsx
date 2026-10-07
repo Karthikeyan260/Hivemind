@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, History, Loader2, Mic, Trash2, Wand2 } from "lucide-react";
+import { ArrowLeft, Check, History, Loader2, Mic, Pin, Trash2, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -74,6 +74,16 @@ export default function AppPage() {
     router.replace("/apps");
   }
 
+  // Pin this app to the home screen (Panels), or unpin it.
+  const panels = useFetch<{ pinned: string[] }>("/api/panels");
+  const pinned = !!panels.data?.pinned.includes(`app:${id}`);
+  async function togglePin() {
+    const now = panels.data?.pinned ?? [];
+    const next = pinned ? now.filter((p) => p !== `app:${id}`) : [...now, `app:${id}`];
+    panels.setData((x) => (x ? { ...x, pinned: next } : x));
+    await api("/api/panels", { method: "PUT", json: { pinned: next } }).catch(() => panels.reload());
+  }
+
   const onActions = useCallback((a: AppAction[]) => setActions(a), []);
 
   // The app's own voice commands ("add 500 rupees petrol"), plus changing / deleting it by voice.
@@ -135,6 +145,11 @@ export default function AppPage() {
                 </option>
               ))}
             </Select>
+          )}
+          {d.status === "ready" && (
+            <Button size="sm" variant="quiet" onClick={togglePin} title={pinned ? "Remove from the home screen" : "Show this app on the home screen"}>
+              {pinned ? <Check size={13} /> : <Pin size={13} />} {pinned ? "On home" : "Pin to home"}
+            </Button>
           )}
           <Button size="sm" variant="danger" onClick={remove}>
             <Trash2 size={13} /> Delete
