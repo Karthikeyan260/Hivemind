@@ -24,7 +24,8 @@ export async function synthesize(text: string, voiceId: string | null): Promise<
     if (!part?.inlineData?.data) throw new HttpError(502, "No audio returned");
     return { audio: Buffer.from(part.inlineData.data, "base64"), mime: part.inlineData.mimeType || "audio/wav" };
   } catch (err) {
-    if (err instanceof HttpError) throw err;
+    // "No audio" from the usual voice is final; from the clone, fall through and use the usual voice.
+    if (err instanceof HttpError && !voiceId) throw err;
     const status = (err as { status?: number }).status;
     console.warn("tts failed:", err instanceof Error ? err.message.slice(0, 120) : err);
     // The cloned voice is unavailable (e.g. Google now wants a paid tier for it): speak in the usual

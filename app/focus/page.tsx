@@ -31,6 +31,7 @@ function Focus() {
   const [awake, setAwake] = useState<"on" | "unsupported" | "off">("off");
   const [blocked, setBlocked] = useState(false);
   const lock = useRef<WakeLock | null>(null);
+  const takeLock = useRef<(() => void) | null>(null);
   const orb = useRef<HTMLDivElement | null>(null);
   const lastActive = useRef(0);
   const { start, stop, on, state, last } = voice;
@@ -44,8 +45,11 @@ function Focus() {
       return;
     }
     let alive = true;
+    let asking = false;
     const take = async () => {
-      if (document.visibilityState !== "visible" || lock.current) return;
+      // One request at a time: the first take and a visibility change can otherwise both get a lock.
+      if (document.visibilityState !== "visible" || lock.current || asking) return;
+      asking = true;
       try {
         const l = await api.request("screen");
         if (!alive) return void l.release();
@@ -57,12 +61,16 @@ function Focus() {
         });
       } catch {
         setAwake("off");
+      } finally {
+        asking = false;
       }
     };
+    takeLock.current = () => void take();
     void take();
     document.addEventListener("visibilitychange", take);
     return () => {
       alive = false;
+      takeLock.current = null;
       document.removeEventListener("visibilitychange", take);
       void lock.current?.release();
       lock.current = null;
@@ -70,9 +78,13 @@ function Focus() {
   }, []);
 
   // "Talk now" (home-screen shortcut): start listening right away. Without a tap the browser may refuse; then the orb asks for one.
+  // Only once: after that, stopping (a tap, or the idle timeout) must stay stopped, and a failing
+  // session must not retry in a loop.
   const talk = params.get("talk") === "1";
+  const autoStarted = useRef(false);
   useEffect(() => {
-    if (!talk || on) return;
+    if (!talk || on || autoStarted.current) return;
+    autoStarted.current = true;
     start();
     const t = setTimeout(() => setBlocked(true), 2500);
     return () => clearTimeout(t);
@@ -81,6 +93,8 @@ function Focus() {
   // Activity keeps it awake; half an hour of silence ends the session and lets the screen sleep.
   useEffect(() => {
     lastActive.current = Date.now();
+    // Talking again after the idle timeout: keep the screen on again.
+    if (state !== "off") takeLock.current?.();
   }, [last, state]);
   useEffect(() => {
     const t = setInterval(() => {

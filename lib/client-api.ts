@@ -7,6 +7,16 @@ import { getFix, lastFix } from "@/lib/location";
 const LOCATION_WORDS = /\b(where am i|my location|near me|nearby|nearest|how far|directions?|way to|route to|reach|navigate)\b/i;
 import { canCache, canQueue, isNetworkError, offlineRead, queueWrite, readCache, rememberWrite, resolvePath, writeCache } from "@/lib/offline";
 
+/** A failed request, with its HTTP status (so callers can tell "gone" from "try again"). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const { json, ...rest } = init;
   const method = (rest.method ?? "GET").toUpperCase();
@@ -34,7 +44,7 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
     return undefined as T;
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(data.error ?? `Request failed (${res.status})`, res.status);
   if (method === "GET" && canCache(path)) void writeCache(path, data);
   else if (canQueue(method, path)) await rememberWrite(method, path, data);
   return data as T;
@@ -83,7 +93,10 @@ export function useFetch<T>(path: string | null) {
       setFails(0);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      setFails((n) => n + 1);
+      // Network and server errors heal; "not found" / "bad request" won't, so don't keep asking.
+      const status = e instanceof ApiError ? e.status : 0;
+      const permanent = status >= 400 && status < 500 && status !== 408 && status !== 429;
+      setFails((n) => (permanent ? 0 : n + 1));
     } finally {
       setLoading(false);
     }

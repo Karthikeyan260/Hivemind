@@ -19,10 +19,25 @@ function ensureBucket(supabase: SupabaseClient) {
   return ready;
 }
 
+/** Storage says the file doesn't exist (as opposed to a network or service error). */
+const notFound = (error: unknown) => {
+  const e = error as { statusCode?: string | number; status?: number; message?: string };
+  return String(e?.statusCode) === "404" || e?.status === 404 || /not.?found/i.test(String(e?.message ?? ""));
+};
+
+/**
+ * The fallback only when the file really doesn't exist. Any other failure throws: callers that read,
+ * change and write back (routines, call rooms, the game link, the call log) must never save a fresh
+ * empty value over real data because Supabase blipped for a second.
+ */
 export async function readJSON<T>(supabase: SupabaseClient, key: string, fallback: T): Promise<T> {
   await ensureBucket(supabase);
   const { data, error } = await supabase.storage.from(BUCKET).download(`${key}.json`);
-  if (error || !data) return fallback;
+  if (error) {
+    if (notFound(error)) return fallback;
+    throw new Error(`store read failed (${key}): ${error.message}`);
+  }
+  if (!data) return fallback;
   try {
     return JSON.parse(await data.text()) as T;
   } catch {

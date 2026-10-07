@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { AudioLines, ArrowUp, Crosshair, Eye, EyeOff, Mic, Plus, Square, RefreshCw, Undo2, Volume2, VolumeX, Wand2, X } from "lucide-react";
@@ -16,7 +17,7 @@ import { HabitsPanel } from "@/components/habits/panel";
 import { AgendaPanel } from "@/components/reminders/agenda";
 import type { CoreState } from "@/components/core";
 import { Decrypt } from "@/components/fx";
-import { Galaxy, type GNode, type GProject } from "@/components/galaxy/galaxy";
+import type { GNode, GProject } from "@/components/galaxy/galaxy";
 import type { GalaxyScene, Telemetry } from "@/components/galaxy/scene";
 import { VoiceMascot } from "@/components/mascot";
 import { ActionChips } from "@/components/home/action-chips";
@@ -28,6 +29,9 @@ import { useVoice, useVoiceActions } from "@/components/voice/provider";
 import type { LiveState } from "@/lib/live";
 import { openExternal } from "@/lib/open-link";
 import { SentenceStream, Speaker } from "@/lib/voice";
+
+// The 3D galaxy (three.js) loads on its own, so it never weighs down other pages.
+const Galaxy = dynamic(() => import("@/components/galaxy/galaxy").then((m) => m.Galaxy), { ssr: false });
 
 gsap.registerPlugin(useGSAP);
 

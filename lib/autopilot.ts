@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { generateWithFallback, parseJson } from "@/lib/ai/providers";
+import { unlocksAction } from "@/lib/agents/intent";
 import { runAgent } from "@/lib/agents/orchestrator";
 import type { Agent, RunContext } from "@/lib/agents/types";
 import { logActivity } from "@/lib/activity";
@@ -312,7 +313,7 @@ export async function runAutopilot(supabase: SupabaseClient, opts: { manual?: bo
         ...(i.link?.url && safeUrl(i.link.url) ? { link: { label: i.link.label || "Open", url: i.link.url } } : {}),
         // A one-tap request is run as if the owner said it: never one that deletes, sends, calls,
         // pays, approves or shares (web text Autopilot read could have planted it).
-        ...(i.ask && !UNSAFE_ASK.test(i.ask) ? { ask: i.ask } : {}),
+        ...(i.ask && !UNSAFE_ASK.test(i.ask) && !unlocksAction(i.ask) ? { ask: i.ask } : {}),
         created_at: now,
         status: "new" as const,
       }));

@@ -20,6 +20,8 @@ export function Screener({ room, name, owner, mic, onFinished }: { room: string;
   const stopNow = useRef<(() => void) | null>(null);
   const finished = useRef(false);
   const idRef = useRef<string | null>(null);
+  // The line HIVEMIND is saying right now (stopped if the owner picks up mid-sentence).
+  const playing = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -37,6 +39,7 @@ export function Screener({ room, name, owner, mic, onFinished }: { room: string;
         setLines((l) => [...l, { who: "hivemind", text: r.text }]);
         if (r.audio) {
           const a = new Audio(`data:${r.mime || "audio/wav"};base64,${r.audio}`);
+          playing.current = a;
           a.onended = a.onerror = () => resolve();
           void a.play().catch(() => resolve());
         } else if ("speechSynthesis" in window) {
@@ -117,7 +120,13 @@ export function Screener({ room, name, owner, mic, onFinished }: { room: string;
     return () => {
       alive = false;
       stopNow.current?.();
+      playing.current?.pause();
       window.speechSynthesis?.cancel();
+      // Gone before the end (the owner picked up, or the page closed): close the record.
+      if (idRef.current && !finished.current) {
+        finished.current = true;
+        navigator.sendBeacon?.("/api/call/screen", new Blob([JSON.stringify({ room, op: "end", id: idRef.current })], { type: "application/json" }));
+      }
     };
     // Runs once per screening.
     // eslint-disable-next-line react-hooks/exhaustive-deps

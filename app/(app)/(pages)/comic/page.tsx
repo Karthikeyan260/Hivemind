@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Loader2, RefreshCw, Share2, Sparkles } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { frameCell, MascotFrame, type MascotFrameName } from "@/components/mascot";
 import { Button, cx, ErrorText, PageHeader } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
@@ -63,10 +63,22 @@ function ComicDay() {
     }
   }
 
+  // The picture is drawn ahead, so Share runs straight from the tap (iPhone refuses a share that
+  // starts after a wait).
+  const png = useRef<{ key: string; blob: Blob } | null>(null);
+  useEffect(() => {
+    if (!comic) return;
+    const key = comic.made_at;
+    if (png.current?.key === key) return;
+    void renderPng(comic)
+      .then((blob) => (png.current = { key, blob }))
+      .catch(() => {});
+  }, [comic]);
+
   async function share() {
     if (!comic) return;
     try {
-      const blob = await renderPng(comic);
+      const blob = png.current?.key === comic.made_at ? png.current.blob : await renderPng(comic);
       const file = new File([blob], `hivemind-comic-${comic.date}.png`, { type: "image/png" });
       if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: comic.title });
       else {

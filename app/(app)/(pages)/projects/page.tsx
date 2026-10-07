@@ -1,14 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Film, List, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ProjectReel } from "@/components/projects/reel";
 import { useVoiceActions } from "@/components/voice/provider";
 import type { Evolution } from "@/lib/evolution";
 import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, Skeleton } from "@/components/ui";
 import { api, type Brain, useFetch } from "@/lib/client-api";
+
+// The 3D showcase (three.js) loads only on this page.
+const ProjectReel = dynamic(() => import("@/components/projects/reel").then((m) => m.ProjectReel), { ssr: false });
 
 const STATUS_DOT: Record<string, string> = { active: "bg-ok", paused: "bg-core", done: "bg-faint" };
 const FILTERS = ["all", "active", "paused", "done"] as const;

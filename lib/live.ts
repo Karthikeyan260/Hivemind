@@ -1,6 +1,7 @@
 "use client";
 
-import { GoogleGenAI, type LiveConnectConfig, type LiveServerMessage, type Session } from "@google/genai";
+// Types only: the Gemini SDK itself loads when a session starts, so pages without voice skip it.
+import type { LiveConnectConfig, LiveServerMessage, Session } from "@google/genai";
 
 export type LiveState = "off" | "connecting" | "listening" | "thinking" | "speaking";
 export type LiveSource = { n: number; type: string; title: string; href: string; similarity: number };
@@ -97,11 +98,15 @@ export class LiveVoice {
       this.outAnalyser.fftSize = 256;
       this.outAnalyser.connect(this.outCtx.destination);
 
+      // Fetch the SDK and the session token at the same time.
+      const sdk = import("@google/genai");
+      sdk.catch(() => {}); // awaited below; this only stops an early token failure leaving it unhandled
       const res = await fetch("/api/live/token", { method: "POST" });
       if (!res.ok) throw new Error(res.status === 401 ? "Locked: unlock HIVEMIND first." : "Couldn't start a live session.");
       const { token, model, config, myVoice } = (await res.json()) as { token: string; model: string; config: LiveConnectConfig; myVoice?: boolean };
       this.muted = !!myVoice;
 
+      const { GoogleGenAI } = await sdk;
       const ai = new GoogleGenAI({ apiKey: token, httpOptions: { apiVersion: "v1alpha" } });
       this.session = await ai.live.connect({
         model,

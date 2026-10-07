@@ -4,6 +4,7 @@ import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { Bot, Copy, Eraser, Mic, MicOff, Send, Trash2, Trophy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { checkHost, proveHost } from "@/lib/peer-auth";
 
 /**
  * Draw & Guess for two people plus HIVEMIND. One person draws a word, the other guesses by typing;
@@ -34,12 +35,29 @@ type Msg =
   | { t: "feed"; line: Line }
   | { t: "scores"; scores: Scores }
   | { t: "reveal"; word: string }
-  | { t: "over"; scores: Scores };
+  | { t: "over"; scores: Scores }
+  // The guest checks the host is the owner's real browser before anything else (see lib/peer-auth).
+  | { t: "challenge"; nonce: string }
+  | { t: "proof"; proof: string };
 type Line = { who: string; text: string; kind: "guess" | "ok" | "ai" | "info" };
 type Scores = { host: number; guest: number; ai: number };
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim().replace(/s$/, "");
 const blanks = (w: string) => w.replace(/[a-z]/gi, "_ ").trim();
+const clip = (v: unknown, n: number) => String(v ?? "").slice(0, n);
+/** A stroke from the other player: real points in the canvas, a known colour, a sane size. */
+const okStroke = (st: unknown): st is Stroke => {
+  const x = st as Stroke;
+  return (
+    !!x &&
+    Array.isArray(x.pts) &&
+    x.pts.length > 0 &&
+    x.pts.length <= 2000 &&
+    x.pts.every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && n >= 0 && n <= 1)) &&
+    [...COLORS, "#ffffff"].includes(x.color) &&
+    (x.w === 6 || x.w === 26)
+  );
+};
 
 export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: { role: Who; room: string; myName: string; hostName?: string; /** Guest: the host isn't in the game yet (called once). */ onHostAway?: () => void }) {
   const [stage, setStage] = useState<"connecting" | "waiting" | "lobby" | "playing" | "over" | "error">("connecting");
@@ -69,6 +87,10 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   const call = useRef<MediaConnection | null>(null);
   const mic = useRef<MediaStream | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
+  // Guest: the host proved it's the owner; until then nothing is sent or played.
+  const verified = useRef(false);
+  const nonce = useRef("");
+  const roundTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Host-only game state.
   const game = useRef({ n: 0, word: "", drawer: "host" as Who, ends: 0, guessed: false, aiGot: false, aiTried: [] as string[], used: new Set<string>(), dirty: false, scores: { host: 0, guest: 0, ai: 0 } as Scores });
 
@@ -115,7 +137,8 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))];
   }
   function down(e: React.PointerEvent) {
-    if (!drawing) return;
+    // One finger draws; a second touch mid-stroke is ignored.
+    if (!drawing || live.current || !e.isPrimary) return;
     canvas.current!.setPointerCapture(e.pointerId);
     live.current = { pts: [point(e)], color, w: color === "#ffffff" ? 26 : 6 };
     strokes.current.push(live.current);
@@ -208,7 +231,8 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         pushScores();
         send({ t: "reveal", word: g.word });
         setRound((r) => (r ? { ...r, word: g.word } : r));
-        setTimeout(nextRound, 3500);
+        if (roundTimer.current) clearTimeout(roundTimer.current);
+        roundTimer.current = setTimeout(nextRound, 3500);
       } else tell({ who: name, text, kind: "guess" });
     },
     [stage, hostName, other, tell, pushScores, send, nextRound],
@@ -216,6 +240,46 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
 
   const onMsg = useCallback(
     (m: Msg) => {
+      if (!m || typeof m !== "object") return;
+      if (role === "host") {
+        // The guest is untrusted: only these, checked. Scores, rounds and the feed come from here.
+        if (m.t === "challenge") {
+          const n = clip(m.nonce, 64);
+          void proveHost("draw", room, n).then((proof) => proof && send({ t: "proof", proof }));
+          return;
+        }
+        if (m.t === "hello") {
+          setOther(clip(m.name, 20).replace(/[^\p{L}\p{N} .'-]/gu, "").trim() || "Guest");
+          setStage((st) => (st === "waiting" || st === "connecting" ? "lobby" : st));
+          send({ t: "hello", name: myName });
+          return;
+        }
+        if (m.t === "guess") return checkGuess(clip(m.text, 40), "guest");
+        const guestDraws = game.current.drawer === "guest" && !game.current.guessed;
+        if (m.t === "clear" && guestDraws) return clearCanvas();
+        if (m.t !== "stroke" || !guestDraws || !okStroke(m.s)) return;
+      } else if (!verified.current) {
+        // Guest: nothing counts until the host proves it's the owner.
+        if (m.t !== "proof") return;
+        void checkHost("draw", room, nonce.current, m.proof).then((ok) => {
+          if (!ok) {
+            setErr("This link isn't answered by its owner right now. Try again later.");
+            setStage("error");
+            conn.current?.close();
+            return;
+          }
+          verified.current = true;
+          send({ t: "hello", name: myName });
+          // Voice only to the verified host.
+          const p = peer.current;
+          if (p && mic.current) {
+            const mc = p.call(`hivemind-draw-${room}`, mic.current);
+            call.current = mc;
+            mc.on("stream", playVoice);
+          }
+        });
+        return;
+      } else if (m.t === "stroke" && !okStroke(m.s)) return;
       if (m.t === "hello") {
         setOther(m.name);
         if (role === "host") {
@@ -242,7 +306,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         setStage("over");
       }
     },
-    [role, myName, send, redraw, clearCanvas, checkGuess, say],
+    [role, room, myName, send, redraw, clearCanvas, checkGuess, say],
   );
   const onMsgRef = useRef(onMsg);
   useEffect(() => {
@@ -253,13 +317,17 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     (c: DataConnection) => {
       conn.current = c;
       c.on("data", (d) => onMsgRef.current(d as Msg));
-      c.on("open", () => c.send({ t: "hello", name: myName } satisfies Msg));
+      c.on("open", () => {
+        if (role === "host") return;
+        nonce.current = crypto.randomUUID();
+        c.send({ t: "challenge", nonce: nonce.current } satisfies Msg);
+      });
       c.on("close", () => {
         setErr(`${other || "The other player"} left the game.`);
         setStage((s) => (s === "over" ? s : "error"));
       });
     },
-    [myName, other],
+    [role, other],
   );
 
   const playVoice = (stream: MediaStream) => {
@@ -293,19 +361,21 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
           mc.on("stream", playVoice);
         });
         p.on("error", (e) => {
+          // The broker connection dropped (phone backgrounded…) but the game link may still be up.
+          if (conn.current?.open && ["network", "disconnected", "server-error", "socket-error", "socket-closed"].includes(e.type)) return;
           setErr(e.type === "unavailable-id" ? "This game is already open in another tab." : "Couldn't open the game. Check your connection.");
           setStage("error");
+        });
+        p.on("disconnected", () => {
+          if (alive && !p.destroyed) p.reconnect();
         });
       } else {
         const p = new PeerCtor();
         peer.current = p;
+        // Data first; voice starts only after the host proves it's the owner (see onMsg).
         const dial = () => {
+          conn.current?.close();
           wire(p.connect(hostId, { reliable: true }));
-          if (mic.current) {
-            const mc = p.call(hostId, mic.current);
-            call.current = mc;
-            mc.on("stream", playVoice);
-          }
         };
         p.on("open", dial);
         p.on("error", (e) => {
@@ -318,6 +388,8 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
               setKnocked(true);
             }
             setTimeout(() => alive && dial(), 3000);
+          } else if (conn.current?.open && ["network", "disconnected", "server-error", "socket-error", "socket-closed"].includes(e.type)) {
+            if (!p.destroyed) p.reconnect();
           } else {
             setErr("Couldn't join the game. Check your connection.");
             setStage("error");
@@ -327,6 +399,8 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     })();
     return () => {
       alive = false;
+      if (roundTimer.current) clearTimeout(roundTimer.current);
+      if (flush.current) clearInterval(flush.current);
       call.current?.close();
       conn.current?.close();
       peer.current?.destroy();
@@ -348,7 +422,8 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         tell({ who: "", text: `Time's up! It was "${g.word}"`, kind: "info" });
         send({ t: "reveal", word: g.word });
         setRound((r) => (r ? { ...r, word: g.word } : r));
-        setTimeout(nextRound, 3500);
+        if (roundTimer.current) clearTimeout(roundTimer.current);
+        roundTimer.current = setTimeout(nextRound, 3500);
       }
     }, 300);
     return () => clearInterval(t);
@@ -362,6 +437,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
       const c = canvas.current;
       if (!c || g.guessed || g.aiGot || !g.dirty || !strokes.current.length) return;
       g.dirty = false;
+      const n = g.n;
       const small = document.createElement("canvas");
       small.width = small.height = 384;
       small.getContext("2d")!.drawImage(c, 0, 0, 384, 384);
@@ -369,7 +445,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         const r = await fetch("/api/games/guess", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: small.toDataURL("image/jpeg", 0.7), tried: g.aiTried }) });
         if (!r.ok) return;
         const { guess: aiGuess } = (await r.json()) as { guess: string };
-        if (!aiGuess || aiGuess === "???" || g.guessed || g.n !== game.current.n) return;
+        if (!aiGuess || aiGuess === "???" || g.guessed || g.n !== n) return;
         if (norm(aiGuess) === norm(g.word) || (norm(aiGuess).includes(norm(g.word)) && norm(g.word).length > 3)) {
           g.aiGot = true;
           g.scores.ai += 50 + Math.max(0, Math.round((g.ends - Date.now()) / 1000));

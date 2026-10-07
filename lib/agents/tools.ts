@@ -1128,9 +1128,12 @@ export const TOOLS: Record<string, Tool> = {
     name: "create_routine",
     description:
       "Make (or replace) a routine: one phrase that runs several things ('when I say gym mode, play workout songs and log my exercise'). steps = separate plain commands in the owner's words, in order (max 8). triggers = other phrases that should start it. Only on the owner's own request.",
-    parameters: obj({ name: S, steps: { type: "array", items: S }, triggers: { type: "array", items: S } }, ["name", "steps"]),
+    parameters: obj({ name: S, steps: { type: "array", items: S }, triggers: { type: "array", items: S }, replace: { type: "boolean" } }, ["name", "steps"]),
     async run(args, ctx) {
-      const { saveRoutine } = await import("@/lib/routines");
+      const { listRoutines, saveRoutine } = await import("@/lib/routines");
+      // Replacing one that exists: ask first (replace=true only after the owner says yes).
+      const same = (await listRoutines(ctx.supabase)).find((r) => r.name.toLowerCase() === str(args.name).toLowerCase());
+      if (same && args.replace !== true) return { confirm_needed: true, existing: same.name, steps_now: same.steps, note: "A routine with this name exists. Ask the owner if it should be replaced; call again with replace=true only after a yes." };
       const r = await saveRoutine(ctx.supabase, { name: str(args.name), steps: args.steps, triggers: args.triggers });
       ctx.actions.push({ label: "Open Routines", href: "/routines" });
       return { saved: r.name, starts_with: r.triggers, steps: r.steps };

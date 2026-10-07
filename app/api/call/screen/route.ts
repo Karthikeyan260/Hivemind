@@ -4,6 +4,10 @@ import { handle, HttpError, parseBody } from "@/lib/api";
 import { getRoom } from "@/lib/call-rooms";
 import { endScreen, screenTurn, startScreen } from "@/lib/call-screen";
 import { db } from "@/lib/db";
+import { addMarker, countMarkers } from "@/lib/private-store";
+
+// A real caller makes a handful of requests a minute; parallel floods each cost an AI call.
+const PER_MINUTE = 15;
 
 export const maxDuration = 40;
 
@@ -25,6 +29,10 @@ export const POST = handle(async (req: Request) => {
   const supabase = db();
   const room = await getRoom(supabase, body.room);
   if (!room) throw new HttpError(404, "This call link isn't active.");
+  // One small file per request: counting them can't lose updates the way a JSON counter would.
+  const key = `ratelimit/screen-${room.room}`;
+  await addMarker(supabase, key);
+  if ((await countMarkers(supabase, key, Date.now() - 60_000)) > PER_MINUTE) throw new HttpError(429, "Too many requests. Please wait a minute.");
   if (body.op === "start") {
     const r = await startScreen(supabase, room, body.name?.replace(/[^\p{L}\p{N} .'-]/gu, "").trim() ?? "");
     if (!r) throw new HttpError(409, "Call screening is off.");

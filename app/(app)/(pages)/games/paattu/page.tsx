@@ -22,6 +22,8 @@ const ASK: Record<Kind, string> = {
 type Themes = { themes: { id: string; label: string; best: number }[] };
 
 const CLIP_S = 12;
+// A silent sound played inside the tap: phones (iPhone especially) then allow the clips that load later.
+const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
 const LIMIT_S = 20;
 
 /** Paattu Quiz: a few seconds of a Tamil song — which film is it from? Ten songs a round. */
@@ -42,13 +44,19 @@ export default function PaattuQuiz() {
   const audio = useRef<HTMLAudioElement | null>(null);
   const started = useRef(0);
   const stopAt = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The few seconds the song plays on after an answer (separate, so a question change doesn't cancel it).
+  const tailStop = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The phone refused to start the clip by itself: a "tap to hear" button starts it.
+  const [needTap, setNeedTap] = useState(false);
   const q = quiz?.questions[i] ?? null;
 
   async function start(theme: string) {
     setLoading(theme);
     setError(null);
     // A tap: browsers allow sound from here on. Pause HIVEMIND's music while the quiz plays.
-    audio.current ??= new Audio();
+    const unlock = (audio.current ??= new Audio());
+    unlock.src = SILENCE;
+    void unlock.play().catch(() => {});
     window.dispatchEvent(new CustomEvent(MEDIA_START_EVENT, { detail: { source: "game" } }));
     try {
       const r = await api<{ quiz: Quiz }>(`/api/games/paattu?theme=${theme}&level=${hard ? "hard" : "easy"}`);
@@ -73,10 +81,13 @@ export default function PaattuQuiz() {
     const a = audio.current!;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- a new question starts loading its clip
     setBuffering(true);
+    setNeedTap(false);
     setLeft(LIMIT_S);
+    if (tailStop.current) clearTimeout(tailStop.current);
     (async () => {
+      let url = "";
       try {
-        const { url } = await api<{ url: string }>("/api/music/stream", { method: "POST", json: { media: q.song.media } });
+        url = (await api<{ url: string }>("/api/music/stream", { method: "POST", json: { media: q.song.media } })).url;
         if (!alive) return;
         a.src = url;
         a.currentTime = q.start;
@@ -86,7 +97,12 @@ export default function PaattuQuiz() {
         started.current = Date.now();
         stopAt.current = setTimeout(() => a.pause(), CLIP_S * 1000);
       } catch {
-        if (alive) setBuffering(false);
+        if (!alive) return;
+        // The clock starts now either way, so the question never times out before it began.
+        started.current = Date.now();
+        setBuffering(false);
+        // Loaded but not allowed to play by itself: offer a tap. (No link at all: answer or skip.)
+        if (url) setNeedTap(true);
       }
     })();
     return () => {
@@ -119,11 +135,13 @@ export default function PaattuQuiz() {
       setRight((r) => r + 1);
     } else setStreak(0);
     // Let the song play on a little after the answer.
+    setNeedTap(false);
     const a = audio.current;
     if (a) {
       if (stopAt.current) clearTimeout(stopAt.current);
+      if (tailStop.current) clearTimeout(tailStop.current);
       void a.play().catch(() => {});
-      stopAt.current = setTimeout(() => a.pause(), 6000);
+      tailStop.current = setTimeout(() => a.pause(), 6000);
     }
   }
 
@@ -141,7 +159,13 @@ export default function PaattuQuiz() {
   }
 
   // Stop the clip when leaving the page.
-  useEffect(() => () => audio.current?.pause(), []);
+  useEffect(
+    () => () => {
+      if (tailStop.current) clearTimeout(tailStop.current);
+      audio.current?.pause();
+    },
+    [],
+  );
 
   useVoiceActions({
     paattu_start: {
@@ -249,6 +273,24 @@ export default function PaattuQuiz() {
               <div className="mb-3 h-1 overflow-hidden rounded bg-raised">
                 <div className="h-full bg-core transition-[width] duration-300" style={{ width: `${(left / LIMIT_S) * 100}%` }} />
               </div>
+            )}
+            {needTap && picked === null && (
+              <button
+                type="button"
+                onClick={() => {
+                  const a = audio.current;
+                  if (!a) return;
+                  void a.play().then(() => {
+                    setNeedTap(false);
+                    started.current = Date.now();
+                    if (stopAt.current) clearTimeout(stopAt.current);
+                    stopAt.current = setTimeout(() => a.pause(), CLIP_S * 1000);
+                  }).catch(() => {});
+                }}
+                className="mb-3 w-full rounded-lg bg-core py-2.5 text-sm font-semibold text-core-ink"
+              >
+                ▶ Tap to hear the song
+              </button>
             )}
             <div className="grid gap-2 sm:grid-cols-2">
               {q.options.map((o, n) => (

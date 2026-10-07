@@ -1,14 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { ChevronDown, ChevronLeft, GitCommitVertical, Landmark, List, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Holo } from "@/components/bridge/holo";
-import { Palace } from "@/components/memories/palace";
 import { useVoiceActions } from "@/components/voice/provider";
 import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, ProjectSelect, Select, Textarea } from "@/components/ui";
 import { api, fmtDate, type Memory, MEMORY_TYPES, type Project, useFetch } from "@/lib/client-api";
+
+// The 3D palace (three.js) loads only when the Palace view is opened.
+const Palace = dynamic(() => import("@/components/memories/palace").then((m) => m.Palace), { ssr: false });
 
 export default function MemoriesPage() {
   return (

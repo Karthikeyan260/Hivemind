@@ -27,3 +27,10 @@ export async function isUnlocked(cookieValue: string | undefined) {
   if (!passwordRequired()) return !misconfigured();
   return !!cookieValue && safeEqual(cookieValue, await sessionToken());
 }
+
+/**
+ * Proof that a call / game peer really is the owner's browser: an HMAC only the server can make,
+ * handed only to the logged-in owner. A guest checks it before sending any audio or game data, so
+ * someone squatting the room's public peer id on the PeerJS broker can't pose as the owner.
+ */
+export const peerProof = (kind: string, room: string, nonce: string) => hmac(process.env.APP_PASSWORD ?? "", `peer-v1:${kind}:${room}:${nonce}`);

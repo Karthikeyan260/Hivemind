@@ -27,7 +27,8 @@ const INTENT: Record<string, RegExp> = {
   update_memory: /\b(update|change|edit|correct|fix|rename|actually)\b/i,
   update_note: /\b(update|change|edit|add|append|rename|put)\b/i,
   update_project: /\b(update|change|rename|mark|pause|finish|complete|status|describe)\b/i,
-  create_routine: /\b(routines?|mode|when(ever)? i say|create|make|add|save|set up|change|update|edit)\b/i,
+  // Only when the owner talks about a routine itself (not any "make / add" a tool result could ride on).
+  create_routine: /\broutines?\b|\bwhen(ever)? i say\b/i,
   call_screening: /\b(screen(ing)?|answer|pick(s)? up|calls?|voice|link|always|missed|never)\b/i,
   change_app: /\b(change|add|update|edit|fix|make|remove)\b/i,
   cancel_reminder: /\b(cancel|delete|remove|drop)\b/i,
@@ -54,7 +55,6 @@ const TAMIL_FOR: Record<string, (keyof typeof TAMIL)[]> = {
   delete_project: ["delete", "yes"],
   delete_app: ["delete", "yes"],
   delete_routine: ["delete", "yes"],
-  create_routine: ["change"],
   call_screening: ["call", "change"],
   remove_habit: ["delete"],
   remove_birthday: ["delete"],
@@ -70,6 +70,18 @@ const TAMIL_FOR: Record<string, (keyof typeof TAMIL)[]> = {
   cancel_reminder: ["delete"],
   reschedule_reminder: ["change"],
 };
+
+/**
+ * Would this text, said by the owner, unlock a tool that changes, deletes, sends or approves
+ * something? Used to refuse one-tap requests that come from outside (Autopilot reads web pages): a
+ * planted "Check the weather" button must never be able to say "drop my habit, cancel my reminder".
+ */
+export function unlocksAction(text: string) {
+  return Object.keys(INTENT).some((tool) => tool !== "set_language" && intentCheck(tool, text) === null);
+}
+
+/** Tools that change, delete, send or approve something (the ones this guard watches). */
+export const isGuarded = (tool: string) => tool in INTENT;
 
 /** null = allowed; otherwise the reason to give the model. */
 export function intentCheck(tool: string, ownerWords: string): string | null {

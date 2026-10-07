@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge, Button, cx, Empty, ErrorText, PageHeader, Select } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
+import { unlocksAction } from "@/lib/agents/intent";
 import { api, armAsk, BRAIN_CHANGED, timeAgo, useFetch } from "@/lib/client-api";
 
 type Insight = {
@@ -40,6 +41,8 @@ const PRIORITY = { 3: { label: "Today", tone: "core" }, 2: { label: "This week",
 export default function AutopilotPage() {
   const router = useRouter();
   const feed = useFetch<Feed>("/api/autopilot");
+  // A one-tap request that could change or delete something isn't offered (Autopilot reads web pages).
+  const safeAsk = (i: Insight) => (i.ask && !unlocksAction(i.ask) ? i.ask : undefined);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -85,11 +88,12 @@ export default function AutopilotPage() {
       run: ({ input }) => {
         const i = pick(String(input ?? ""));
         if (!i) return { error: "No open insight like that.", open: open.map((x) => x.title) };
-        if (!i.ask) return { error: `"${i.title}" has no one-tap request.`, link: i.link?.url };
+        const ask = safeAsk(i);
+        if (!ask) return { error: `"${i.title}" has no one-tap request.`, link: i.link?.url };
         void mark(i.id, "done");
-        armAsk(i.ask);
-        router.push(`/?ask=${encodeURIComponent(i.ask)}`);
-        return { running: i.ask };
+        armAsk(ask);
+        router.push(`/?ask=${encodeURIComponent(ask)}`);
+        return { running: ask };
       },
     },
     insight_open_link: {
@@ -194,8 +198,8 @@ export default function AutopilotPage() {
                     </div>
                     {i.body && <p className="mt-1 text-sm leading-relaxed text-soft">{i.body}</p>}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      {i.ask && (
-                        <Link href={`/?ask=${encodeURIComponent(i.ask)}`} onClick={() => { armAsk(i.ask!); void mark(i.id, "done"); }} className="inline-flex h-7 items-center gap-1.5 rounded-md bg-core px-2.5 text-xs font-medium text-core-ink hover:bg-core/85" title={i.ask}>
+                      {safeAsk(i) && (
+                        <Link href={`/?ask=${encodeURIComponent(safeAsk(i)!)}`} onClick={() => { armAsk(safeAsk(i)!); void mark(i.id, "done"); }} className="inline-flex h-7 items-center gap-1.5 rounded-md bg-core px-2.5 text-xs font-medium text-core-ink hover:bg-core/85" title={i.ask}>
                           <Sparkles size={13} /> Do it
                         </Link>
                       )}

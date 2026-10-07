@@ -1,11 +1,12 @@
 "use client";
 
-import type { MediaConnection, Peer } from "peerjs";
+import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { ChevronLeft, Copy, Mic, MicOff, Phone, PhoneOff, Send } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Screener } from "@/components/call/screener";
 import { cx } from "@/components/ui";
+import { checkHost, proveHost } from "@/lib/peer-auth";
 
 type Stage = "ready" | "starting" | "waiting" | "connecting" | "live" | "ended" | "error";
 
@@ -146,6 +147,14 @@ function Call() {
       const p = new PeerCtor(hostId);
       peer.current = p;
       p.on("open", () => setStage("waiting"));
+      // A caller first checks this really is the owner (their link's peer id is public): prove it.
+      p.on("connection", (dc: DataConnection) => {
+        dc.on("data", (d) => {
+          const m = d as { t?: string; nonce?: unknown };
+          if (m?.t !== "challenge" || typeof m.nonce !== "string") return;
+          void proveHost("call", room, m.nonce.slice(0, 64)).then((proof) => proof && dc.send({ t: "proof", proof }));
+        });
+      });
       p.on("call", (c) => {
         if (call.current) return c.close(); // one guest at a time
         setStage("connecting");
@@ -164,15 +173,38 @@ function Call() {
         .then((r) => r.json())
         .then((j) => setScreen(j.screen ?? null))
         .catch(() => {});
+      // Check the host first (anyone could squat the public peer id); the audio starts only after.
+      // Each try's connection is closed before the next, so waiting doesn't pile them up.
+      let pending: DataConnection | null = null;
       const dial = () => {
-        setStage("connecting");
-        attach(p.call(hostId, mic.current!));
+        pending?.close();
+        const dc = p.connect(hostId, { reliable: true });
+        pending = dc;
+        const nonce = crypto.randomUUID();
+        dc.on("open", () => dc.send({ t: "challenge", nonce }));
+        dc.on("data", (d) => {
+          const m = d as { t?: string; proof?: unknown };
+          if (m?.t !== "proof") return;
+          void checkHost("call", room, nonce, m.proof).then((ok) => {
+            dc.close();
+            if (pending === dc) pending = null;
+            if (!ok) {
+              setError("This link isn't being answered by its owner right now. Try again later.");
+              setStage("error");
+              return;
+            }
+            setStage("connecting");
+            attach(p.call(hostId, mic.current!));
+          });
+        });
       };
       p.on("open", dial);
       p.on("error", (e) => {
         // The host hasn't opened the call yet: keep trying quietly.
         if (e.type === "peer-unavailable") {
           setStage("waiting");
+          pending?.close();
+          pending = null;
           retry.current = setTimeout(dial, 3000);
         } else {
           setError("Couldn't connect the call. Check your connection and try again.");

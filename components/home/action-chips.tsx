@@ -3,6 +3,7 @@
 import { ExternalLink, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { cx } from "@/components/ui";
+import { unlocksAction } from "@/lib/agents/intent";
 import { api, useFetch } from "@/lib/client-api";
 
 type Insight = { id: string; priority: 1 | 2 | 3; title: string; ask?: string; link?: { label: string; url: string }; status: "new" | "done" | "dismissed" };
@@ -14,6 +15,9 @@ type Insight = { id: string; priority: 1 | 2 | 3; title: string; ask?: string; l
 export function ActionChips({ onAsk, busy }: { onAsk: (text: string) => void; busy: boolean }) {
   const feed = useFetch<{ items: Insight[] }>("/api/autopilot");
   const open = (feed.data?.items ?? [])
+    // A request that could change or delete something never becomes a one-tap button (also covers
+    // suggestions saved before that rule existed): it shows as a link to Autopilot instead.
+    .map((i) => (i.ask && unlocksAction(i.ask) ? { ...i, ask: undefined, link: i.link ?? { label: "Autopilot", url: "/autopilot" } } : i))
     .filter((i) => i.status === "new" && (i.ask || i.link))
     .sort((a, b) => b.priority - a.priority)
     .slice(0, 3);
@@ -40,7 +44,8 @@ export function ActionChips({ onAsk, busy }: { onAsk: (text: string) => void; bu
               className="flex min-w-0 items-center gap-1.5 py-1 pl-2 pr-1 text-left text-fg/90 hover:text-core disabled:opacity-50"
             >
               <Sparkles size={11} className="shrink-0 text-core" />
-              <span className="truncate">{i.title}</span>
+              {/* The exact request it runs, not just the title. */}
+              <span className="truncate">{i.ask}</span>
             </button>
           ) : (
             <Link

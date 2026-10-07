@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { ExternalLink, Film, GitBranch, List } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -11,10 +12,12 @@ import {
   LANE_COLOR,
 } from "@/components/journey/git-graph";
 import { LifeStory, type StoryHandle } from "@/components/journey/story/story";
-import { LifeStory3D } from "@/components/journey/story3d/story3d";
 import { useVoiceActions } from "@/components/voice/provider";
 import { Badge, cx, Empty, PageHeader } from "@/components/ui";
 import { useFetch } from "@/lib/client-api";
+
+// The 3D story (three.js) loads only when this page shows it.
+const LifeStory3D = dynamic(() => import("@/components/journey/story3d/story3d").then((m) => m.LifeStory3D), { ssr: false });
 
 type Journey = { lanes: Lane[]; commits: Commit[]; sourced: number };
 

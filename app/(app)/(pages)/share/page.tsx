@@ -13,8 +13,8 @@ type Inbox = { title: string; text: string; url: string; files: File[] };
 
 const BOX = "hivemind-share";
 
-/** What the service worker kept from Android's Share menu (then it's removed). */
-async function takeInbox(): Promise<Inbox | null> {
+/** What the service worker kept from Android's Share menu (kept until it's saved or discarded). */
+async function readInbox(): Promise<Inbox | null> {
   if (!("caches" in window)) return null;
   const box = await caches.open(BOX);
   const meta = await box.match("/share-inbox/meta");
@@ -25,9 +25,12 @@ async function takeInbox(): Promise<Inbox | null> {
     const r = await box.match(f.key);
     if (r) files.push(new File([await r.blob()], f.name || "shared", { type: f.type }));
   }
-  await caches.delete(BOX);
   return { title: m.title, text: m.text, url: m.url, files };
 }
+const clearInbox = () => ("caches" in window ? caches.delete(BOX).catch(() => false) : Promise.resolve(false));
+
+// Vercel turns away requests over ~4.5 MB: stay under it.
+const MAX_UPLOAD = 4_200_000;
 
 /** Phone photos are big: send at most 1600 px (plenty for reading text), as JPEG. */
 async function shrink(f: File): Promise<File> {
@@ -74,11 +77,22 @@ function Share() {
       form.set("title", item.title);
       form.set("text", item.text);
       form.set("url", item.url);
-      for (const f of item.files.slice(0, 5)) form.append("files", await shrink(f));
+      let total = 0;
+      for (const f of item.files.slice(0, 5)) {
+        const small = await shrink(f);
+        total += small.size;
+        if (total > MAX_UPLOAD) throw new Error("Those files are too big to send together (about 4 MB in all). Share fewer at a time.");
+        form.append("files", small);
+      }
       const r = await fetch("/api/share", { method: "POST", body: form });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "Couldn't save it.");
-      setResults(j.results);
+      const j = (await r.json().catch(() => ({}))) as { error?: string; results?: Result[] };
+      if (!r.ok) throw new Error(j.error ?? (r.status === 413 ? "That's too big to send. Share fewer files at a time." : "Couldn't save it. Try again."));
+      setResults(j.results ?? []);
+      // Saved: now the shared item can go.
+      if (item === incoming) {
+        await clearInbox();
+        setIncoming(null);
+      }
       setText("");
       setFiles([]);
       window.dispatchEvent(new Event(BRAIN_CHANGED));
@@ -89,15 +103,12 @@ function Share() {
     }
   }
 
-  // Shared from another app: save it right away.
+  // Shared from another app: shown here, saved when the owner taps Save. (Not by itself: any website
+  // could post a fake "share" to this page and plant something in the brain.)
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    void takeInbox().then((inbox) => {
-      if (!inbox) return;
-      setIncoming(inbox);
-      void save(inbox);
-    });
+    void readInbox().then((inbox) => inbox && setIncoming(inbox));
   }, []);
 
   async function addReminder(i: number, r: NonNullable<Saved["reminder"]>) {
@@ -116,9 +127,26 @@ function Share() {
       />
 
       {incoming && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-line bg-panel p-3 text-sm text-soft">
-          <Share2 size={15} className="shrink-0 text-data" />
-          <span className="truncate">Shared: {what}</span>
+        <div className="mb-4 rounded-xl border border-core/50 bg-panel p-3 text-sm">
+          <div className="flex items-center gap-2 text-soft">
+            <Share2 size={15} className="shrink-0 text-data" />
+            <span className="min-w-0 flex-1 truncate">Shared: {what}</span>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Button onClick={() => save(incoming)} disabled={busy}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save to HIVEMIND
+            </Button>
+            <Button
+              variant="quiet"
+              disabled={busy}
+              onClick={() => {
+                void clearInbox();
+                setIncoming(null);
+              }}
+            >
+              Discard
+            </Button>
+          </div>
         </div>
       )}
 

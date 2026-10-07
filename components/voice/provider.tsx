@@ -9,7 +9,7 @@ import { isPublicPage } from "@/lib/public-paths";
 import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
 import { SentenceStream, Speaker } from "@/lib/voice";
 import { deviceName, getFix, setSharing } from "@/lib/location";
-import { intentCheck } from "@/lib/agents/intent";
+import { intentCheck, isGuarded } from "@/lib/agents/intent";
 import { clearOfflineCache } from "@/lib/offline";
 
 /** Tools that use where this device is. */
@@ -172,6 +172,8 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     a: string;
     sources: LiveSource[];
     open: boolean;
+    /** A routine is running this turn: its steps never delete, send, call or approve. */
+    routine?: boolean;
   }>({ q: "", a: "", sources: [], open: false });
   const actions = useRef(new Map<string, () => VoiceAction>());
   // Live-voice memory across turns: the last job search, and a memory awaiting "yes, delete it".
@@ -277,6 +279,10 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         if (name === "web_task_answer" && args.decision === "approve" && !/\b(approve[ds]?|yes|yeah|yep|go ahead|do it|submit|confirm|ok(ay)?|sure|proceed|haan|seri|sari)\b/i.test(turn.current.q)) {
           return { error: "Only the owner can approve. Tell them the step and ask 'Should I approve it?', then wait for their answer." };
         }
+        // Routine steps are run by the model from a stored list: nothing that changes or sends things,
+        // whatever the trigger phrase happened to contain. The owner asks for those separately.
+        if (name === "run_routine") turn.current.routine = true;
+        else if (turn.current.routine && isGuarded(name)) return { error: "Routines can't delete, send, call or change things. Skip this step and tell the owner to ask for it directly." };
         // Deleting, messaging, calling, changing: only when the owner's own words asked for it.
         const refused = intentCheck(name, turn.current.q);
         if (refused) return { error: refused };
