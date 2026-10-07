@@ -66,6 +66,8 @@ export function useFetch<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!path);
+  // Failed loads in a row (drives the automatic retry below).
+  const [fails, setFails] = useState(0);
 
   const reload = useCallback(async () => {
     if (!path) return;
@@ -78,8 +80,10 @@ export function useFetch<T>(path: string | null) {
       fresh = true;
       setData(next);
       setError(null);
+      setFails(0);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setFails((n) => n + 1);
     } finally {
       setLoading(false);
     }
@@ -96,6 +100,20 @@ export function useFetch<T>(path: string | null) {
     window.addEventListener(BRAIN_CHANGED, on);
     return () => window.removeEventListener(BRAIN_CHANGED, on);
   }, [reload]);
+
+  // A failed load (network blip, database briefly unreachable) heals by itself: retry with a growing
+  // pause (5 s, 10 s, 20 s… up to a minute), and right away when the device comes back online.
+  useEffect(() => {
+    if (!fails || !error || error === "Locked") return;
+    const wait = Math.min(60_000, 5000 * 2 ** (fails - 1));
+    const t = setTimeout(() => void reload(), wait);
+    const online = () => void reload();
+    window.addEventListener("online", online);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("online", online);
+    };
+  }, [fails, error, reload]);
 
   return { data, error, loading, reload, setData };
 }
