@@ -1,6 +1,6 @@
 "use client";
 
-import { Blocks, ChefHat, Laugh, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
+import { Blocks, ChefHat, Gamepad2, Laugh, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cx } from "@/components/ui";
@@ -18,6 +18,7 @@ const NAV = [
   { label: "Share", href: "/share", icon: Share2 },
   { label: "Kitchen mode", href: "/focus", icon: ChefHat },
   { label: "Day comic", href: "/comic", icon: Laugh },
+  { label: "Games", href: "/games", icon: Gamepad2 },
   { label: "Projects", href: "/projects", icon: FolderKanban },
   { label: "Memories", href: "/memories", icon: Brain },
   { label: "Career", href: "/career", icon: Briefcase },
