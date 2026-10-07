@@ -3,6 +3,7 @@
 import { Mic, MicOff, Sun, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { VoiceMascot } from "@/components/mascot";
 import { cx } from "@/components/ui";
 import { useVoice, useVoiceActions } from "@/components/voice/provider";
 
@@ -134,7 +135,7 @@ function Focus() {
             else start();
           }}
           aria-label={on ? "Stop listening" : "Start listening"}
-          className="relative flex size-48 items-center justify-center sm:size-60"
+          className="relative flex size-60 items-center justify-center sm:size-72"
         >
           <div
             ref={orb}
@@ -143,7 +144,10 @@ function Focus() {
               state === "speaking" ? "bg-core/30 shadow-[0_0_120px_20px] shadow-core/30" : state === "listening" ? "bg-ok/20 shadow-[0_0_100px_10px] shadow-ok/20" : state === "thinking" || state === "connecting" ? "bg-data/20 motion-safe:animate-pulse" : "bg-raised",
             )}
           />
-          {on ? <Mic size={56} className="relative text-fg" /> : <MicOff size={56} className="relative text-soft" />}
+          <VoiceMascot size={220} className="relative" />
+          <span className={cx("absolute bottom-2 right-6 flex size-11 items-center justify-center rounded-full border", on ? "border-ok bg-ok/20 text-ok" : "border-line bg-raised text-soft")}>
+            {on ? <Mic size={20} /> : <MicOff size={20} />}
+          </span>
         </button>
         <div className="font-mono text-sm uppercase tracking-[0.25em] text-soft">{blocked && !on ? "Tap the orb to start" : label}</div>
 

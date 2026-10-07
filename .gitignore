@@ -48,3 +48,6 @@ next-env.d.ts
 /public/journey/
 # Owner-supplied photos of real places (may be copyrighted): not committed until the owner decides
 /public/journey-env/*-photo.jpg
+
+# Mascot source sheets (the owner's drawn likeness): rebuilt into public/mascots, never committed
+/characters/

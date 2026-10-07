@@ -18,6 +18,7 @@ import type { CoreState } from "@/components/core";
 import { Decrypt } from "@/components/fx";
 import { Galaxy, type GNode, type GProject } from "@/components/galaxy/galaxy";
 import type { GalaxyScene, Telemetry } from "@/components/galaxy/scene";
+import { VoiceMascot } from "@/components/mascot";
 import { cx, RichText } from "@/components/ui";
 import { api, type Brain as BrainT, type HiveEvent, type JobListing, type Source, streamHivemind, useFetch } from "@/lib/client-api";
 import { isMuted, setMuted, sfx } from "@/lib/sfx";
@@ -620,6 +621,7 @@ function Bridge() {
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {turns.length === 0 ? (
           <div className="flex min-h-full flex-col justify-end">
+            <VoiceMascot size={112} className="-mb-1 -ml-2" />
             <div className="text-xl font-semibold tracking-tight">
               {greeting()}
               {firstName ? `, ${firstName}.` : "."}
@@ -750,7 +752,9 @@ function Bridge() {
           </button>
         )}
         <div className={cx("flex items-center gap-2 border bg-sunken/80 px-3 py-1.5 transition-colors", state !== "idle" ? "border-core/60" : "border-line focus-within:border-data")}>
-          <span className={cx("font-mono text-sm", state !== "idle" || liveOn ? "animate-pulse text-core" : "text-data")}>▸</span>
+          <button type="button" onClick={voice.toggle} aria-label={liveOn ? "Stop voice" : "Talk to HIVEMIND"} title={liveOn ? "Stop voice" : "Talk to HIVEMIND"} className="-my-1 -ml-1 shrink-0">
+            <VoiceMascot size={36} />
+          </button>
           <input
             ref={inputRef}
             value={input}
