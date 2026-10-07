@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge, Button, cx, Empty, ErrorText, PageHeader, Select } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { api, BRAIN_CHANGED, timeAgo, useFetch } from "@/lib/client-api";
+import { api, armAsk, BRAIN_CHANGED, timeAgo, useFetch } from "@/lib/client-api";
 
 type Insight = {
   id: string;
@@ -36,13 +36,6 @@ const ICONS: Record<string, typeof Compass> = {
   other: Sparkles,
 };
 const PRIORITY = { 3: { label: "Today", tone: "core" }, 2: { label: "This week", tone: "data" }, 1: { label: "FYI", tone: "neutral" } } as const;
-
-/** Marks a one-tap request as coming from HIVEMIND itself, so the home page runs it (links from outside only fill the box). */
-function armAsk(text: string) {
-  try {
-    sessionStorage.setItem("hivemind-ask", text);
-  } catch {}
-}
 
 export default function AutopilotPage() {
   const router = useRouter();

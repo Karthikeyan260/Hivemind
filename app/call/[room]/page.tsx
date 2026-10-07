@@ -4,6 +4,7 @@ import type { MediaConnection, Peer } from "peerjs";
 import { ChevronLeft, Copy, Mic, MicOff, Phone, PhoneOff, Send } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Screener } from "@/components/call/screener";
 import { cx } from "@/components/ui";
 
 type Stage = "ready" | "starting" | "waiting" | "connecting" | "live" | "ended" | "error";
@@ -45,6 +46,13 @@ function Call() {
   const mic = useRef<MediaStream | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The owner's permanent "call me" link: the caller says who they are first.
+  const permanent = room.startsWith("me");
+  const [guestName, setGuestName] = useState("");
+  // Nobody picked up: HIVEMIND answers (call screening), when the owner has it on.
+  const [screen, setScreen] = useState<{ mode: "missed" | "always"; wait_s: number } | null>(null);
+  const [screening, setScreening] = useState<"no" | "on" | "done">("no");
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
 
   const guestLink = typeof window === "undefined" ? "" : `${location.origin}/call/${room}?from=${encodeURIComponent(q.get("from") || "")}`;
 
@@ -78,6 +86,20 @@ function Call() {
   useEffect(() => {
     if (leaveIn === 0) goHome();
   }, [leaveIn, goHome]);
+
+  // The owner didn't pick up in time (or screens every call): HIVEMIND answers instead.
+  // (The stage flips between waiting and connecting while it redials, so the timer reads it from a ref.)
+  const stageNow = useRef(stage);
+  useEffect(() => {
+    stageNow.current = stage;
+  }, [stage]);
+  useEffect(() => {
+    if (isHost || !screen || screening !== "no") return;
+    const t = setTimeout(() => {
+      if (stageNow.current === "waiting" || stageNow.current === "connecting") setScreening("on");
+    }, screen.mode === "always" ? 1500 : screen.wait_s * 1000);
+    return () => clearTimeout(t);
+  }, [isHost, screen, screening]);
 
   useEffect(() => {
     if (stage !== "live") return;
@@ -113,6 +135,7 @@ function Call() {
     setError("");
     try {
       mic.current = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      setMicStream(mic.current);
     } catch {
       setError("Microphone permission is needed for the call.");
       setStage("error");
@@ -137,7 +160,10 @@ function Call() {
       const p = new PeerCtor();
       peer.current = p;
       // Ring the owner's phone once (push notification), in case they aren't on the call screen yet.
-      void fetch("/api/call/ring", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room }) }).catch(() => {});
+      void fetch("/api/call/ring", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room, name: guestName.trim() || undefined }) })
+        .then((r) => r.json())
+        .then((j) => setScreen(j.screen ?? null))
+        .catch(() => {});
       const dial = () => {
         setStage("connecting");
         attach(p.call(hostId, mic.current!));
@@ -203,9 +229,34 @@ function Call() {
         </div>
         <div>
           <div className="text-2xl font-semibold capitalize">{other}</div>
-          <div className={cx("mt-1 font-mono text-sm", stage === "error" ? "text-alert" : "text-soft")}>{status[stage]}</div>
+          <div className={cx("mt-1 font-mono text-sm", stage === "error" ? "text-alert" : "text-soft")}>
+            {screening === "on" && stage !== "live" ? `${other} didn't pick up · HIVEMIND is answering` : screening === "done" ? "Your message was passed on." : status[stage]}
+          </div>
         </div>
       </div>
+
+      {!isHost && permanent && stage === "ready" && (
+        <input
+          value={guestName}
+          onChange={(e) => setGuestName(e.target.value.slice(0, 40))}
+          placeholder="Your name"
+          aria-label="Your name"
+          className="w-full max-w-xs rounded-full border border-line bg-panel px-4 py-3 text-center text-sm text-fg placeholder:text-faint"
+        />
+      )}
+
+      {!isHost && screening === "on" && stage !== "live" && micStream && (
+        <Screener
+          room={room}
+          name={guestName.trim()}
+          owner={other}
+          mic={micStream}
+          onFinished={() => {
+            setScreening("done");
+            end();
+          }}
+        />
+      )}
 
       {isHost && stage === "waiting" && (
         <div className="flex w-full max-w-xs flex-col gap-2">
@@ -231,7 +282,7 @@ function Call() {
         </div>
       )}
 
-      <div className="flex items-center gap-6">
+      <div className={cx("flex items-center gap-6", !isHost && screening === "on" && stage !== "live" && "hidden")}>
         {(stage === "ready" || stage === "error" || stage === "ended") && !(stage === "ended" && !isHost) && (
           <button type="button" onClick={start} aria-label="Start call" className="flex size-16 items-center justify-center rounded-full bg-ok text-black">
             <Phone size={26} />

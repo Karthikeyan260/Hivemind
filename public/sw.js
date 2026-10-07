@@ -19,8 +19,11 @@ self.addEventListener("activate", (e) =>
 );
 
 self.addEventListener("fetch", (e) => {
-  if (!CACHE_ON) return;
   const req = e.request;
+  // Android's Share menu → HIVEMIND (manifest share_target): keep what was shared, then open /share,
+  // which saves it with the owner's session.
+  if (req.method === "POST" && new URL(req.url).pathname === "/share-in") return e.respondWith(takeShare(req));
+  if (!CACHE_ON) return;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
@@ -29,6 +32,29 @@ self.addEventListener("fetch", (e) => {
   if (p.startsWith("/_next/static/") || p.startsWith("/icons/")) return e.respondWith(cacheFirst(req));
   if (req.mode === "navigate" && !p.startsWith("/api/") && !p.startsWith("/unlock") && !p.startsWith("/call/")) e.respondWith(page(req));
 });
+
+const SHARE = "hivemind-share";
+
+async function takeShare(req) {
+  try {
+    const form = await req.formData();
+    const box = await caches.open(SHARE);
+    for (const k of await box.keys()) await box.delete(k);
+    const files = [];
+    let i = 0;
+    for (const f of form.getAll("files")) {
+      if (!(f instanceof File) || !f.size || i >= 5) continue;
+      const key = `/share-inbox/file-${i++}`;
+      await box.put(key, new Response(f, { headers: { "Content-Type": f.type || "application/octet-stream" } }));
+      files.push({ key, name: f.name, type: f.type, size: f.size });
+    }
+    const meta = { title: form.get("title") || "", text: form.get("text") || "", url: form.get("url") || "", files, at: Date.now() };
+    await box.put("/share-inbox/meta", new Response(JSON.stringify(meta), { headers: { "Content-Type": "application/json" } }));
+  } catch {
+    return Response.redirect("/share?error=1", 303);
+  }
+  return Response.redirect("/share", 303);
+}
 
 async function cacheFirst(req) {
   const c = await caches.open(STATIC);

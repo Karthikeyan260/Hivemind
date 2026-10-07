@@ -14,6 +14,10 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (/^(hi|hello|hey|thanks|thank you|good (morning|night|evening))\b[\s!.]*$/.test(m)) return "core";
   // Self-built apps: "make me an app to track petrol", "delete the gym app", "what apps do I have".
   if (/\b(make|build|create|design)\b.*\b(app|tool|tracker)\b|\b(open|delete|remove|change|update|fix)\b.*\bapp\b|\b(my|what) apps\b/.test(m)) return "core";
+  // Routines: "when I say gym mode…", "run my morning routine", "what routines do I have".
+  if (/\broutines?\b|\bwhen(ever)? i say\b/.test(m)) return "core";
+  // Call screening: "who called me", "any missed calls", "turn off call screening", "my call link".
+  if (/\b(who (called|rang)|missed calls?|call screening|screen(ing)? (my )?calls?|answer(ed)? (my )?calls?|my call link|calls? (you|hivemind) answered)\b/.test(m)) return "comms";
   if (/\bauto ?pilot\b|\b(anything|what) (i should know|needs my attention)\b/.test(m)) return "core";
   if (/\b(birthdays?|bday|anniversar(y|ies)|habits?|streaks?)\b|^i (just )?(did|finished|completed) (my |the )?\w+|^done with (my |the )?\w+|\b(track|log)\b.*\b(daily|every|habit)\b/.test(m)) return "scheduler";
   if (/\b(remind(er)?s?|schedule|meeting|appointment|deadline|agenda|calendar|my day|on today|on tomorrow)\b|\bmark\b.*\b(done|complete)\b|\b(cancel|reschedule|postpone|move)\b.*\b(meeting|call|reminder|appointment|it)\b|\b(plans?|free|busy)\b.*\b(today|tomorrow|tonight)\b|\b(today|tomorrow)\b.*\b(at \d|am\b|pm\b)/.test(m)) return "scheduler";

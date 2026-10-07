@@ -13,6 +13,7 @@ import { getPrefs, languageRule } from "@/lib/prefs";
 import { getProfile, profileForPrompt } from "@/lib/profile";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
 import { agenda, agendaForPrompt } from "@/lib/reminders";
+import { listRoutines, triggeredRoutine } from "@/lib/routines";
 
 // Checking a found job runs the ATS analysis and the tailored resume back to back.
 export const maxDuration = 120;
@@ -92,7 +93,11 @@ export const POST = handle(async (req: Request) => {
 
       try {
         const [route, profile, projects, schedule, prefs] = await Promise.all([
-          routeAgent(message, previousAgent),
+          // A routine's phrase ("good morning", "gym mode") goes straight to Core, which runs it.
+          listRoutines(supabase)
+            .then((all) => triggeredRoutine(all, message))
+            .catch(() => null)
+            .then((r) => (r ? { agent: "core" as const, via: "rules" as const, routine: r.name } : routeAgent(message, previousAgent))),
           getProfile(supabase),
           listProjects(supabase),
           agenda(supabase, 2).then(agendaForPrompt).catch(() => "(unavailable)"),
@@ -114,7 +119,7 @@ export const POST = handle(async (req: Request) => {
         try {
           const r = await runAgent({
             agentId: route.agent,
-            message,
+            message: "routine" in route ? `${message}\n\n(This is the owner's "${route.routine}" routine: call run_routine.)` : message,
             history,
             persona: system,
             closing,

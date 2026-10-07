@@ -243,3 +243,10 @@ export const timeAgo = (s: string) => {
 
 export const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+
+/** Marks a one-tap request as coming from HIVEMIND itself, so the home page runs it (links from outside only fill the box). */
+export function armAsk(text: string) {
+  try {
+    sessionStorage.setItem("hivemind-ask", text);
+  } catch {}
+}

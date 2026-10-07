@@ -6,6 +6,7 @@ import { nowForPrompt } from "@/lib/reminders";
 import { agentRoster, AGENTS } from "./registry";
 import { TOOLS } from "./tools";
 import { intentCheck } from "./intent";
+import { routeAgent } from "./router";
 import { AGENT_IDS, type Agent, type AgentId, type RunContext } from "./types";
 
 const MODELS = [...new Set([process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite", process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash"])];
@@ -57,6 +58,9 @@ const DESTRUCTIVE = new Set([
   "autopilot_update",
   "change_app",
   "delete_app",
+  "create_routine",
+  "delete_routine",
+  "call_screening",
 ]);
 
 type RunOpts = {
@@ -166,6 +170,8 @@ export async function runAgent(o: RunOpts): Promise<{ text: string; model: strin
             if (!AGENTS[target] || target === agent.id) throw new Error(`Can't delegate to "${args.agent}".`);
             const sub = await runAgent({ ...o, agentId: target, message: String(args.task ?? o.message), history: [], depth: 1, onText: undefined });
             response = { answer: sub.text };
+          } else if (name === "run_routine" && delegates && agent.tools.includes(name)) {
+            response = await runRoutine(args, o);
           } else if ((depth > 0 || o.agent) && DESTRUCTIVE.has(name)) {
             // A delegated run works from a colleague's instructions, which may carry text from the web.
             throw new Error(`"${name}" needs the owner's direct request; ask them instead.`);
@@ -190,6 +196,29 @@ export async function runAgent(o: RunOpts): Promise<{ text: string; model: strin
     contents.push({ role: "user", parts: responses });
   }
   return { text, model };
+}
+
+/**
+ * Chat runs a routine's steps itself: each step goes to the right specialist as a colleague
+ * hand-off (so nothing in a step can delete, send or approve), all at once, and the answers come back
+ * for one combined reply. (Live voice does the steps with its own tools instead.)
+ */
+async function runRoutine(args: Record<string, unknown>, o: RunOpts): Promise<Record<string, unknown>> {
+  const found = await TOOLS.run_routine.run(args, o.ctx);
+  if (typeof found.error === "string") return found;
+  const steps = found.steps as string[];
+  const results = await Promise.all(
+    steps.map(async (s) => {
+      try {
+        const { agent } = await routeAgent(s);
+        const sub = await runAgent({ ...o, agentId: agent, message: s, history: [], depth: 1, onText: undefined });
+        return { step: s, answer: sub.text };
+      } catch (err) {
+        return { step: s, error: err instanceof Error ? err.message : "failed" };
+      }
+    }),
+  );
+  return { routine: found.routine, results, note: "All steps are done. Give the owner one short combined update, step by step, in a friendly tone, without citation numbers." };
 }
 
 function summarize(args: Record<string, unknown>) {

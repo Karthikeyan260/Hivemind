@@ -53,6 +53,8 @@ const NAV = [
   { href: "/web", label: "Web" },
   { href: "/map", label: "Map" },
   { href: "/apps", label: "Apps" },
+  { href: "/routines", label: "Routines" },
+  { href: "/calls", label: "Calls" },
   { href: "/projects", label: "Projects" },
   { href: "/career", label: "Career" },
   { href: "/journey", label: "Journey" },
@@ -354,6 +356,15 @@ function Bridge() {
     if (ours) void send(ask);
     else setInput(ask);
   }, [ask, state, send, router]);
+
+  // "/?brief=1": the home-screen "Today's brief" shortcut. Always the same fixed request, so a link can't put words in it.
+  const brief = params.get("brief") === "1";
+  useEffect(() => {
+    if (!brief || asked.current || state !== "idle") return;
+    asked.current = true;
+    router.replace("/");
+    void send("Give me today's brief: the weather, my schedule for today, my habits, and anything that needs me.");
+  }, [brief, state, send, router]);
 
   /* ───── Live voice: the site-wide Gemini Live session, mirrored into this console ───── */
   const liveState: LiveState = voice.state;
