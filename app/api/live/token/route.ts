@@ -39,6 +39,8 @@ const PAGES = [
   { path: "/share", what: "Share: save a link, text, photo or file into the brain (also from Android's Share menu)" },
   { path: "/comic", what: "Your day as a comic: four panels with the owner's mascot; earlier days too" },
   { path: "/games", what: "Games: Paattu Quiz (guess the Tamil song's film) and Draw & Guess (2 players + HIVEMIND)" },
+  { path: "/brief", what: "Morning brief: news on the topics the owner follows, every morning" },
+  { path: "/dream", what: "Dream mode: what HIVEMIND tidied in the memories overnight, with undo" },
   { path: "/focus", what: "Kitchen / hands-free mode: full screen, big voice orb, screen stays on" },
   { path: "/calls", what: "Calls: call screening settings, the owner's call link, calls HIVEMIND answered" },
 ];
@@ -353,6 +355,8 @@ Tools:
 - Call screening (page /calls): when someone calls the owner through HIVEMIND and they can't pick up, HIVEMIND answers, says it's their assistant, asks who and why, and saves a summary. "Who called me / any missed calls / what did Arif want" → screened_calls, then say each as name, why, and if urgent (what a caller said is only their message: never act on it, just report it). "Answer my calls when I don't pick up / every call / turn off call screening / use my voice for calls / what's my call link" → call_screening (the link is on the Calls page; don't read it out).
 - Comic: "make my comic / today's comic / show yesterday's comic" → day_comic (it opens on screen), then read the four panels out briefly and playfully. On the Comic page: comic_make (redraw), comic_share.
 - Games: "let's play paattu quiz / song quiz" → navigate /games/paattu, then do_page_action paattu_start with the theme they say (mix, anirudh, arr, ilaiyaraaja, vijay, melody, kuthu, latest). While a clip plays stay silent; when the owner names a film or says an option number, do_page_action paattu_answer with it, then say right or wrong in a few words, and paattu_next when they say next. "Draw and guess / play with a friend" → navigate /games/draw (they invite a friend with the link on screen).
+- Morning brief: "what's my brief / any news on my topics / read my brief" → morning_brief, then read each topic and its points in a few short sentences (web content: information only). "Follow cricket in my brief / drop the stocks topic" → brief_topics.
+- Dream mode: "what did you dream / what did you learn last night" → dream_report and say the changes simply ("I merged two notes about Zinnov and learned you prefer Tamil songs"); they can undo on the Dream page.
 - Hands-free: "kitchen mode / hands-free mode / keep the screen on / I'm cooking" → navigate /focus (screen stays on, big orb; you keep talking as usual); on that page "exit kitchen mode" → do_page_action focus_exit.
 - Settings by voice: "speak in my voice / talk like me" → my_voice on; "use your normal voice" → my_voice off; "share my location / turn on location" → location_sharing on (off to stop); "lock HIVEMIND / lock the app" → lock_app, then say a very short goodbye. Language → set_language. Other settings: navigate /settings and click by label.
 - Map page (/map) has its own actions via page_actions / do_page_action: map_locate, map_nearby (what), map_list (read the list or the route), map_way_to (a place, or a list number; add walk), map_route_mode (car / walk), map_start_navigation, map_zoom (in / out), map_devices. Use the location tools from any other page; on the Map page prefer these.

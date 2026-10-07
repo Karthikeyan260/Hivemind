@@ -2,6 +2,8 @@ import { after, NextResponse } from "next/server";
 import { autopilotDue, runAutopilot } from "@/lib/autopilot";
 import { safeEqual } from "@/lib/session";
 import { birthdaysToday, runBirthdayAlerts } from "@/lib/birthdays";
+import { briefHeadline, getBriefSettings, makeBrief } from "@/lib/brief";
+import { dream, getDream, getDreamSettings } from "@/lib/dream";
 import { db } from "@/lib/db";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { runHabitAlerts } from "@/lib/habits";
@@ -41,22 +43,39 @@ export async function GET(req: Request) {
     new Intl.DateTimeFormat("en-CA", { timeZone: HOME_TZ }).format(now),
     Number(new Intl.DateTimeFormat("en-GB", { timeZone: HOME_TZ, hour: "2-digit", hourCycle: "h23" }).format(now)),
   ];
-  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number }>(supabase, "notify-state", {});
+  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; news?: string }>(supabase, "notify-state", {});
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
   if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
     const [a, w, bdays] = await Promise.all([agenda(supabase, 2), getWeather(HOME_CITY).catch(() => null), birthdaysToday(supabase).catch(() => [])]);
     const items = [...a.overdue.map((r) => `${r.title} (overdue)`), ...a.today.map((r) => `${r.title}, ${r.when.replace(/^Today,?\s*/i, "")}`)];
     const weather = w ? `${w.place}: ${Math.round(w.current.temp_c)}°C, ${w.current.condition}${w.days[0] ? `, rain ${w.days[0].rain_chance_pct}%` : ""}.` : "";
+    // What Dream mode did last night, in one line.
+    const night = await getDream(supabase, date).catch(() => null);
+    const counts = night ? (["merged", "updated", "learned"] as const).map((k) => [k, night.changes.filter((c) => c.kind === k).length] as const).filter(([, n]) => n) : [];
+    const dreamLine = counts.length ? `💤 Last night I ${counts.map(([k, n]) => `${k} ${n}`).join(", ")} memories.` : "";
     const plan = items.length ? `Today: ${items.slice(0, 4).join("; ")}${items.length > 4 ? ` +${items.length - 4} more` : ""}.` : "Nothing scheduled today.";
     // Only counts as sent once a device actually got it (so subscribing later today still gets one).
-    brief = (await notify(supabase, { title: "Good morning ☀️", body: [bdays.join(" · "), plan, weather].filter(Boolean).join(" "), url: "/", tag: "brief" })) > 0;
+    brief = (await notify(supabase, { title: "Good morning ☀️", body: [bdays.join(" · "), plan, weather, dreamLine].filter(Boolean).join(" "), url: "/", tag: "brief" })) > 0;
   }
   // 3. Birthdays (week / eve / day) and habits (times, snoozes, 8 pm nudge, Sunday summary).
   const [birthdays, habits] = await Promise.all([runBirthdayAlerts(supabase, now).catch(() => 0), runHabitAlerts(supabase, now).catch(() => 0)]);
 
+  // Dream mode: once a night, from its hour until 7 am (marked first, so later checks don't start it again).
+  const dreamSet = await getDreamSettings(supabase).catch(() => null);
+  const dreaming = !!dreamSet?.enabled && hour >= dreamSet.hour && hour < 7 && state.dream !== date;
+  // The news brief: once each morning, after the "good morning" window opens, if topics are set.
+  const briefSet = await getBriefSettings(supabase).catch(() => null);
+  const news = !!briefSet?.enabled && !!briefSet.topics.length && hour >= BRIEF_HOUR && hour < 12 && state.news !== date;
+
   // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
-  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), lastRun: now.toISOString(), lastSent: due.length });
+  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { news: date } : {}), lastRun: now.toISOString(), lastSent: due.length });
+  if (dreaming) after(() => dream(db(), date).then(() => undefined, (e) => console.warn("dream:", e)));
+  if (news)
+    after(async () => {
+      const b = await makeBrief(db(), date).catch((e) => (console.warn("brief:", e), null));
+      if (b) await notify(db(), { title: "📰 Your morning brief", body: briefHeadline(b), url: "/brief", tag: "news-brief" }).catch(() => 0);
+    });
 
   // 4. Autopilot: after the response, so the scheduler's request stays fast.
   const autopilot = await autopilotDue(supabase, now).catch(() => false);
@@ -66,5 +85,5 @@ export async function GET(req: Request) {
   const active = (await listTasks(supabase).catch(() => [])).filter((t) => ACTIVE.includes(t.status));
   const web = active.length ? await resumeStalled(supabase, active, process.env.APP_URL || new URL(req.url).origin).catch(() => 0) : 0;
 
-  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot, web });
+  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot, web, dreaming, news });
 }

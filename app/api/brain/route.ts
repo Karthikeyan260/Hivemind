@@ -35,7 +35,7 @@ export const GET = handle(async () => {
     profile,
     projects: (projects.data ?? []).map((p) => ({ ...p, items: linked.get(p.id) ?? 0 })),
     // The payload can hold a whole deleted memory (for undo): keep it server-side.
-    activity: (activity.data ?? []).map(({ payload, ...a }) => ({ ...a, undoable: !a.undone && ["project_created", "linked", "memory_deleted"].includes((payload as { type: string }).type) })),
+    activity: (activity.data ?? []).map(({ payload, ...a }) => ({ ...a, undoable: !a.undone && ["project_created", "linked", "memory_deleted", "memory_updated", "memory_created"].includes((payload as { type: string }).type) })),
     counts: { notes: notes.count ?? 0, memories: memories.count ?? 0, documents: documents.count ?? 0, projects: projects.data?.length ?? 0 },
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Blocks, ChefHat, Gamepad2, Laugh, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
+import { Blocks, ChefHat, Gamepad2, Laugh, Moon, Newspaper, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,6 +22,8 @@ const MORE = [
   { label: "Map", href: "/map", icon: MapIcon },
   { label: "Apps", href: "/apps", icon: Blocks },
   { label: "Routines", href: "/routines", icon: Zap },
+  { label: "Morning brief", href: "/brief", icon: Newspaper },
+  { label: "Dream mode", href: "/dream", icon: Moon },
   { label: "Calls", href: "/calls", icon: PhoneIncoming },
   { label: "Share", href: "/share", icon: Share2 },
   { label: "Kitchen mode", href: "/focus", icon: ChefHat },

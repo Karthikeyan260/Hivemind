@@ -15,6 +15,8 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   // Self-built apps: "make me an app to track petrol", "delete the gym app", "what apps do I have".
   if (/\b(make|build|create|design)\b.*\b(app|tool|tracker)\b|\b(open|delete|remove|change|update|fix)\b.*\bapp\b|\b(my|what) apps\b/.test(m)) return "core";
   if (/\bcomics?\b/.test(m)) return "core";
+  // Morning brief (news on followed topics) and Dream mode.
+  if (/\b(morning brief|news brief|my brief|brief me|my topics|in my brief)\b|\bdream(ed|s|ing)?\b|\blearn(ed|t)? (last night|overnight)\b/.test(m)) return "core";
   // Kitchen / hands-free mode is a screen, not a routine.
   if (/\b(kitchen|hands[- ]?free|focus) mode\b|\bkeep (the )?screen on\b/.test(m)) return "core";
   // Routines: "when I say gym mode…", "run my morning routine", "what routines do I have".
