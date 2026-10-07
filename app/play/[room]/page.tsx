@@ -25,7 +25,13 @@ function Play() {
     <main className="min-h-dvh bg-bg px-4 pb-[env(safe-area-inset-bottom)] pt-[max(1rem,env(safe-area-inset-top))] text-fg">
       <div className="mb-3 font-mono text-[11px] tracking-[0.3em] text-faint">HIVEMIND · DRAW & GUESS</div>
       {joined ? (
-        <DrawGame role="guest" room={room} myName={name.trim() || "Guest"} hostName={host} />
+        <DrawGame
+          role="guest"
+          room={room}
+          myName={name.trim() || "Guest"}
+          hostName={host}
+          onHostAway={() => void fetch("/api/games/knock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room, name: name.trim() }) }).catch(() => {})}
+        />
       ) : (
         <form
           onSubmit={(e) => {

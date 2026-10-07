@@ -4,7 +4,7 @@ import { isUnlocked, misconfigured, SESSION_COOKIE } from "@/lib/session";
 // Every page and API route is private to the owner. Only /unlock, its API, and the app manifest
 // (name + icons, fetched by the phone without cookies when installing), the notification service
 // worker, and the call "ring" and screening a guest triggers (they only work for rooms the owner created) are open.
-const OPEN_PATHS = ["/unlock", "/api/unlock", "/manifest.webmanifest", "/sw.js", "/api/call/ring", "/api/call/screen"];
+const OPEN_PATHS = ["/unlock", "/api/unlock", "/manifest.webmanifest", "/sw.js", "/api/call/ring", "/api/call/screen", "/api/games/knock"];
 
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;

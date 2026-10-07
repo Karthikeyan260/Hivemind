@@ -41,7 +41,7 @@ type Scores = { host: number; guest: number; ai: number };
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim().replace(/s$/, "");
 const blanks = (w: string) => w.replace(/[a-z]/gi, "_ ").trim();
 
-export function DrawGame({ role, room, myName, hostName = "Host" }: { role: Who; room: string; myName: string; hostName?: string }) {
+export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: { role: Who; room: string; myName: string; hostName?: string; /** Guest: the host isn't in the game yet (called once). */ onHostAway?: () => void }) {
   const [stage, setStage] = useState<"connecting" | "waiting" | "lobby" | "playing" | "over" | "error">("connecting");
   const [err, setErr] = useState("");
   const [other, setOther] = useState(role === "guest" ? hostName : "");
@@ -59,6 +59,8 @@ export function DrawGame({ role, room, myName, hostName = "Host" }: { role: Who;
   const [aiTalks, setAiTalks] = useState(true);
   const aiTalksRef = useRef(true);
   const [copied, setCopied] = useState(false);
+  const [knocked, setKnocked] = useState(false);
+  const awayRef = useRef(onHostAway);
 
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const strokes = useRef<Stroke[]>([]);
@@ -309,6 +311,12 @@ export function DrawGame({ role, room, myName, hostName = "Host" }: { role: Who;
         p.on("error", (e) => {
           if (e.type === "peer-unavailable") {
             setStage("waiting");
+            // The host isn't in the game: let them know once, then keep trying quietly.
+            if (awayRef.current) {
+              awayRef.current();
+              awayRef.current = undefined;
+              setKnocked(true);
+            }
             setTimeout(() => alive && dial(), 3000);
           } else {
             setErr("Couldn't join the game. Check your connection.");
@@ -423,7 +431,9 @@ export function DrawGame({ role, room, myName, hostName = "Host" }: { role: Who;
       : stage === "waiting"
         ? role === "host"
           ? "Waiting for your friend to open the link…"
-          : `Waiting for ${hostName} to open the game…`
+          : knocked
+            ? `Waiting for ${hostName}… we sent them a notification, it connects as soon as they open the game.`
+            : `Waiting for ${hostName} to open the game…`
         : stage === "lobby"
           ? `${other} is here!`
           : stage === "error"
