@@ -14,6 +14,8 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (/^(hi|hello|hey|thanks|thank you|good (morning|night|evening))\b[\s!.]*$/.test(m)) return "core";
   // Self-built apps: "make me an app to track petrol", "delete the gym app", "what apps do I have".
   if (/\b(make|build|create|design)\b.*\b(app|tool|tracker)\b|\b(open|delete|remove|change|update|fix)\b.*\bapp\b|\b(my|what) apps\b/.test(m)) return "core";
+  // Kitchen / hands-free mode is a screen, not a routine.
+  if (/\b(kitchen|hands[- ]?free|focus) mode\b|\bkeep (the )?screen on\b/.test(m)) return "core";
   // Routines: "when I say gym mode…", "run my morning routine", "what routines do I have".
   if (/\broutines?\b|\bwhen(ever)? i say\b/.test(m)) return "core";
   // Call screening: "who called me", "any missed calls", "turn off call screening", "my call link".

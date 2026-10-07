@@ -1093,6 +1093,17 @@ export const TOOLS: Record<string, Tool> = {
     },
   },
 
+  /* ───── kitchen / hands-free mode (full-screen voice, screen stays on) ───── */
+  kitchen_mode: {
+    name: "kitchen_mode",
+    description: "Open kitchen / hands-free / focus mode: full screen, a big voice orb with the mascot, the screen stays on ('kitchen mode', 'hands-free mode', 'keep the screen on', 'I'm cooking').",
+    parameters: obj({}),
+    async run(_args, ctx) {
+      ctx.actions.push({ label: "Kitchen mode", href: "/focus", navigate: true });
+      return { opening: "kitchen mode", note: "Say it's opening; tap the face (or say anything once voice is on) to talk hands-free." };
+    },
+  },
+
   /* ───── routines ("good morning" → weather, today's plan, habits, a song) ───── */
   create_routine: {
     name: "create_routine",
