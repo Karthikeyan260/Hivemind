@@ -44,9 +44,10 @@ end;
 $$;
 revoke all on function public.rls_auto_enable() from public, anon, authenticated;
 
+-- No "when tag in (…)" filter: Supabase re-issues event trigger statements and mangles multi-word
+-- tags ("relation AS does not exist"). The function above picks out table creation itself.
 drop event trigger if exists rls_auto_enable;
 create event trigger rls_auto_enable on ddl_command_end
-  when tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
   execute function public.rls_auto_enable();
 
 -- (3) Anything already open, closed now.
