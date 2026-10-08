@@ -18,7 +18,15 @@ export type WebResult = { answer: string; sources: { title: string; url: string 
 async function resolveLinks(sources: { title: string; url: string }[]) {
   const resolved = await Promise.all(
     sources.map(async (s) => {
-      if (!/grounding-api-redirect/.test(s.url)) return s;
+      // Only Google's own redirect host is ever fetched here (never an arbitrary URL from a source).
+      const host = (() => {
+        try {
+          return new URL(s.url).hostname;
+        } catch {
+          return "";
+        }
+      })();
+      if (host !== "vertexaisearch.cloud.google.com" || !/grounding-api-redirect/.test(s.url)) return s;
       try {
         const res = await fetch(s.url, { redirect: "manual", signal: AbortSignal.timeout(4000) });
         const to = res.headers.get("location");

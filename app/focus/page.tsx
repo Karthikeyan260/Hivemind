@@ -129,7 +129,8 @@ function Focus() {
   const label = { off: "Tap to talk", connecting: "Connecting…", listening: "Listening", thinking: "Thinking…", speaking: "Speaking" }[state];
 
   return (
-    <div className="fixed inset-0 z-[55] flex flex-col items-center justify-between bg-bg px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] text-fg">
+    <div role="main" className="fixed inset-0 z-[55] flex flex-col items-center justify-between bg-bg px-6 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] text-fg">
+      <h1 className="sr-only">Kitchen mode</h1>
       <div className="flex w-full items-center justify-between font-mono text-[11px] uppercase tracking-wider text-faint">
         <span className="flex items-center gap-1.5">
           <Sun size={13} className={awake === "on" ? "text-core" : ""} />

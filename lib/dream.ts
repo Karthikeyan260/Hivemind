@@ -87,8 +87,12 @@ export async function dream(supabase: SupabaseClient, date: string): Promise<Dre
       for (const d of drops) {
         const { data: row } = await supabase.from("memories").select("*").eq("id", d.id).maybeSingle();
         if (!row) continue;
-        await supabase.from("memories").delete().eq("id", d.id);
-        steps.push(await logActivity(supabase, "dream", `Dream: removed duplicate “${clip(d.title, 60)}”`, { type: "memory_deleted", memory: row }));
+        // The full row goes into the undo log FIRST; only once that's saved is the duplicate deleted.
+        const logged = await logActivity(supabase, "dream", `Dream: removed duplicate “${clip(d.title, 60)}”`, { type: "memory_deleted", memory: row });
+        if (!logged) continue;
+        const { error: delErr } = await supabase.from("memories").delete().eq("id", d.id);
+        if (delErr) continue;
+        steps.push(logged);
         gone.add(d.id);
       }
       result.changes.push({ kind: "merged", text: `Merged ${drops.length + 1} memories about “${clip(m.title || keep.title, 70)}”`, activities: steps.filter((x): x is string => !!x) });

@@ -17,7 +17,7 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^1.48.0",
     "mammoth": "^1.13.0",
-    "next": "16.3.6",
+    "next": "^16.4.0",
     "openai": "^7.23.0",
     "peerjs": "^1.5.5",
     "playwright-core": "^1.63.0",
@@ -39,7 +39,7 @@
     "@types/three": "^0.186.0",
     "@types/web-push": "^3.6.4",
     "eslint": "^9",
-    "eslint-config-next": "16.3.6",
+    "eslint-config-next": "^16.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

@@ -10,6 +10,10 @@ const SECURITY_HEADERS = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   // Mic for voice and calls, camera for future photo capture, location for maps and directions: this site only.
   { key: "Permissions-Policy", value: "microphone=(self), camera=(self), geolocation=(self), payment=(), usb=(), interest-cohort=()" },
+  // A private app: search engines must never list any page of it.
+  { key: "X-Robots-Tag", value: "noindex, nofollow" },
+  // Always HTTPS, also on a custom domain (Vercel adds this only on *.vercel.app).
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
 ];
 
 const nextConfig: NextConfig = {

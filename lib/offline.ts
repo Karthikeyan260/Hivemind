@@ -410,11 +410,23 @@ export function startOfflineSync() {
 }
 
 /** On lock: forget cached notes and memories on this device. Unsynced writes are kept. */
+/**
+ * Locking / logging out: nothing private stays readable on this device. Unsynced changes are sent
+ * first (a few seconds at most), then the offline copies, the queue, saved pages and a pending share
+ * are deleted. Build files and the push service worker stay (they hold no personal data).
+ */
 export async function clearOfflineCache() {
   try {
-    await tx(CACHE, "readwrite", (s) => void s.clear());
+    await Promise.race([flush(), new Promise((r) => setTimeout(r, 4000))]);
   } catch {}
-  try {
-    await caches.delete("hivemind-pages");
-  } catch {}
+  for (const store of [CACHE, OUTBOX, META]) {
+    try {
+      await tx(store, "readwrite", (s) => void s.clear());
+    } catch {}
+  }
+  for (const name of ["hivemind-pages", "hivemind-share"]) {
+    try {
+      await caches.delete(name);
+    } catch {}
+  }
 }

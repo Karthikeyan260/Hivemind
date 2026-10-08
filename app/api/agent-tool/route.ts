@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { intentCheck, isGuarded } from "@/lib/agents/intent";
 import { TOOLS } from "@/lib/agents/tools";
 import type { Action, RunContext, Source } from "@/lib/agents/types";
 import { handle, HttpError, parseBody } from "@/lib/api";
@@ -12,6 +13,10 @@ export const maxDuration = 120;
 const Body = z.object({
   name: z.string().min(1).max(60),
   args: z.record(z.string(), z.unknown()).default({}),
+  /** What the owner said this turn (voice transcript): guarded tools are checked against it here too. */
+  said: z.string().max(4000).default(""),
+  /** A routine is running this turn: its steps never use guarded tools. */
+  routine: z.boolean().default(false),
   state: z
     .object({
       jobs: z.array(z.record(z.string(), z.unknown())).max(20).optional(),
@@ -29,9 +34,15 @@ const Body = z.object({
  * Multi-turn state (last job search, a memory awaiting delete confirmation) is kept by the caller.
  */
 export const POST = handle(async (req: Request) => {
-  const { name, args, state } = await parseBody(req, Body);
+  const { name, args, state, said, routine } = await parseBody(req, Body);
   const tool = TOOLS[name];
   if (!tool) throw new HttpError(404, `Unknown tool "${name}"`);
+  // The same owner-intent guard as chat, on the server: deleting, sending, calling, approving or
+  // changing only when the owner's own words this turn asked for it (the browser checks too).
+  if (isGuarded(name)) {
+    const refused = routine ? "Routines can't delete, send, call or change things. Ask the owner to ask for it directly." : intentCheck(name, said);
+    if (refused) return NextResponse.json({ result: { error: refused }, sources: [], actions: [], changed: false, jobs: null });
+  }
   const sources: Source[] = [];
   const actions: Action[] = [];
   const ctx: RunContext = {

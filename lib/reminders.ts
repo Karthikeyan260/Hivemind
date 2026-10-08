@@ -218,15 +218,38 @@ export async function dueAlerts(supabase: SupabaseClient) {
     const m = r.metadata.reminder!;
     return !m.alerted_at && new Date(m.due_at).getTime() - m.remind_before_min * 60_000 <= now;
   });
-  await Promise.all(
-    due.map((r) =>
-      supabase
+  // Claim each one with a conditional update (only if still unalerted): the scheduler and an open
+  // tab asking at the same moment can't both get it, so it fires once.
+  const claimed = await Promise.all(
+    due.map(async (r) => {
+      const { data, error } = await supabase
         .from("notes")
         .update({ metadata: { ...r.metadata, reminder: { ...r.metadata.reminder!, alerted_at: new Date(now).toISOString() } } })
-        .eq("id", r.id),
-    ),
+        .eq("id", r.id)
+        .is("metadata->reminder->>alerted_at", null)
+        .select("id");
+      return !error && data?.length ? r : null;
+    }),
   );
-  return due.map(toReminder);
+  return claimed.filter((r): r is Row => !!r).map(toReminder);
+}
+
+/**
+ * A reminder that was claimed but couldn't be delivered (no device took the push): hand it back so
+ * the next run or an open tab shows it. At most 3 tries, so a phone with no subscription isn't
+ * pinged forever.
+ */
+export async function releaseAlert(supabase: SupabaseClient, id: string) {
+  const { data } = await supabase.from("notes").select("metadata").eq("id", id).maybeSingle();
+  const meta = (data as { metadata?: Row["metadata"] } | null)?.metadata;
+  const rem = meta?.reminder as (ReminderMeta & { alert_tries?: number }) | undefined;
+  if (!meta || !rem) return;
+  const tries = (rem.alert_tries ?? 0) + 1;
+  if (tries >= 3) return;
+  await supabase
+    .from("notes")
+    .update({ metadata: { ...meta, reminder: { ...rem, alerted_at: null, alert_tries: tries } } })
+    .eq("id", id);
 }
 
 export async function setReminderStatus(supabase: SupabaseClient, id: string, status: ReminderMeta["status"]) {
@@ -247,7 +270,8 @@ export async function findReminder(supabase: SupabaseClient, phrase: string, opt
   const pool = [...a.overdue, ...a.today, ...a.tomorrow, ...a.later].filter((r) => opts.includeDone || r.status === "pending");
   // "the meeting tomorrow" should match by day as well as by words.
   const day = (r: Reminder) => (/\btoday\b/.test(p) && a.today.includes(r)) || (/\btomorrow\b/.test(p) && a.tomorrow.includes(r));
-  const words = p.split(/\W+/).filter((w) => w.length > 2 && !["today", "tomorrow", "the", "my", "and"].includes(w));
+  // Split on anything that isn't a letter, mark or digit in ANY script (\W would throw away Tamil).
+  const words = p.split(/[^\p{L}\p{M}\p{N}]+/u).filter((w) => w.length > 2 && !["today", "tomorrow", "the", "my", "and"].includes(w));
   const score = (r: Reminder) => words.filter((w) => `${r.title} ${r.details}`.toLowerCase().includes(w)).length + (day(r) ? 1 : 0);
   const best = pool.map((r) => ({ r, s: score(r) })).sort((x, y) => y.s - x.s)[0];
   return best && best.s > 0 ? best.r : null;

@@ -150,7 +150,10 @@ export async function runHabitAlerts(supabase: SupabaseClient, now = new Date())
   if (!all.length) return 0;
   const nowMin = lp.hour * 60 + lp.minute;
   let sent = 0;
-  let changed = false;
+  // Only what this run changes, per habit: merged into a fresh copy at the end, so a "✓ Done"
+  // tapped on a notification while these were being sent isn't overwritten by this stale list.
+  const patch = new Map<string, Partial<Pick<(typeof all)[number], "alerted" | "nudged" | "snoozeUntil">>>();
+  const mark = (id: string, p: Partial<Pick<(typeof all)[number], "alerted" | "nudged" | "snoozeUntil">>) => patch.set(id, { ...patch.get(id), ...p });
 
   for (const h of all) {
     const st = stats(h, lp.date);
@@ -161,7 +164,7 @@ export async function runHabitAlerts(supabase: SupabaseClient, now = new Date())
     // Snoozed: remind again once the snooze is over.
     if (h.snoozeUntil && Date.parse(h.snoozeUntil) <= now.getTime()) {
       h.snoozeUntil = undefined;
-      changed = true;
+      mark(h.id, { snoozeUntil: undefined });
       sent += await notify(supabase, { title: `${h.emoji} ${h.name}`, body: `Snooze's over: time for ${h.name.toLowerCase()}${streakTxt}`, url: "/habits", tag: `habit-${h.id}`, actions, data });
       continue;
     }
@@ -174,14 +177,14 @@ export async function runHabitAlerts(supabase: SupabaseClient, now = new Date())
       const diff = nowMin - (hh * 60 + mm);
       if (diff < 0 || diff > 20 || h.alerted?.includes(key)) continue;
       h.alerted = [...(h.alerted ?? []).filter((k) => k >= addDays(lp.date, -2)), key];
-      changed = true;
+      mark(h.id, { alerted: h.alerted });
       sent += await notify(supabase, { title: `${h.emoji} Time for ${h.name.toLowerCase()}`, body: `Tap ✓ Done when it's done${streakTxt}`, url: "/habits", tag: `habit-${h.id}`, actions, data });
     }
 
     // One gentle evening nudge at 8 pm if it's still not done.
     if (lp.hour >= 20 && lp.hour < 22 && h.nudged !== lp.date && h.times.some((t) => t < "20:00")) {
       h.nudged = lp.date;
-      changed = true;
+      mark(h.id, { nudged: lp.date });
       sent += await notify(supabase, {
         title: `${h.emoji} Still time for ${h.name.toLowerCase()}`,
         body: st.streak ? `Keep your ${st.streak}-day streak going 🔥` : "A quick one before the day ends?",
@@ -192,7 +195,14 @@ export async function runHabitAlerts(supabase: SupabaseClient, now = new Date())
       });
     }
   }
-  if (changed) await save(supabase, all);
+  if (patch.size) {
+    const fresh = await listHabits(supabase);
+    for (const h of fresh) {
+      const p = patch.get(h.id);
+      if (p) Object.assign(h, p);
+    }
+    await save(supabase, fresh);
+  }
 
   // Sunday 7–10 pm: the week in one notification.
   if (lp.weekday === 0 && lp.hour >= 19 && lp.hour < 22) {

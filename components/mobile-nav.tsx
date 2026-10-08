@@ -3,7 +3,7 @@
 import { Blocks, ChefHat, Gamepad2, Laugh, Moon, Newspaper, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { cx } from "@/components/ui";
 import { isPublicPage } from "@/lib/public-paths";
 import { clearOfflineCache } from "@/lib/offline";
@@ -55,6 +55,23 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- close the sheet after navigating
   useEffect(() => setMore(false), [path]);
 
+  // The sheet behaves like a dialog: focus moves into it, Esc closes it, and focus returns to "More".
+  const moreBtn = useRef<HTMLButtonElement | null>(null);
+  const sheet = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!more) return;
+    const opener = moreBtn.current;
+    sheet.current?.querySelector<HTMLElement>("nav a")?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMore(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener?.focus();
+    };
+  }, [more]);
+
   if (hidden) return null;
 
   async function lock() {
@@ -67,7 +84,7 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
   return (
     <>
       {more && (
-        <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" aria-label="More pages">
+        <div ref={sheet} className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" aria-label="More pages">
           <button type="button" aria-label="Close" onClick={() => setMore(false)} className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
           <div className="sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-line bg-sunken px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
             <div className="mb-3 flex items-center justify-between">
@@ -127,8 +144,10 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
         ))}
         <button
           type="button"
+          ref={moreBtn}
           onClick={() => setMore(true)}
           aria-expanded={more}
+          aria-haspopup="dialog"
           className={cx("flex h-14 flex-1 flex-col items-center justify-center gap-1 text-[10.5px]", inMore || more ? "text-fg" : "text-faint")}
         >
           <Menu size={20} strokeWidth={1.75} className={inMore ? "text-core" : ""} />

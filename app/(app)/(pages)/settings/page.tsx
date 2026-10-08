@@ -2,6 +2,7 @@ import { LanguageCard } from "@/components/language";
 import { MyVoiceCard } from "@/components/my-voice";
 import { LocationCard } from "@/components/location-card";
 import { NotificationsCard } from "@/components/notifications";
+import { SessionsCard } from "@/components/sessions-card";
 import { providers } from "@/lib/ai/providers";
 
 export default function SettingsPage() {
@@ -48,6 +49,8 @@ export default function SettingsPage() {
       <LocationCard />
 
       <NotificationsCard />
+
+      <SessionsCard />
 
       <section className="rounded-xl border border-line bg-panel p-4">
         <h2 className="mb-2 font-semibold">Export your brain</h2>

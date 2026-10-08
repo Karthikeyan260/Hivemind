@@ -17,7 +17,10 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "HIVEMIND",
+  // Each page sets its own name: "Notes · HIVEMIND" (browser tabs, recent apps, screen readers).
+  title: { default: "HIVEMIND", template: "%s · HIVEMIND" },
+  // Private: never in search results.
+  robots: { index: false, follow: false, googleBot: { index: false, follow: false } },
   description: "Your personal AI: memory, projects and answers",
   applicationName: "HIVEMIND",
   // Added to the home screen, it opens full-screen like an app (see app/manifest.ts).

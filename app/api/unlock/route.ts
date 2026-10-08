@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { addMarker, clearMarkers, countMarkers } from "@/lib/private-store";
-import { passwordRequired, safeEqual, SESSION_COOKIE, SESSION_MAX_AGE, sessionToken } from "@/lib/session";
+import { createSession, endAllSessions, endSession, isTrusted, isUnlocked, passwordRequired, safeEqual, SESSION_COOKIE, SESSION_MAX_AGE, TRUSTED_COOKIE, TRUSTED_MAX_AGE, trustedCookie } from "@/lib/session";
 
 // Brute-force guard: after MAX_FAILS wrong passwords from one address within the window, that
 // address is locked out until the window passes. Each failure is its own stored marker (parallel
 // guesses can't overwrite each other), and an in-memory count also stops bursts on this instance.
 const MAX_FAILS = 8;
-/** Across all addresses: stops guessing from many rotating IPs. */
+/** Across all addresses: stops guessing from many rotating IPs. A browser that has unlocked before
+ * (trusted-device cookie) isn't held by this one, so strangers can't lock the owner out. */
 const MAX_FAILS_GLOBAL = 60;
 const WINDOW_MS = 15 * 60_000;
 const burst = new Map<string, number[]>();
@@ -39,7 +40,8 @@ export async function POST(req: Request) {
     countMarkers(supabase, prefix(ip), now - WINDOW_MS).catch(() => 0),
     countMarkers(supabase, "unlock-fails-all", now - WINDOW_MS).catch(() => 0),
   ]);
-  if (stored >= MAX_FAILS || total >= MAX_FAILS_GLOBAL) return locked(15);
+  const trusted = await isTrusted(cookieOf(req, TRUSTED_COOKIE)).catch(() => false);
+  if (stored >= MAX_FAILS || (total >= MAX_FAILS_GLOBAL && !trusted)) return locked(15);
 
   if (typeof password !== "string" || !safeEqual(password, process.env.APP_PASSWORD!)) {
     await Promise.all([addMarker(supabase, prefix(ip)).catch(() => {}), addMarker(supabase, "unlock-fails-all").catch(() => {})]);
@@ -50,17 +52,26 @@ export async function POST(req: Request) {
   burst.delete(ip);
   await clearMarkers(supabase, prefix(ip)).catch(() => {});
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(SESSION_COOKIE, await sessionToken(), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
+  const cookie = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/" };
+  res.cookies.set(SESSION_COOKIE, await createSession(req.headers.get("user-agent") ?? "browser"), { ...cookie, maxAge: SESSION_MAX_AGE });
+  if (!trusted) res.cookies.set(TRUSTED_COOKIE, await trustedCookie(), { ...cookie, maxAge: TRUSTED_MAX_AGE });
   return res;
 }
 
-export async function DELETE() {
+const cookieOf = (req: Request, name: string) =>
+  req.headers
+    .get("cookie")
+    ?.split(/;\s*/)
+    .find((c) => c.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+
+/** Logout: ends this browser's session. ?all=1 (only from a signed-in browser) ends every session. */
+export async function DELETE(req: Request) {
+  const mine = cookieOf(req, SESSION_COOKIE);
+  if (new URL(req.url).searchParams.get("all") === "1") {
+    if (!(await isUnlocked(mine))) return NextResponse.json({ error: "Locked" }, { status: 401 });
+    await endAllSessions();
+  } else await endSession(mine).catch(() => {});
   const res = new NextResponse(null, { status: 204 });
   res.cookies.delete(SESSION_COOKIE);
   return res;

@@ -17,7 +17,8 @@ export function Button({
       {...props}
       className={cx(
         "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-[background-color,border-color,color,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-40",
-        size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
+        // Taller on touch screens (44 px target for normal buttons).
+        size === "sm" ? "h-7 px-2.5 text-xs pointer-coarse:h-9" : "h-9 px-3.5 text-sm pointer-coarse:h-11",
         variant === "primary" && "bg-core text-core-ink hover:bg-core/85",
         variant === "ghost" && "border border-line-strong text-fg hover:border-data hover:text-data",
         variant === "quiet" && "text-soft hover:bg-raised hover:text-fg",
@@ -28,12 +29,18 @@ export function Button({
   );
 }
 
-const field = "rounded-md border border-line bg-sunken px-3 py-2 text-sm text-fg placeholder:text-faint outline-none transition-colors duration-150 focus:border-data";
+// A visible keyboard focus ring (the global outline is kept, plus a ring), not just a border tint.
+const field = "rounded-md border border-line bg-sunken px-3 py-2 text-sm text-fg placeholder:text-faint transition-colors duration-150 focus:border-data focus-visible:ring-2 focus-visible:ring-data/50";
 
-export const Input = ({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(field, "w-full", className)} />;
+// Fields without a visible label get their placeholder as their accessible name, so screen
+// readers announce what each box is for (an explicit aria-label always wins).
+const named = (p: { placeholder?: string; "aria-label"?: string; "aria-labelledby"?: string; id?: string }) =>
+  p["aria-label"] || p["aria-labelledby"] ? {} : p.placeholder ? { "aria-label": p.placeholder } : {};
+
+export const Input = ({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) => <input {...named(p)} {...p} className={cx(field, "w-full", className)} />;
 
 export const Textarea = ({ className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
-  <textarea {...p} className={cx(field, "w-full resize-y", className)} />
+  <textarea {...named(p)} {...p} className={cx(field, "w-full resize-y", className)} />
 );
 
 export const Select = ({ className, ...p }: SelectHTMLAttributes<HTMLSelectElement>) => (

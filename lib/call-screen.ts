@@ -86,7 +86,8 @@ export async function startScreen(supabase: SupabaseClient, room: Room, guestNam
   if (today.length >= (room.permanent ? 20 : 3)) return null;
   const owner = room.from || "the owner";
   const caller = clip(guestName || (room.permanent ? "" : room.name), 40) || "Unknown caller";
-  const greeting = `Hi${caller !== "Unknown caller" ? ` ${caller}` : ""}, this is HIVEMIND, ${owner}'s AI assistant. ${owner} can't pick up right now. ${caller !== "Unknown caller" ? "What's" : "Who's calling, and what's"} it about? I'll pass it on.`;
+  // Says plainly that an AI is answering and that a summary is kept (callers should know before they speak).
+  const greeting = `Hi${caller !== "Unknown caller" ? ` ${caller}` : ""}, this is HIVEMIND, ${owner}'s AI assistant. ${owner} can't pick up right now. I'm an AI, and I'll save a short summary of this call for ${owner}. ${caller !== "Unknown caller" ? "What's" : "Who's calling, and what's"} it about?`;
   const s: Screened = { id: crypto.randomUUID(), room: room.room, at: new Date().toISOString(), caller, reason: "", urgent: false, summary: "", lines: [{ who: "hivemind", text: greeting }], done: false };
   await saveLog(supabase, [s, ...items]);
   return { id: s.id, text: greeting, ...(await say(greeting, settings)) };

@@ -13,7 +13,7 @@
   --line-strong: oklch(0.45 0.03 240 / 0.7);
   --fg: oklch(0.94 0.008 240);
   --soft: oklch(0.72 0.02 240);
-  --faint: oklch(0.55 0.02 240);
+  --faint: oklch(0.63 0.02 240); /* ≥4.5:1 on the dark backgrounds (was 4.0) */
   --core: oklch(0.8 0.14 72);
   --core-ink: oklch(0.2 0.03 70);
   --data: oklch(0.84 0.085 215);

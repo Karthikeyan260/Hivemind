@@ -303,6 +303,9 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         const r = (await call("/api/agent-tool", "POST", {
           name,
           args,
+          // The owner's own words this turn: the server checks guarded tools against them too.
+          said: turn.current.q.slice(0, 4000),
+          routine: !!turn.current.routine,
           state: { jobs: st.jobs, pending_delete: pending, ...(fix ? { location: { lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy, device: fix.device } } : {}) },
         })) as unknown as AgentToolOut;
         if (r.jobs) st.jobs = r.jobs;

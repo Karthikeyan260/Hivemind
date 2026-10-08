@@ -38,10 +38,39 @@ export const MemoryUpdate = MemoryInput.partial().extend({
 
 const embedText = (title: string, content: string) => `${title}\n\n${content}`;
 
+/**
+ * The search vector, or null when the embedding model is unavailable (Gemini quota, outage): the
+ * item is saved anyway and the scheduler adds the vector later (reembedMissing), instead of the
+ * owner losing what they were saving.
+ */
+async function tryEmbed(text: string) {
+  try {
+    return toVector(await embedOne(text));
+  } catch (err) {
+    console.warn("embedding unavailable, saving without it for now:", err instanceof Error ? err.message.slice(0, 100) : err);
+    return null;
+  }
+}
+
+/** Notes and memories saved while embeddings were down: add their vectors now (a few per run). */
+export async function reembedMissing(supabase: SupabaseClient, limit = 10) {
+  let done = 0;
+  for (const table of ["notes", "memories"] as const) {
+    const { data } = await supabase.from(table).select("id, title, content").is("embedding", null).limit(limit);
+    for (const row of (data ?? []) as { id: string; title: string; content: string }[]) {
+      const v = await tryEmbed(embedText(row.title, row.content));
+      if (!v) return done; // still down: try again next run
+      await supabase.from(table).update({ embedding: v }).eq("id", row.id);
+      done++;
+    }
+  }
+  return done;
+}
+
 export async function createNote(supabase: SupabaseClient, input: z.infer<typeof NoteInput>) {
   const meta = await extractMetadata(input.content);
   const title = input.title || meta.title || input.content.slice(0, 60);
-  const embedding = await embedOne(embedText(title, input.content));
+  const embedding = await tryEmbed(embedText(title, input.content));
   const { data, error } = await supabase
     .from("notes")
     .insert({
@@ -52,7 +81,7 @@ export async function createNote(supabase: SupabaseClient, input: z.infer<typeof
       category: meta.category,
       tags: input.tags?.length ? input.tags : meta.tags,
       metadata: { entities: meta.entities, importance: meta.importance },
-      embedding: toVector(embedding),
+      embedding,
     })
     .select(NOTE_COLUMNS)
     .single();
@@ -77,7 +106,7 @@ async function autoFile<T extends { id: string; title: string; content: string; 
 export async function createMemory(supabase: SupabaseClient, input: z.infer<typeof MemoryInput>) {
   const meta = await extractMetadata(input.content);
   const title = input.title || meta.title || input.content.slice(0, 60);
-  const embedding = await embedOne(embedText(title, input.content));
+  const embedding = await tryEmbed(embedText(title, input.content));
   const { data, error } = await supabase
     .from("memories")
     .insert({
@@ -90,7 +119,7 @@ export async function createMemory(supabase: SupabaseClient, input: z.infer<type
       confidence: input.confidence ?? 1,
       tags: input.tags?.length ? input.tags : meta.tags,
       metadata: { summary: meta.summary, entities: meta.entities },
-      embedding: toVector(embedding),
+      embedding,
     })
     .select(MEMORY_COLUMNS)
     .single();
@@ -136,7 +165,8 @@ export async function updateMemory(
   }
 
   const update: Record<string, unknown> = { ...fields, updated_at: new Date().toISOString() };
-  if (meaningChanged) update.embedding = toVector(await embedOne(embedText(title, content)));
+  // New words: a new vector, or none for now (the scheduler fills it in; search never uses a stale one).
+  if (meaningChanged) update.embedding = await tryEmbed(embedText(title, content));
 
   const { data, error } = await supabase
     .from("memories")

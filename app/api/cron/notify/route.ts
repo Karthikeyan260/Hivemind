@@ -1,6 +1,8 @@
 import { after, NextResponse } from "next/server";
 import { autopilotDue, runAutopilot } from "@/lib/autopilot";
 import { safeEqual } from "@/lib/session";
+import { recoverStuckBuilds } from "@/lib/apps";
+import { reembedMissing } from "@/lib/knowledge";
 import { birthdaysToday, runBirthdayAlerts } from "@/lib/birthdays";
 import { briefHeadline, getBriefSettings, makeBrief } from "@/lib/brief";
 import { dream, getDream, getDreamSettings } from "@/lib/dream";
@@ -9,7 +11,7 @@ import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { runHabitAlerts } from "@/lib/habits";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { notify, pushConfigured } from "@/lib/push";
-import { agenda, dueAlerts, HOME_TZ } from "@/lib/reminders";
+import { agenda, dueAlerts, HOME_TZ, releaseAlert } from "@/lib/reminders";
 import { resumeStalled } from "@/lib/web-agent/runner";
 import { ACTIVE, listTasks } from "@/lib/web-agent/store";
 
@@ -34,7 +36,9 @@ export async function GET(req: Request) {
   // 1. Reminders whose alert time has arrived (each is handed out once, here or to an open tab).
   const due = await dueAlerts(supabase);
   for (const r of due) {
-    await notify(supabase, { title: `⏰ ${r.title}`, body: [r.when, r.details].filter(Boolean).join(" · "), url: "/", tag: `reminder-${r.id}` });
+    const sent = await notify(supabase, { title: `⏰ ${r.title}`, body: [r.when, r.details].filter(Boolean).join(" · "), url: "/", tag: `reminder-${r.id}` }).catch(() => 0);
+    // No device took it: hand it back so the next run (or an open tab) can still show it.
+    if (!sent) await releaseAlert(supabase, r.id).catch(() => {});
   }
 
   // 2. Morning brief, once a day after BRIEF_HOUR local time.
@@ -81,9 +85,14 @@ export async function GET(req: Request) {
   const autopilot = await autopilotDue(supabase, now).catch(() => false);
   if (autopilot) after(() => runAutopilot(db(), { origin: new URL(req.url).origin }).then(() => undefined, (e) => console.warn("autopilot:", e)));
 
+  // Notes / memories saved while embeddings were down: add their search vectors now.
+  const reembedded = await reembedMissing(supabase).catch(() => 0);
+  // App builds that were cut off: start once more, or mark failed.
+  const apps = await recoverStuckBuilds(supabase, process.env.APP_URL || new URL(req.url).origin).catch(() => 0);
+
   // 5. Web tasks: restart any whose driver stopped; close out pauses the browser didn't outlive.
   const active = (await listTasks(supabase).catch(() => [])).filter((t) => ACTIVE.includes(t.status));
   const web = active.length ? await resumeStalled(supabase, active, process.env.APP_URL || new URL(req.url).origin).catch(() => 0) : 0;
 
-  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot, web, dreaming, news });
+  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot, web, dreaming, news, apps, reembedded });
 }

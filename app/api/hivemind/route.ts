@@ -80,9 +80,18 @@ export const POST = handle(async (req: Request) => {
   }
 
   const encoder = new TextEncoder();
+  let gone = false;
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (e: StreamEvent) => controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
+      // If the browser goes away mid-answer, stop writing to it but finish the turn and save it.
+      const send = (e: StreamEvent) => {
+        if (gone) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(e) + "\n"));
+        } catch {
+          gone = true;
+        }
+      };
       let reply = "";
       const sources: Source[] = [];
       const trace: AgentEvent[] = [];
@@ -165,7 +174,7 @@ export const POST = handle(async (req: Request) => {
         for (const a of actions) send({ type: "action", ...a });
         send(done);
 
-        await supabase.from("messages").insert([
+        const { error: saveErr } = await supabase.from("messages").insert([
           { conversation_id: conversationId, role: "user", content: message, metadata: {} },
           {
             conversation_id: conversationId,
@@ -174,12 +183,18 @@ export const POST = handle(async (req: Request) => {
             metadata: { intent, agent: intent, router: via, trace, sources, actions, jobs: ctx.jobs ?? undefined, pending_delete: ctx.pendingDelete ?? undefined, provider: done.provider, model: done.model, latency_ms: done.latency_ms },
           },
         ]);
+        if (saveErr) console.error("hivemind: couldn't save the turn:", saveErr.message);
       } catch (err) {
         console.error("hivemind:", err instanceof Error ? err.message : err);
         send({ type: "error", message: err instanceof HttpError ? err.message : "I hit a problem answering that. Try again in a moment." });
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {}
       }
+    },
+    cancel() {
+      gone = true;
     },
   });
 

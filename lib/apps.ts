@@ -9,7 +9,7 @@ import { readJSON, removeFiles, writeJSON } from "@/lib/private-store";
  * HIVEMIND) and keeps its data through a tiny bridge (window.hive) the host page provides.
  */
 export type AppMeta = { id: string; name: string; emoji: string; description: string; status: "building" | "ready" | "failed"; error?: string; created_at: string; updated_at: string; version: number };
-export type AppDoc = AppMeta & { html: string; history: { version: number; at: string; request: string; html: string }[]; /** What to build or change next (read by the background build). */ pending?: string };
+export type AppDoc = AppMeta & { html: string; history: { version: number; at: string; request: string; html: string }[]; /** What to build or change next (read by the background build). */ pending?: string; /** When the current build started, and how many times it was (re)started. */ building_since?: string; attempts?: number };
 
 const INDEX = "apps/index";
 const docKey = (id: string) => `apps/${id}`;
@@ -31,7 +31,7 @@ async function saveApp(supabase: SupabaseClient, app: AppDoc) {
 /** A new app, saved as "building" right away; generate() fills it in. */
 export async function startApp(supabase: SupabaseClient, request: string) {
   const now = new Date().toISOString();
-  return saveApp(supabase, { id: crypto.randomUUID(), name: "New app", emoji: "🛠️", description: request.slice(0, 200), status: "building", created_at: now, updated_at: now, version: 0, html: "", history: [], pending: request });
+  return saveApp(supabase, { id: crypto.randomUUID(), name: "New app", emoji: "🛠️", description: request.slice(0, 200), status: "building", created_at: now, updated_at: now, version: 0, html: "", history: [], pending: request, building_since: now, attempts: 0 });
 }
 
 export async function deleteApp(supabase: SupabaseClient, id: string) {
@@ -95,14 +95,21 @@ function parse(text: string) {
   return { html, name: (info.name ?? "My app").slice(0, 40), emoji: (info.emoji ?? "🛠️").slice(0, 4), description: (info.description ?? "").slice(0, 200) };
 }
 
+// The whole build must end inside one 60-second server call: every try shares this budget, so a
+// stalled model can't leave the app stuck on "building" when the call is cut off.
+const BUDGET_MS = 48_000;
+
 async function write(prompt: string) {
   let lastErr: unknown;
+  const deadline = Date.now() + BUDGET_MS;
   for (const model of MODELS) {
+    const left = deadline - Date.now();
+    if (left < 8_000) break;
     try {
       const r = await gemini().models.generateContent({
         model,
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { systemInstruction: RULES, temperature: 0.4, maxOutputTokens: 16000 },
+        config: { systemInstruction: RULES, temperature: 0.4, maxOutputTokens: 16000, abortSignal: AbortSignal.timeout(left) },
       });
       const out = parse(r.text ?? "");
       if (out) return out;
@@ -131,9 +138,10 @@ export async function generate(supabase: SupabaseClient, id: string, request: st
     Object.assign(app, { ...out, description: changing ? app.description : out.description || request.slice(0, 200), status: "ready", error: undefined, version: app.version + 1 });
     if (changing) app.name = out.name || app.name;
     app.pending = undefined;
+    app.building_since = undefined;
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);
-    Object.assign(app, { pending: undefined, status: changing ? "ready" : "failed", error: /429|quota|RESOURCE_EXHAUSTED/i.test(m) ? "AI free limit reached; try again later." : `Couldn't ${changing ? "change" : "build"} it: ${m.slice(0, 140)}` });
+    Object.assign(app, { pending: undefined, building_since: undefined, status: changing ? "ready" : "failed", error: /429|quota|RESOURCE_EXHAUSTED/i.test(m) ? "AI free limit reached; try again later." : `Couldn't ${changing ? "change" : "build"} it: ${m.slice(0, 140)}` });
   }
   // Deleted while it was being written: don't bring it back.
   if (!(await listApps(supabase)).some((a) => a.id === id)) return;
@@ -147,6 +155,8 @@ export async function markBuilding(supabase: SupabaseClient, id: string, request
   app.status = "building";
   if (request) app.pending = request;
   app.error = undefined;
+  app.building_since = new Date().toISOString();
+  app.attempts = 0;
   return saveApp(supabase, app);
 }
 
@@ -165,6 +175,43 @@ export async function restoreVersion(supabase: SupabaseClient, id: string, versi
 /** Ask for a background build (voice / chat requests can't wait ~30 s in their own call). */
 export async function kickBuild(origin: string, id: string) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || !origin) return;
+  if (!secret || !origin) {
+    // No scheduler secret: build in this request's background instead of silently never starting.
+    console.warn("apps: CRON_SECRET is not set; building in the background of this request");
+    const { after } = await import("next/server");
+    const { db } = await import("@/lib/db");
+    after(async () => {
+      const app = await getApp(db(), id);
+      if (app?.pending) await generate(db(), id, app.pending);
+    });
+    return;
+  }
   await fetch(`${origin}/api/cron/app-build?id=${id}`, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(5000) }).catch(() => {});
+}
+
+/**
+ * Builds cut off mid-way (the server call ended, a deploy restarted it): the scheduler finds apps
+ * "building" for over 3 minutes, starts each once more, and after that marks it failed (a change
+ * that never finished leaves the last working version in place).
+ */
+export async function recoverStuckBuilds(supabase: SupabaseClient, origin: string) {
+  const stuck = (await listApps(supabase)).filter((a) => a.status === "building");
+  let n = 0;
+  for (const meta of stuck) {
+    const app = await getApp(supabase, meta.id);
+    if (!app || app.status !== "building") continue;
+    const since = +new Date(app.building_since ?? app.updated_at);
+    if (Date.now() - since < 3 * 60_000) continue;
+    if (app.pending && (app.attempts ?? 0) < 1) {
+      app.attempts = (app.attempts ?? 0) + 1;
+      app.building_since = new Date().toISOString();
+      await saveApp(supabase, app);
+      await kickBuild(origin, app.id);
+    } else {
+      Object.assign(app, { status: app.html ? "ready" : "failed", pending: undefined, building_since: undefined, error: app.html ? "That change didn't finish; the app is as it was. Try again." : "The build didn't finish. Tap Try again." });
+      await saveApp(supabase, app);
+    }
+    n++;
+  }
+  return n;
 }

@@ -54,23 +54,32 @@ type Step = { kind: "agent"; name: string; delegated: boolean } | { kind: "tool"
 type GalaxyData = { nodes: GNode[]; projects: GProject[] };
 type MobileTab = "console" | "panels" | "operator" | "log";
 
+// The top bar on desktop: the everyday pages, and the rest in "More" (it used to run off the edge).
 const NAV = [
   { href: "/", label: "Overview" },
+  { href: "/memories", label: "Memories" },
+  { href: "/notes", label: "Notes" },
+  { href: "/projects", label: "Projects" },
+  { href: "/career", label: "Career" },
   { href: "/autopilot", label: "Autopilot" },
   { href: "/web", label: "Web" },
   { href: "/map", label: "Map" },
-  { href: "/apps", label: "Apps" },
+  { href: "/search", label: "Search" },
+];
+const NAV_MORE = [
+  { href: "/brief", label: "Morning brief" },
+  { href: "/dream", label: "Dream mode" },
   { href: "/routines", label: "Routines" },
+  { href: "/apps", label: "Apps" },
   { href: "/calls", label: "Calls" },
-  { href: "/projects", label: "Projects" },
-  { href: "/career", label: "Career" },
-  { href: "/journey", label: "Journey" },
+  { href: "/share", label: "Share" },
+  { href: "/comic", label: "Day comic" },
+  { href: "/games", label: "Games" },
+  { href: "/focus", label: "Kitchen mode" },
   { href: "/habits", label: "Habits" },
-  { href: "/memories", label: "Memories" },
-  { href: "/notes", label: "Notes" },
+  { href: "/journey", label: "Journey" },
   { href: "/documents", label: "Documents" },
   { href: "/sources", label: "Sources" },
-  { href: "/search", label: "Search" },
   { href: "/settings", label: "Settings" },
 ];
 const KIND_DOT: Record<string, string> = { memory: "bg-data", note: "bg-ok", document: "bg-[#b59cff]" };
@@ -834,7 +843,8 @@ function Bridge() {
   );
 
   return (
-    <div ref={rootRef} className="bridge fixed inset-x-0 top-0 bottom-[var(--tabbar-h)] flex flex-col bg-bg text-fg">
+    <div ref={rootRef} role="main" className="bridge fixed inset-x-0 top-0 bottom-[var(--tabbar-h)] flex flex-col bg-bg text-fg">
+      <h1 className="sr-only">HIVEMIND</h1>
       <Cursor locked={!!hover} label={hover ? `${hover.node.kind.slice(0, 3).toUpperCase()} · LOCK` : undefined} />
       <Boot onDone={() => setBooted(true)} lines={bootLines} ready={!!galaxy.data && !!b} />
 
@@ -847,7 +857,7 @@ function Bridge() {
           </span>
           <span className="font-mono text-sm font-semibold tracking-[0.32em]">HIVEMIND</span>
         </Link>
-        <nav className="no-scrollbar hidden min-w-0 items-center gap-1 overflow-x-auto md:flex" aria-label="Main">
+        <nav className="hidden min-w-0 items-center gap-1 md:flex" aria-label="Main">
           {NAV.map((n) => (
             <Link
               key={n.href}
@@ -861,6 +871,16 @@ function Bridge() {
               {n.label}
             </Link>
           ))}
+                  <details className="relative shrink-0">
+            <summary className="cursor-pointer list-none px-2.5 py-1.5 text-[13px] text-soft hover:text-fg [&::-webkit-details-marker]:hidden">More ▾</summary>
+            <div className="absolute right-0 top-full z-50 mt-2 grid w-56 gap-0.5 border border-line bg-sunken/95 p-2 shadow-xl backdrop-blur">
+              {NAV_MORE.map((n) => (
+                <Link key={n.href} href={n.href} className="px-2.5 py-1.5 text-[13px] text-soft hover:bg-raised hover:text-fg">
+                  {n.label}
+                </Link>
+              ))}
+            </div>
+          </details>
         </nav>
         <div className="ml-auto flex items-center gap-4 font-mono text-[10.5px] tabular-nums tracking-widest text-faint">
           <Scramble className="hidden text-data xl:inline" text={statusText} duration={0.5} />

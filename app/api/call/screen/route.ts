@@ -8,6 +8,8 @@ import { addMarker, countMarkers } from "@/lib/private-store";
 
 // A real caller makes a handful of requests a minute; parallel floods each cost an AI call.
 const PER_MINUTE = 15;
+// And a day: the permanent call link is public, so it must not be able to use up the AI quota.
+const PER_DAY = 150;
 
 export const maxDuration = 40;
 
@@ -33,6 +35,9 @@ export const POST = handle(async (req: Request) => {
   const key = `ratelimit/screen-${room.room}`;
   await addMarker(supabase, key);
   if ((await countMarkers(supabase, key, Date.now() - 60_000)) > PER_MINUTE) throw new HttpError(429, "Too many requests. Please wait a minute.");
+  const day = `ratelimit/screen-day-${room.room}`;
+  await addMarker(supabase, day);
+  if ((await countMarkers(supabase, day, Date.now() - 24 * 3600_000)) > PER_DAY) throw new HttpError(429, "HIVEMIND can't take more calls on this link today. Please try again tomorrow.");
   if (body.op === "start") {
     const r = await startScreen(supabase, room, body.name?.replace(/[^\p{L}\p{N} .'-]/gu, "").trim() ?? "");
     if (!r) throw new HttpError(409, "Call screening is off.");
