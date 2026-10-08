@@ -10,6 +10,7 @@ import { LocationReporter } from "@/components/location-card";
 import { ReminderWatcher } from "@/components/reminders/watcher";
 import { HandoffCard, VoiceDock } from "@/components/voice/dock";
 import { VoiceProvider } from "@/components/voice/provider";
+import { WakeListener } from "@/components/wake/listener";
 import { passwordRequired } from "@/lib/session";
 import "./globals.css";
 
@@ -52,6 +53,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <LocationReporter />
           <MobileNav canLock={passwordRequired()} />
           <ReminderWatcher />
+          <WakeListener />
         </VoiceProvider>
       </body>
     </html>

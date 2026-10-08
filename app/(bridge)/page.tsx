@@ -11,6 +11,7 @@ import { Boot } from "@/components/bridge/boot";
 import { Compass } from "@/components/bridge/compass";
 import { Cursor } from "@/components/bridge/cursor";
 import { Gauge, Holo, Meter } from "@/components/bridge/holo";
+import { HudClock, HudTelemetry } from "@/components/bridge/hud";
 import { Scramble } from "@/components/bridge/scramble";
 import { JobCards } from "@/components/career/job-cards";
 import { HabitsPanel } from "@/components/habits/panel";
@@ -18,7 +19,7 @@ import { AgendaPanel } from "@/components/reminders/agenda";
 import type { CoreState } from "@/components/core";
 import { Decrypt } from "@/components/fx";
 import type { GNode, GProject } from "@/components/galaxy/galaxy";
-import type { GalaxyScene, Telemetry } from "@/components/galaxy/scene";
+import type { GalaxyScene } from "@/components/galaxy/scene";
 import { VoiceMascot } from "@/components/mascot";
 import { ActionChips } from "@/components/home/action-chips";
 import { HomePanels } from "@/components/home/panels";
@@ -115,6 +116,24 @@ function Bridge() {
   const brain = useFetch<BrainT>("/api/brain");
   const galaxy = useFetch<GalaxyData>("/api/galaxy");
   const sceneRef = useRef<GalaxyScene | null>(null);
+  // The 3D galaxy (three.js, the heaviest download) starts once the page is up and the browser is
+  // idle, so on a phone the console is usable first. With Data Saver on it waits for a tap.
+  const [galaxyOn, setGalaxyOn] = useState(false);
+  const [saveData, setSaveData] = useState(false);
+  useEffect(() => {
+    const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+    if (conn?.saveData) {
+      setSaveData(true);
+      return;
+    }
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(() => setGalaxyOn(true), { timeout: 2500 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(() => setGalaxyOn(true), 800);
+    return () => clearTimeout(t);
+  }, []);
   const [sceneReady, setSceneReady] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -137,8 +156,6 @@ function Bridge() {
   const [tab, setTab] = useState<MobileTab>("console");
   const [muted, setMutedState] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [clock, setClock] = useState("");
-  const [tele, setTele] = useState<Telemetry | null>(null);
 
   // Entrance once the boot log hands over: bar drops, columns slide in from their edges, stage fades up.
   useGSAP(
@@ -157,14 +174,6 @@ function Bridge() {
   useEffect(() => {
      
     setMutedState(isMuted());
-    const tick = () => setClock(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }));
-    tick();
-    const id = setInterval(tick, 1000);
-    const tid = setInterval(() => setTele(sceneRef.current?.telemetry() ?? null), 500);
-    return () => {
-      clearInterval(id);
-      clearInterval(tid);
-    };
   }, []);
 
   useEffect(() => {
@@ -884,18 +893,8 @@ function Bridge() {
         </nav>
         <div className="ml-auto flex items-center gap-4 font-mono text-[10.5px] tabular-nums tracking-widest text-faint">
           <Scramble className="hidden text-data xl:inline" text={statusText} duration={0.5} />
-          {tele && (
-            <span className="hidden items-center gap-3 2xl:flex">
-              <span className="eq flex items-end" aria-hidden>
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <span key={i} style={{ animationDelay: `${i * 0.13}s`, animationDuration: state === "idle" ? "2.4s" : "0.6s" }} />
-                ))}
-              </span>
-              <span>FPS <b className="font-normal text-data">{tele.fps}</b></span>
-              <span>LOCK <b className={cx("font-normal", tele.locked ? "text-core" : "text-data")}>{String(tele.locked).padStart(2, "0")}</b></span>
-            </span>
-          )}
-          <span className="hidden text-[11px] text-soft sm:inline">{clock}</span>
+          <HudTelemetry read={readTelemetry} busy={state !== "idle"} />
+          <HudClock className="hidden text-[11px] text-soft sm:inline" />
           <button
             onClick={() => {
               setMuted(!muted);
@@ -934,21 +933,27 @@ function Bridge() {
           )}
           aria-label="Knowledge galaxy"
         >
-          <Galaxy
-            onReady={(s) => {
-              sceneRef.current = s;
-              setSceneReady(!!s);
-            }}
-            onHover={(node, x, y) => {
-              if (node && node.id !== hover?.node.id) sfx.hover();
-              setHover(node ? { node, x, y } : null);
-            }}
-            onSelectNode={(n) => {
-              setSelected(n);
-              sfx.lock();
-            }}
-            onSelectProject={focusProject}
-          />
+          {galaxyOn ? (
+            <Galaxy
+              onReady={(s) => {
+                sceneRef.current = s;
+                setSceneReady(!!s);
+              }}
+              onHover={(node, x, y) => {
+                if (node && node.id !== hover?.node.id) sfx.hover();
+                setHover(node ? { node, x, y } : null);
+              }}
+              onSelectNode={(n) => {
+                setSelected(n);
+                sfx.lock();
+              }}
+              onSelectProject={focusProject}
+            />
+          ) : saveData ? (
+            <button type="button" onClick={() => setGalaxyOn(true)} className="absolute inset-0 m-auto h-10 w-44 border border-data/40 font-mono text-[11px] uppercase tracking-wider text-data hover:border-data">
+              Show the galaxy
+            </button>
+          ) : null}
           <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,oklch(0.12_0.01_250/0.7)_100%)]" />
           {/* frame corners */}
           <div aria-hidden className="hud-frame pointer-events-none absolute inset-2 [--s:18px]" />

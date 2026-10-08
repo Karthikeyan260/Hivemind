@@ -19,6 +19,7 @@
     "lucide-react": "^1.48.0",
     "mammoth": "^1.13.0",
     "next": "^16.4.0",
+    "onnxruntime-web": "^1.30.0",
     "openai": "^7.23.0",
     "peerjs": "^1.5.5",
     "playwright-core": "^1.63.0",

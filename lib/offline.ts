@@ -373,12 +373,22 @@ async function doFlush() {
   }
 }
 
-let warmedAt = 0;
+// Kept for the tab (not just the page), so moving between pages doesn't refetch everything each time.
+const WARMED_KEY = "hm-warmed-at";
+const warmedAt = () => {
+  try {
+    return Number(sessionStorage.getItem(WARMED_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+};
 /** Refreshes the cached lists (at most every 5 minutes unless forced). */
 export async function warm(force = false) {
-  if (!navigator.onLine || (!force && Date.now() - warmedAt < 5 * 60_000)) return;
+  if (!navigator.onLine || (!force && Date.now() - warmedAt() < 5 * 60_000)) return;
   if ((await allOps().catch(() => [])).length) return; // don't overwrite unsynced local changes
-  warmedAt = Date.now();
+  try {
+    sessionStorage.setItem(WARMED_KEY, String(Date.now()));
+  } catch {}
   await Promise.all(
     WARM.map(async (path) => {
       try {
@@ -398,15 +408,21 @@ export function startOfflineSync() {
     emit({ online: true });
     void flush().then(() => warm());
   };
+  // The first sync waits until the page is idle, so it never competes with the page itself.
+  const idle = (fn: () => void) => {
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number };
+    if (w.requestIdleCallback) w.requestIdleCallback(fn, { timeout: 4000 });
+    else setTimeout(fn, 1500);
+  };
   window.addEventListener("online", online);
   window.addEventListener("offline", () => emit({ online: false }));
   emit({ online: navigator.onLine });
-  void refreshPending().then(() => (navigator.onLine ? online() : undefined));
+  idle(() => void refreshPending().then(() => (navigator.onLine ? online() : undefined)));
   setInterval(() => {
     if (status.pending && navigator.onLine) void flush();
   }, 60_000);
   // Keep the app pages themselves cached by the service worker.
-  if (navigator.onLine) navigator.serviceWorker?.ready.then((r) => r.active?.postMessage({ type: "warm", urls: ["/", "/notes", "/memories"] })).catch(() => {});
+  if (navigator.onLine && !warmedAt()) navigator.serviceWorker?.ready.then((r) => r.active?.postMessage({ type: "warm", urls: ["/", "/notes", "/memories"] })).catch(() => {});
 }
 
 /** On lock: forget cached notes and memories on this device. Unsynced writes are kept. */
