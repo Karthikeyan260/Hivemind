@@ -10,6 +10,7 @@ import { LiveVoice, type LiveSource, type LiveState } from "@/lib/live";
 import { SentenceStream, Speaker } from "@/lib/voice";
 import { deviceName, getFix, setSharing } from "@/lib/location";
 import { intentCheck, isGuarded } from "@/lib/agents/intent";
+import { GUEST_END, guestCheck, guestRecap, guestRules } from "@/lib/agents/guest";
 import { clearOfflineCache } from "@/lib/offline";
 
 /** Tools that use where this device is. */
@@ -53,6 +54,10 @@ type Voice = {
   /** Call / message buttons voice prepared: the owner taps one (browsers never dial or send by themselves). */
   handoff: Handoff[];
   clearHandoff: () => void;
+  /** The guest the owner introduced (guest mode), or null. */
+  guest: string | null;
+  /** Back to the owner: ends guest mode and asks the voice for a recap. */
+  endGuest: () => void;
 };
 export type Handoff = { label: string; href: string };
 
@@ -139,6 +144,23 @@ type AgentToolOut = {
   jobs: Record<string, unknown>[] | null;
   pending_delete: { id: string; title: string } | null;
 };
+type ClientTool = (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>;
+/** While a guest is talking, browser tools that save, send or change things are refused (see lib/agents/guest.ts). */
+let guestActive: () => boolean = () => false;
+function guarded(tools: Record<string, ClientTool>): Record<string, ClientTool> {
+  return Object.fromEntries(
+    Object.entries(tools).map(([name, run]) => [
+      name,
+      (args: Record<string, unknown>) => {
+        const refused = guestActive() ? guestCheck(name) : null;
+        if (refused) return { error: refused };
+        // A guest can search the web, but nothing is saved from it.
+        return run(guestActive() && name === "web_search" ? { ...args, save: false } : args);
+      },
+    ]),
+  );
+}
+
 /** Server tools whose result page should open right away (the owner asked to go there or to see the result). */
 const OPENS_PAGE = new Set(["open_source", "check_listed_job"]);
 
@@ -174,7 +196,15 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     open: boolean;
     /** A routine is running this turn: its steps never delete, send, call or approve. */
     routine?: boolean;
+    /** Guest mode was on at some point this turn: the exchange is never written to history. */
+    guest?: boolean;
   }>({ q: "", a: "", sources: [], open: false });
+  // Guest mode: who the owner introduced, and what was said (kept only in this tab, for the recap).
+  const guestRef = useRef<{ name: string; relation: string; lines: string[] } | null>(null);
+  const [guest, setGuest] = useState<string | null>(null);
+  useEffect(() => {
+    guestActive = () => !!guestRef.current;
+  }, []);
   const actions = useRef(new Map<string, () => VoiceAction>());
   // Live-voice memory across turns: the last job search, and a memory awaiting "yes, delete it".
   const agentState = useRef<{
@@ -208,7 +238,14 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       if (!turn.current.open) turn.current = { q: "", a: "", sources: [], open: true };
     };
     liveRef.current = new LiveVoice({
-      onState: setState,
+      onState: (s) => {
+        setState(s);
+        // The conversation ended: whatever a guest said is gone with it.
+        if (s === "off" && guestRef.current) {
+          guestRef.current = null;
+          setGuest(null);
+        }
+      },
       onUserText: (text) => {
         open();
         if (!turn.current.a) turn.current.q = text;
@@ -239,8 +276,23 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         t.open = false;
         const a = interrupted && t.a ? `${t.a.trim()} …` : t.a;
         setLast({ q: t.q, a, done: true });
-        // Keep every spoken exchange in chat history, whichever page it happened on.
-        if (t.q || a) {
+        const g = guestRef.current;
+        if (g) {
+          // Guest mode: kept in this tab only, for the recap; never sent to history.
+          if (t.q) g.lines.push(`${g.name}: ${t.q}`);
+          if (a) g.lines.push(`HIVEMIND: ${a}`);
+          g.lines.splice(0, Math.max(0, g.lines.length - 60));
+          // "Come back" and the model didn't end guest mode itself: end it and ask for the recap.
+          if (GUEST_END.test(t.q)) {
+            const recap = guestRecap(g.name, g.lines);
+            guestRef.current = null;
+            setGuest(null);
+            turn.current = { q: "", a: "", sources: [], open: true, guest: true };
+            liveRef.current?.sendText(`[HIVEMIND app update, not the owner speaking] Guest mode ended. ${JSON.stringify(recap)}`);
+          }
+        }
+        // Keep every spoken exchange in chat history, whichever page it happened on (never a guest's).
+        if ((t.q || a) && !g && !t.guest) {
           void fetch("/api/live/log", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -275,6 +327,10 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       onError: setError,
       serverTool: async (name, args) => {
         const st = agentState.current;
+        if (guestRef.current) {
+          const refused = guestCheck(name);
+          if (refused) return { error: refused };
+        }
         // Approving a browser step needs the owner's own words this turn, never an app update or page text.
         if (name === "web_task_answer" && args.decision === "approve" && !/\b(approve[ds]?|yes|yeah|yep|go ahead|do it|submit|confirm|ok(ay)?|sure|proceed|haan|seri|sari)\b/i.test(turn.current.q)) {
           return { error: "Only the owner can approve. Tell them the step and ask 'Should I approve it?', then wait for their answer." };
@@ -306,6 +362,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           // The owner's own words this turn: the server checks guarded tools against them too.
           said: turn.current.q.slice(0, 4000),
           routine: !!turn.current.routine,
+          guest: !!guestRef.current,
           state: { jobs: st.jobs, pending_delete: pending, ...(fix ? { location: { lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy, device: fix.device } } : {}) },
         })) as unknown as AgentToolOut;
         if (r.jobs) st.jobs = r.jobs;
@@ -341,7 +398,27 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         const links = r.actions.filter((a) => a.href?.startsWith("http")).map((a) => a.label);
         return links.length ? { ...r.result, links_shown_on_screen: links } : r.result;
       },
-      clientTools: {
+      clientTools: guarded({
+        guest_mode: ({ action, name, relation }) => {
+          if (String(action) === "end") {
+            const g = guestRef.current;
+            if (!g) return { guest_mode: "off", note: "Guest mode wasn't on." };
+            guestRef.current = null;
+            setGuest(null);
+            turn.current.guest = true;
+            return guestRecap(g.name, g.lines);
+          }
+          const who = String(name ?? "").trim().slice(0, 40);
+          if (!who) return { error: "Ask the owner the guest's name first." };
+          // Only the owner starts it, by introducing someone in their own words.
+          if (!guestRef.current && !/\b(this is|meet|is my|she'?s|he'?s|they'?re|talk (to|with)|speak (to|with)|say hi|introduc)/i.test(turn.current.q))
+            return { error: "Guest mode starts when the owner introduces someone (\"this is Harini, my friend\")." };
+          const rel = String(relation ?? "").trim().slice(0, 40);
+          guestRef.current = { name: who, relation: rel, lines: [] };
+          setGuest(who);
+          turn.current.guest = true;
+          return { guest_mode: "on", rules: guestRules(who, rel) };
+        },
         navigate: ({ page }) => {
           const path = String(page ?? "");
           if (!PAGES.includes(path)) return { error: `unknown page ${path}` };
@@ -526,7 +603,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           history.forward();
           return { went: "forward" };
         },
-      },
+      }),
     });
     return liveRef.current;
   }, [mine]);
@@ -561,6 +638,16 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     turn.current = { q: "", a: "", sources: [], open: true };
     live.sendText(text);
     return true;
+  }, []);
+  const endGuest = useCallback(() => {
+    const g = guestRef.current;
+    if (!g) return;
+    guestRef.current = null;
+    setGuest(null);
+    const live = liveRef.current;
+    if (!live?.active) return;
+    turn.current = { q: "", a: "", sources: [], open: true, guest: true };
+    live.sendText(`[HIVEMIND app update, not the owner speaking] The owner ended guest mode on screen. ${JSON.stringify(guestRecap(g.name, g.lines))}`);
   }, []);
   const level = useCallback(() => liveRef.current?.level() ?? 0, []);
   const register = useCallback((name: string, action: () => VoiceAction) => {
@@ -607,8 +694,10 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       register,
       handoff,
       clearHandoff,
+      guest,
+      endGuest,
     }),
-    [state, error, last, start, stop, toggle, sendText, note, level, subscribe, register, handoff, clearHandoff],
+    [state, error, last, start, stop, toggle, sendText, note, level, subscribe, register, handoff, clearHandoff, guest, endGuest],
   );
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>;
 }

@@ -270,6 +270,9 @@ export async function runAutopilot(supabase: SupabaseClient, opts: { manual?: bo
     jobs: null,
     pendingDelete: null,
     emit: () => {},
+    // A hard stop: when time is up the run really ends (no tools keep going in the background).
+    signal: AbortSignal.timeout(RUN_BUDGET_MS),
+    toolBudget: { left: 12 },
   };
   let fresh: Insight[] = [];
   let error: string | undefined;
@@ -281,7 +284,8 @@ export async function runAutopilot(supabase: SupabaseClient, opts: { manual?: bo
     let text: string;
     try {
       const run = runAgent({ agentId: "core", agent: AUTOPILOT, message, history: [], persona, closing, ctx });
-      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Autopilot ran out of time")), RUN_BUDGET_MS));
+      run.catch(() => {}); // after a timeout it ends with "Stopped": already handled below
+      const timeout = new Promise<never>((_, reject) => ctx.signal!.addEventListener("abort", () => reject(new Error("Autopilot ran out of time")), { once: true }));
       text = (await Promise.race([run, timeout])).text;
     } catch (err) {
       // Gemini out of quota or down: still think over the snapshot with NVIDIA/Groq, just without tools.

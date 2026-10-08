@@ -34,6 +34,10 @@ export type RunContext = {
   /** Where the device asking is (sent by the browser when the owner allowed location), for maps and directions. */
   location?: { lat: number; lng: number; accuracy?: number; device?: string };
   emit: (e: AgentEvent) => void;
+  /** Background runs (Autopilot): stops the run between steps and cuts off a model call in flight. */
+  signal?: AbortSignal;
+  /** Background runs: tool calls left for the whole run, delegations included. */
+  toolBudget?: { left: number };
 };
 
 export type Tool = {

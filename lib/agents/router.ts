@@ -12,6 +12,13 @@ const RouteSchema = z.object({ agent: z.enum(AGENT_IDS) });
 export function ruleBasedAgent(message: string, previous?: AgentId | null): AgentId | null {
   const m = message.trim().toLowerCase();
   if (/^(hi|hello|hey|thanks|thank you|good (morning|night|evening))\b[\s!.]*$/.test(m)) return "core";
+  // "tell amma I'm late", "let Arif know the meeting moved": a message for that person (before the
+  // scheduler rules, which would take "meeting").
+  if (
+    /^(please\s+)?(tell|inform)\s+(?!me\b|us\b|the\b|a\b|an\b|about\b|what\b|how\b|why\b|when\b|where\b|who\b|which\b|something\b|some\b|your\b|it\b|this\b|that\b|them\b|stories\b|jokes?\b)\p{L}+/u.test(m) ||
+    /^(please\s+)?let\s+(?!me\b|us\b)\p{L}+\s+know\b/u.test(m)
+  )
+    return "comms";
   // Self-built apps: "make me an app to track petrol", "delete the gym app", "what apps do I have".
   if (/\b(make|build|create|design)\b.*\b(app|tool|tracker)\b|\b(open|delete|remove|change|update|fix)\b.*\bapp\b|\b(my|what) apps\b/.test(m)) return "core";
   if (/\bcomics?\b/.test(m)) return "core";
@@ -28,6 +35,8 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (/\b(remind(er)?s?|schedule|meeting|appointment|deadline|agenda|calendar|my day|on today|on tomorrow)\b|\bmark\b.*\b(done|complete)\b|\b(cancel|reschedule|postpone|move)\b.*\b(meeting|call|reminder|appointment|it)\b|\b(plans?|free|busy)\b.*\b(today|tomorrow|tonight)\b|\b(today|tomorrow)\b.*\b(at \d|am\b|pm\b)/.test(m)) return "scheduler";
   // Projects, notes, documents and settings by name ("delete the HIVEMIND project", "add milk to my shopping note").
   if (/\b(delete|remove|rename|update|change|pause|finish|mark)\b.*\bprojects?\b/.test(m)) return "project";
+  // Sending something to someone is a message, even a file or a note ("send the file to Arif on WhatsApp").
+  if (/\b(send|share|forward)\b.*\b(on|via|through|over|in|by) (whatsapp|sms|text|telegram)\b|\b(whatsapp|sms)\b.*\bto \w+/.test(m)) return "comms";
   if (/\bnotes?\b|\bdocuments?\b|\bfiles?\b/.test(m) && !/\bjob\b/.test(m)) return "memory";
   if (/\b(reply|speak|talk|answer|respond)\b.*\b(tamil|english|tanglish)\b|\blanguage\b/.test(m)) return "profile";
   if (/^(please\s+)?(remember|save|store|note)\b|^note:|\b(update|correct|change)\b.*\b(memory|saved)\b/.test(m)) return "memory";

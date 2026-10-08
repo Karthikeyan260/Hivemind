@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, ExternalLink, Loader2, Mic, Phone, Send, X } from "lucide-react";
+import { AudioLines, ExternalLink, Loader2, Mic, Phone, Send, UserRound, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { cx } from "@/components/ui";
@@ -94,6 +94,27 @@ export function HandoffCard() {
           {h.href.startsWith("tel:") ? <Phone size={16} /> : /^https?:\/\/(?!wa\.me)/.test(h.href) ? <ExternalLink size={16} /> : <Send size={16} />} {h.label}
         </a>
       ))}
+    </div>
+  );
+}
+
+/** Guest mode is on: who HIVEMIND is talking with, that nothing is kept, and a way back. */
+export function GuestBanner() {
+  const v = useVoice();
+  if (!v.guest) return null;
+  return (
+    <div
+      role="status"
+      className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+0.75rem)] z-[60] mx-auto flex max-w-md items-center gap-3 border border-core/50 bg-[#0b1016]/95 px-3 py-2 shadow-[0_0_30px_-8px_rgba(250,204,21,0.35)] backdrop-blur-md"
+    >
+      <UserRound size={16} className="shrink-0 text-core" />
+      <p className="min-w-0 flex-1 text-[13px] leading-snug">
+        Talking with <b className="font-semibold">{v.guest}</b>
+        <span className="block text-[11px] text-soft">Nothing they say is saved. Say “come back” or tap.</span>
+      </p>
+      <button type="button" onClick={v.endGuest} className="shrink-0 border border-core/60 px-2.5 py-1 text-xs text-core hover:bg-core/10">
+        Back to me
+      </button>
     </div>
   );
 }

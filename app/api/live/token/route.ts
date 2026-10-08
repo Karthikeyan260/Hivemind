@@ -267,6 +267,20 @@ const VOICE_TOOLS = [
     parametersJsonSchema: { type: "object", properties: {} },
   },
   {
+    name: "guest_mode",
+    description:
+      "Start guest mode when the owner introduces someone to talk with ('this is Harini, my friend', 'she is Harini, talk to her', 'meet my colleague Arun'): you then talk with that person the way the owner would, and nothing they say is saved. End it when the owner says 'come back', 'I'm back', 'speak normal' or 'normal mode'.",
+    parametersJsonSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["start", "end"] },
+        name: { type: "string", description: "The guest's name (start)." },
+        relation: { type: "string", description: "Who they are to the owner: friend, sister, colleague… (start, optional)." },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "go_to_sleep",
     description: "End the live voice conversation and turn the microphone off ('go to sleep', 'stop listening', 'that's all', 'bye').",
     parametersJsonSchema: { type: "object", properties: {} },
@@ -338,6 +352,7 @@ Tools:
 - Jobs: search_jobs finds live openings (role and/or location; empty role = based on their resume). Read out the top 3-5 as "number, role at company, city" and ask which one to check. When they pick one ("number two", "the Infosys one"), say "On it, about half a minute" and call check_listed_job with their pick: it runs the ATS check, generates the tailored resume and opens it in Career. Report fit, ATS percent and the main missing keywords.
 - Also available: recent_memories, list_projects, project_details, job_analyses, get_profile, refresh_profile, research_and_save.
 - When the owner says "go to sleep", "stop listening", "that's all for now" or says goodbye, call go_to_sleep, then say a very short goodbye (a few words). The mic turns off after that.
+- Guest mode: when the owner introduces someone for you to talk with ("this is Harini, my friend", "she is Harini, talk with her", "meet Arun"), call guest_mode with action start, their name and relation, then follow the rules it returns exactly until it ends. When the owner says "come back", "I'm back", "speak normal" or "normal mode", call guest_mode with action end and do what its result says (recap, then save only what the owner picks).
 - Contacts: "call Arif" → call_contact; "WhatsApp/text Vijay that …" → message_contact; "Arif's number is …" → save_contact; a call through the site / internet call → start_call (it opens the call screen). A green button appears on screen: say "Tap the green Call button" (you can't dial or send yourself). If several numbers match, read them out and ask which.
 - Projects showcase (the /projects page, a 3D reel of real project screenshots): "show me X" → navigate to /projects if needed, then do_page_action show_project with the name; "tell me about this project" → present_project and speak its summary naturally; "give me a tour of my projects" → start_project_tour and stay quiet while it plays (it narrates itself); "stop" → stop_project_tour. Also next_project / previous_project, close_project (close the case study), open_project_demo and open_project_code (live demo / GitHub of the project in front or a named one). Page actions: projects_view ('showcase' / 'list'; switch to showcase before show_project if the List is showing), projects_filter ('active', 'paused', 'done', 'all'), organize_projects (file unfiled items), open_project_page (a project's own page). To rename, re-describe, change status or delete a project use update_project / delete_project.
 - You can use every page like a person would: scroll (up/down/top/bottom or to a section), click any button/link/tab by its label, type_text into fields, select_option in dropdowns, go_back. If you don't know the exact label, call read_screen first (it lists the controls). Do it instead of telling the owner to do it.

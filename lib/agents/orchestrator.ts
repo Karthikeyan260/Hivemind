@@ -79,12 +79,15 @@ type RunOpts = {
 };
 
 /** One model turn, streamed. Falls back to the next model only if nothing has been streamed yet. */
-async function step(contents: Content[], system: string, tools: FunctionDeclaration[], onText?: (t: string) => void) {
+async function step(contents: Content[], system: string, tools: FunctionDeclaration[], onText?: (t: string) => void, stop?: AbortSignal) {
   let lastErr: unknown;
   for (const model of MODELS) {
+    if (stop?.aborted) throw new Error("Stopped: out of time");
     let streamed = false;
     const abort = new AbortController();
     const stall = setTimeout(() => abort.abort(), FIRST_CHUNK_MS);
+    const cut = () => abort.abort();
+    stop?.addEventListener("abort", cut, { once: true });
     try {
       const stream = await geminiClient().models.generateContentStream({
         model,
@@ -109,10 +112,12 @@ async function step(contents: Content[], system: string, tools: FunctionDeclarat
           }
         }
       }
+      stop?.removeEventListener("abort", cut);
       return { parts, text, model, calls: parts.filter((p) => p.functionCall).map((p) => p.functionCall!) };
     } catch (err) {
       clearTimeout(stall);
-      if (streamed) throw err;
+      stop?.removeEventListener("abort", cut);
+      if (streamed || stop?.aborted) throw err;
       lastErr = err;
       console.warn(`agent step: ${model} ${abort.signal.aborted ? "stalled" : "failed"}, trying next model`, abort.signal.aborted ? "" : err instanceof Error ? err.message.slice(0, 120) : err);
     }
@@ -152,7 +157,8 @@ export async function runAgent(o: RunOpts): Promise<{ text: string; model: strin
   let model = MODELS[0];
   for (let i = 0; i < MAX_STEPS; i++) {
     const last = i === MAX_STEPS - 1;
-    const r = await step(contents, system, last ? [] : declarations, depth === 0 ? o.onText : undefined);
+    if (o.ctx.signal?.aborted) throw new Error("Stopped: out of time");
+    const r = await step(contents, system, last ? [] : declarations, depth === 0 ? o.onText : undefined, o.ctx.signal);
     text += r.text;
     model = r.model;
     if (!r.calls.length) return { text, model };
@@ -165,6 +171,8 @@ export async function runAgent(o: RunOpts): Promise<{ text: string; model: strin
         o.ctx.emit({ type: "tool", agent: agent.id, tool: name, status: "run", detail: summarize(args) });
         try {
           let response: Record<string, unknown>;
+          if (o.ctx.signal?.aborted) throw new Error("Stopped: out of time");
+          if (o.ctx.toolBudget && o.ctx.toolBudget.left-- <= 0) throw new Error("No tool calls left for this run: answer with what you have.");
           if (name === "ask_agent" && delegates) {
             const target = String(args.agent) as AgentId;
             if (!AGENTS[target] || target === agent.id) throw new Error(`Can't delegate to "${args.agent}".`);
