@@ -10,7 +10,7 @@ import { providers } from "@/lib/ai/providers";
 export default function SettingsPage() {
   const rows = [
     { role: "Agents and answers", p: providers.gemini },
-    { role: "Embeddings (fixed, 768-dim)", p: { ...providers.gemini, model: process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001" } },
+    { role: "Embeddings (768-dim; switch models in System check)", p: { ...providers.gemini, model: process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001" } },
     { role: "Fallback answers", p: providers.nvidia },
     { role: "Free fallback, Autopilot backup", p: providers.openrouter },
     { role: "Free fallback, small tasks", p: providers.github },

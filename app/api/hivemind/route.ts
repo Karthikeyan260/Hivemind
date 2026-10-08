@@ -17,6 +17,8 @@ import { listRoutines, triggeredRoutine } from "@/lib/routines";
 
 // Checking a found job runs the ATS analysis and the tailored resume back to back.
 export const maxDuration = 120;
+/** How close a saved note or memory must be for a question to go to the Knowledge agent over the web. */
+const BRAIN_FIRST = 0.66;
 
 const Body = z.object({
   message: z.string().trim().min(1).max(4000),
@@ -101,7 +103,11 @@ export const POST = handle(async (req: Request) => {
       let via = "rules";
 
       try {
-        const [route, profile, projects, schedule, prefs] = await Promise.all([
+        // In parallel with routing: does the owner's brain already hold a close match?
+        const inBrain = searchKnowledge(supabase, message, { projectId: project_id, limit: 1, minSimilarity: BRAIN_FIRST })
+          .then((r) => r.length > 0)
+          .catch(() => false);
+        const [routed, profile, projects, schedule, prefs] = await Promise.all([
           // A routine's phrase ("good morning", "gym mode") goes straight to Core, which runs it.
           listRoutines(supabase)
             .then((all) => triggeredRoutine(all, message))
@@ -112,6 +118,9 @@ export const POST = handle(async (req: Request) => {
           agenda(supabase, 2).then(agendaForPrompt).catch(() => "(unavailable)"),
           getPrefs(supabase).catch(() => ({ language: "auto" as const })),
         ]);
+        // A guess (no keyword rule) of the web or general chat loses to a strong match in the
+        // owner's own notes: "when is the kiwi festival?" is about their note, not the internet.
+        const route = routed.via !== "rules" && (routed.agent === "research" || routed.agent === "core") && (await inBrain) ? { agent: "rag" as const, via: "brain" as const } : routed;
         intent = route.agent;
         via = route.via;
         send({ type: "meta", conversation_id: conversationId!, intent, sources });
