@@ -51,3 +51,8 @@ next-env.d.ts
 
 # Mascot source sheets (the owner's drawn likeness): rebuilt into public/mascots, never committed
 /characters/
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/

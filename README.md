@@ -24,7 +24,8 @@ Browser → Next.js (Vercel)  ← APP_PASSWORD gate on Vercel, none locally
 
 1. Go to [supabase.com](https://supabase.com), click **New project**, and choose a region close to you.
 2. Open **SQL Editor** and run these in order: [`supabase/schema.sql`](supabase/schema.sql),
-   [`002_single_user.sql`](supabase/migrations/002_single_user.sql), then [`003_jarvis.sql`](supabase/migrations/003_jarvis.sql).
+   [`002_single_user.sql`](supabase/migrations/002_single_user.sql), [`003_jarvis.sql`](supabase/migrations/003_jarvis.sql), then
+   [`004_rls_guard.sql`](supabase/migrations/004_rls_guard.sql) (turns RLS on for every future table automatically).
 3. In **Project Settings → API Keys**, copy the Project URL into `SUPABASE_URL` and the **secret** key
    (`sb_secret_…`) into `SUPABASE_SECRET_KEY`. Don't use the publishable key: it can't read or write anything.
 
@@ -35,6 +36,16 @@ cp .env.example .env.local   # then fill in the values
 npm install
 npm run dev                  # http://localhost:3000 — opens straight to the HIVEMIND console
 ```
+
+Tests:
+
+```bash
+npm test                     # unit tests (router, safety guard, reminders, retrieval, re-embed, wake word…)
+npm run test:db              # live checks against your Supabase project: match_knowledge, RLS (adds and removes 2 test notes)
+npm run build && npm run test:e2e   # Playwright: lock screen, wrong password, unlock → chat (AI stubbed) → lock, desktop + phone
+```
+
+**Settings → System check** shows database reachability, any table with RLS off (also a daily push alert), and the embedding status.
 
 Then open **Sources** and click **Sync now** (portfolio MCP) and **Import** (portfolio site, Linktree).
 
@@ -59,7 +70,7 @@ Then open **Sources** and click **Sync now** (portfolio MCP) and **Import** (por
 
 **Privacy:** on the free tier, Gemini may use your prompts to improve Google products. Don't store passwords or secrets.
 
-**Embedding lock-in:** the database is fixed at `gemini-embedding-001` @ 768 dims. If you change the embedding model later, every row has to be re-embedded.
+**Changing the embedding model:** the database records which model made its vectors (default `gemini-embedding-001`, 768-d), and keeps using it even if `GEMINI_EMBED_MODEL` changes, so vectors from two models never get mixed. To switch: set the new model, then **Settings → System check → Re-embed everything**. It runs in sub-minute steps (the scheduler carries on if you close the page) and switches searches over only when every note, memory and document chunk is done. The new model must give 768-number vectors; another size also needs a column change in SQL.
 
 ## Features
 
@@ -85,7 +96,8 @@ lib/rag/              chunker, retrieval (match_knowledge RPC), grounded answeri
 lib/knowledge.ts      create/update notes & memories (metadata, embedding, versioning)
 proxy.ts              owner gate (APP_PASSWORD cookie) — Next 16 name for middleware
 lib/imports/          portfolio MCP client + web page importer
-supabase/schema.sql   tables, HNSW indexes, RLS, search function
+supabase/schema.sql   tables, HNSW indexes, RLS, search function (then supabase/migrations/ in order)
+tests/, e2e/          vitest unit + live DB tests, Playwright smoke tests
 ```
 
 ## Next ideas

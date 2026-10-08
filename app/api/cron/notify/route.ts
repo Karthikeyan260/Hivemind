@@ -3,6 +3,9 @@ import { autopilotDue, runAutopilot } from "@/lib/autopilot";
 import { safeEqual } from "@/lib/session";
 import { recoverStuckBuilds } from "@/lib/apps";
 import { reembedMissing } from "@/lib/knowledge";
+import { getMarker } from "@/lib/ai/embeddings";
+import { migrationStep } from "@/lib/embedding-migration";
+import { openTables } from "@/lib/health";
 import { birthdaysToday, runBirthdayAlerts } from "@/lib/birthdays";
 import { briefHeadline, getBriefSettings, makeBrief } from "@/lib/brief";
 import { dream, getDream, getDreamSettings } from "@/lib/dream";
@@ -47,7 +50,7 @@ export async function GET(req: Request) {
     new Intl.DateTimeFormat("en-CA", { timeZone: HOME_TZ }).format(now),
     Number(new Intl.DateTimeFormat("en-GB", { timeZone: HOME_TZ, hour: "2-digit", hourCycle: "h23" }).format(now)),
   ];
-  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; news?: string }>(supabase, "notify-state", {});
+  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; news?: string; rls?: string }>(supabase, "notify-state", {});
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
   if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
@@ -87,6 +90,15 @@ export async function GET(req: Request) {
 
   // Notes / memories saved while embeddings were down: add their search vectors now.
   const reembedded = await reembedMissing(supabase).catch(() => 0);
+  // A re-embed (Settings → Embeddings) left unfinished: carry on with it.
+  const migrating = !!(await getMarker().catch(() => null))?.target;
+  if (migrating) after(() => migrationStep(db(), 40_000).then(() => undefined, (e) => console.warn("re-embed:", e)));
+  // Once a day: a table created without row level security would be open to the public key.
+  if (state.rls !== date) {
+    const open = await openTables(supabase).catch(() => null);
+    if (open?.length) await notify(supabase, { title: "⚠️ Database table not private", body: `Row level security is off for: ${open.join(", ")}. Open Settings → System check.`, url: "/settings", tag: "rls" }).catch(() => 0);
+    await writeJSON(supabase, "notify-state", { ...(await readJSON<Record<string, unknown>>(supabase, "notify-state", {})), rls: date }).catch(() => {});
+  }
   // App builds that were cut off: start once more, or mark failed.
   const apps = await recoverStuckBuilds(supabase, process.env.APP_URL || new URL(req.url).origin).catch(() => 0);
 
@@ -94,5 +106,5 @@ export async function GET(req: Request) {
   const active = (await listTasks(supabase).catch(() => [])).filter((t) => ACTIVE.includes(t.status));
   const web = active.length ? await resumeStalled(supabase, active, process.env.APP_URL || new URL(req.url).origin).catch(() => 0) : 0;
 
-  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot, web, dreaming, news, apps, reembedded });
+  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot, web, dreaming, news, apps, reembedded, migrating });
 }

@@ -4,6 +4,7 @@ import { WakeWordCard } from "@/components/wake/wake-card";
 import { LocationCard } from "@/components/location-card";
 import { NotificationsCard } from "@/components/notifications";
 import { SessionsCard } from "@/components/sessions-card";
+import { SystemCheckCard } from "@/components/system-check-card";
 import { providers } from "@/lib/ai/providers";
 
 export default function SettingsPage() {
@@ -54,6 +55,8 @@ export default function SettingsPage() {
       <NotificationsCard />
 
       <SessionsCard />
+
+      <SystemCheckCard />
 
       <section className="rounded-xl border border-line bg-panel p-4">
         <h2 className="mb-2 font-semibold">Export your brain</h2>

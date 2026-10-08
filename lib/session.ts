@@ -51,7 +51,13 @@ async function sessions(fresh = false): Promise<Session[]> {
 }
 async function save(list: Session[]) {
   const now = Date.now();
-  const live = list.filter((s) => +new Date(s.expires) > now).slice(-30);
+  // At most 30 kept. Sessions opened with another password (a local test server sharing this store)
+  // go first, so they never push out a real device.
+  const print = await pwPrint().catch(() => "");
+  const alive = list.filter((s) => +new Date(s.expires) > now);
+  const other = alive.filter((s) => s.pw !== print);
+  const mine = alive.filter((s) => s.pw === print);
+  const live = [...other.slice(Math.max(0, other.length - Math.max(0, 30 - mine.length))), ...mine.slice(-30)];
   await writeJSON(db(), KEY, live);
   cached = { at: Date.now(), list: live };
 }
@@ -108,7 +114,10 @@ export async function endSession(cookieValue: string | undefined) {
 export const endAllSessions = () => save([]);
 
 /** Signed in browsers, for Settings ("this phone, since…"). */
-export const listSessions = async () => (await sessions(true)).map(({ created, expires, device }) => ({ created, expires, device }));
+export const listSessions = async () => {
+  const print = await pwPrint();
+  return (await sessions(true)).filter((s) => s.pw === print).map(({ created, expires, device }) => ({ created, expires, device }));
+};
 
 /** A browser that unlocked before keeps this cookie; it skips the all-addresses lockout. */
 export async function trustedCookie() {

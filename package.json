@@ -1,5 +1,5 @@
 {
-  "name": "second-brain",
+  "name": "hivemind",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:db": "vitest run tests/db.integration.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",
@@ -33,6 +35,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^20",
