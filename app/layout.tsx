@@ -8,7 +8,7 @@ import { MusicPlayer } from "@/components/music/player";
 import { VideoPlayer } from "@/components/video/player";
 import { LocationReporter } from "@/components/location-card";
 import { ReminderWatcher } from "@/components/reminders/watcher";
-import { GuestBanner, HandoffCard, VoiceDock } from "@/components/voice/dock";
+import { GuestBanner, HandoffCard, OwnerCheckCard, VoiceDock } from "@/components/voice/dock";
 import { VoiceProvider } from "@/components/voice/provider";
 import { WakeListener } from "@/components/wake/listener";
 import { passwordRequired } from "@/lib/session";
@@ -45,6 +45,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           {children}
           <VoiceDock />
           <GuestBanner />
+          <OwnerCheckCard />
           <HandoffCard />
           <ServiceWorker />
           <OfflineStatusPill />

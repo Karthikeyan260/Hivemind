@@ -11,6 +11,10 @@ import { SentenceStream, Speaker } from "@/lib/voice";
 import { deviceName, getFix, setSharing } from "@/lib/location";
 import { intentCheck, isGuarded } from "@/lib/agents/intent";
 import { GUEST_END, guestCheck, guestRecap, guestRules } from "@/lib/agents/guest";
+import { cosine, voiced } from "@/lib/voiceprint/fbank";
+import { loadSpeakerModel } from "@/lib/voiceprint/model";
+import { needsOwnerVoice, THRESHOLD } from "@/lib/voiceprint/policy";
+import { loadVoiceprint } from "@/lib/voiceprint/store";
 import { clearOfflineCache } from "@/lib/offline";
 
 /** Tools that use where this device is. */
@@ -58,6 +62,9 @@ type Voice = {
   guest: string | null;
   /** Back to the owner: ends guest mode and asks the voice for a recap. */
   endGuest: () => void;
+  /** The voiceprint didn't recognise the speaker for this action: the person holding the device decides. */
+  ownerAsk: string | null;
+  answerOwnerAsk: (yes: boolean) => void;
 };
 export type Handoff = { label: string; href: string };
 
@@ -147,13 +154,17 @@ type AgentToolOut = {
 type ClientTool = (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>;
 /** While a guest is talking, browser tools that save, send or change things are refused (see lib/agents/guest.ts). */
 let guestActive: () => boolean = () => false;
+/** Null when the owner's voice isn't needed for this tool or matched; else why it was refused. */
+let ownerCheck: (name: string) => Promise<string | null> = () => Promise.resolve(null);
 function guarded(tools: Record<string, ClientTool>): Record<string, ClientTool> {
   return Object.fromEntries(
     Object.entries(tools).map(([name, run]) => [
       name,
-      (args: Record<string, unknown>) => {
+      async (args: Record<string, unknown>) => {
         const refused = guestActive() ? guestCheck(name) : null;
         if (refused) return { error: refused };
+        const notOwner = name === "guest_mode" ? null : await ownerCheck(name);
+        if (notOwner) return { error: notOwner };
         // A guest can search the web, but nothing is saved from it.
         return run(guestActive() && name === "web_search" ? { ...args, save: false } : args);
       },
@@ -198,13 +209,53 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
     routine?: boolean;
     /** Guest mode was on at some point this turn: the exchange is never written to history. */
     guest?: boolean;
+    /** Typed on this device's keyboard, not spoken (no voice to check). */
+    typed?: boolean;
   }>({ q: "", a: "", sources: [], open: false });
   // Guest mode: who the owner introduced, and what was said (kept only in this tab, for the recap).
   const guestRef = useRef<{ name: string; relation: string; lines: string[] } | null>(null);
   const [guest, setGuest] = useState<string | null>(null);
+  /** A guest talked in this conversation: saving anything needs the owner's voice until it ends. */
+  const guestSeen = useRef(false);
+  const [ownerAsk, setOwnerAsk] = useState<string | null>(null);
+  const ownerAnswer = useRef<((yes: boolean) => void) | null>(null);
+  const answerOwnerAsk = useCallback((yes: boolean) => {
+    ownerAnswer.current?.(yes);
+    ownerAnswer.current = null;
+    setOwnerAsk(null);
+  }, []);
+  /**
+   * Is it the owner speaking? Compares the last few seconds of speech with the voiceprint on this
+   * device. When unsure, asks on screen (a tap from whoever holds the device counts). Null = go ahead.
+   */
+  const verifyOwner = useCallback(async (what: string, speech?: Float32Array): Promise<string | null> => {
+    const vp = loadVoiceprint();
+    if (!vp?.enabled || turn.current.typed) return null;
+    let score: number | null = null;
+    try {
+      const model = await loadSpeakerModel();
+      const said = voiced(speech ?? liveRef.current?.recentSpeech() ?? new Float32Array());
+      const e = await model.embed(said.subarray(Math.max(0, said.length - 16000 * 4)));
+      if (e) score = cosine(e, vp.print);
+    } catch (err) {
+      console.warn("voiceprint:", err instanceof Error ? err.message : err);
+    }
+    if (score !== null && score >= THRESHOLD[vp.strictness]) return null;
+    ownerAnswer.current?.(false);
+    const yes = await new Promise<boolean>((resolve) => {
+      ownerAnswer.current = resolve;
+      setOwnerAsk(what);
+      setTimeout(() => {
+        if (ownerAnswer.current === resolve) answerOwnerAsk(false);
+      }, 20_000);
+    });
+    return yes ? null : `Voice check: that didn't sound like the owner, so I didn't ${what}. The owner can say it again or tap "It's me" on screen.`;
+  }, [answerOwnerAsk]);
   useEffect(() => {
     guestActive = () => !!guestRef.current;
-  }, []);
+    ownerCheck = (name) => (loadVoiceprint()?.enabled && needsOwnerVoice(name, { guestSeen: guestSeen.current }) ? verifyOwner(name.replace(/_/g, " ")) : Promise.resolve(null));
+  }, [verifyOwner]);
+
   const actions = useRef(new Map<string, () => VoiceAction>());
   // Live-voice memory across turns: the last job search, and a memory awaiting "yes, delete it".
   const agentState = useRef<{
@@ -241,9 +292,12 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       onState: (s) => {
         setState(s);
         // The conversation ended: whatever a guest said is gone with it.
-        if (s === "off" && guestRef.current) {
-          guestRef.current = null;
-          setGuest(null);
+        if (s === "off") {
+          guestSeen.current = false;
+          if (guestRef.current) {
+            guestRef.current = null;
+            setGuest(null);
+          }
         }
       },
       onUserText: (text) => {
@@ -284,11 +338,20 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           g.lines.splice(0, Math.max(0, g.lines.length - 60));
           // "Come back" and the model didn't end guest mode itself: end it and ask for the recap.
           if (GUEST_END.test(t.q)) {
-            const recap = guestRecap(g.name, g.lines);
-            guestRef.current = null;
-            setGuest(null);
-            turn.current = { q: "", a: "", sources: [], open: true, guest: true };
-            liveRef.current?.sendText(`[HIVEMIND app update, not the owner speaking] Guest mode ended. ${JSON.stringify(recap)}`);
+            // Take the audio now: the next reply starts a fresh recording.
+            const speech = liveRef.current?.recentSpeech();
+            void verifyOwner("end guest mode", speech).then((refused) => {
+              if (guestRef.current !== g) return; // already ended (the tool or the button)
+              if (refused) {
+                liveRef.current?.sendText(`[HIVEMIND app update, not the owner speaking] Someone said "come back" but it didn't sound like the owner: guest mode stays on. Carry on with ${g.name}.`);
+                return;
+              }
+              const recap = guestRecap(g.name, g.lines);
+              guestRef.current = null;
+              setGuest(null);
+              turn.current = { q: "", a: "", sources: [], open: true, guest: true };
+              liveRef.current?.sendText(`[HIVEMIND app update, not the owner speaking] Guest mode ended. ${JSON.stringify(recap)}`);
+            });
           }
         }
         // Keep every spoken exchange in chat history, whichever page it happened on (never a guest's).
@@ -331,6 +394,9 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
           const refused = guestCheck(name);
           if (refused) return { error: refused };
         }
+        // Risky actions (and, after a guest, any saving) need the owner's own voice.
+        const notOwner = await ownerCheck(name);
+        if (notOwner) return { error: notOwner };
         // Approving a browser step needs the owner's own words this turn, never an app update or page text.
         if (name === "web_task_answer" && args.decision === "approve" && !/\b(approve[ds]?|yes|yeah|yep|go ahead|do it|submit|confirm|ok(ay)?|sure|proceed|haan|seri|sari)\b/i.test(turn.current.q)) {
           return { error: "Only the owner can approve. Tell them the step and ask 'Should I approve it?', then wait for their answer." };
@@ -399,10 +465,13 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         return links.length ? { ...r.result, links_shown_on_screen: links } : r.result;
       },
       clientTools: guarded({
-        guest_mode: ({ action, name, relation }) => {
+        guest_mode: async ({ action, name, relation }) => {
           if (String(action) === "end") {
             const g = guestRef.current;
             if (!g) return { guest_mode: "off", note: "Guest mode wasn't on." };
+            const refused = loadVoiceprint()?.enabled && needsOwnerVoice("guest_mode:end", { guestSeen: true }) ? await verifyOwner("end guest mode") : null;
+            if (refused) return { guest_mode: "on", error: `${refused} Guest mode stays on: keep talking with ${g.name}.` };
+            if (guestRef.current !== g) return guestRecap(g.name, g.lines);
             guestRef.current = null;
             setGuest(null);
             turn.current.guest = true;
@@ -415,6 +484,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
             return { error: "Guest mode starts when the owner introduces someone (\"this is Harini, my friend\")." };
           const rel = String(relation ?? "").trim().slice(0, 40);
           guestRef.current = { name: who, relation: rel, lines: [] };
+          guestSeen.current = true;
           setGuest(who);
           turn.current.guest = true;
           return { guest_mode: "on", rules: guestRules(who, rel) };
@@ -606,7 +676,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       }),
     });
     return liveRef.current;
-  }, [mine]);
+  }, [mine, verifyOwner]);
 
   const start = useCallback(() => {
     const live = getLive();
@@ -626,7 +696,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   const sendText = useCallback((text: string) => {
     const live = liveRef.current;
     if (!live?.active) return;
-    turn.current = { q: text, a: "", sources: [], open: true };
+    turn.current = { q: text, a: "", sources: [], open: true, typed: true };
     setLast({ q: text, a: "", done: false });
     live.sendText(text);
   }, []);
@@ -696,8 +766,10 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
       clearHandoff,
       guest,
       endGuest,
+      ownerAsk,
+      answerOwnerAsk,
     }),
-    [state, error, last, start, stop, toggle, sendText, note, level, subscribe, register, handoff, clearHandoff, guest, endGuest],
+    [state, error, last, start, stop, toggle, sendText, note, level, subscribe, register, handoff, clearHandoff, guest, endGuest, ownerAsk, answerOwnerAsk],
   );
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>;
 }

@@ -1,4 +1,5 @@
 import type * as Ort from "onnxruntime-web";
+import { loadOrt } from "@/lib/ort";
 
 /**
  * Speech features for the wake word, from openWakeWord's two small models (in public/wake/): 16 kHz
@@ -61,10 +62,7 @@ let loading: Promise<() => WakeFeatures> | null = null;
 /** Loads the runtime and both models once (browser only); returns a maker of independent extractors. */
 export function loadWakeFeatures() {
   loading ??= (async () => {
-    const ort = await import("onnxruntime-web/wasm");
-    // The 14 MB runtime comes from the npm CDN (cached by the browser), not the app bundle.
-    ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ort.env.versions.web}/dist/`;
-    ort.env.wasm.numThreads = 1;
+    const ort = await loadOrt();
     const model = async (name: string) => {
       const r = await fetch(`/wake/${name}.onnx`);
       if (!r.ok) throw new Error(`Couldn't load the wake word model (${r.status}).`);

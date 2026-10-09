@@ -1,6 +1,7 @@
 import { LanguageCard } from "@/components/language";
 import { MyVoiceCard } from "@/components/my-voice";
 import { WakeWordCard } from "@/components/wake/wake-card";
+import { VoiceprintCard } from "@/components/voiceprint-card";
 import { LocationCard } from "@/components/location-card";
 import { NotificationsCard } from "@/components/notifications";
 import { SessionsCard } from "@/components/sessions-card";
@@ -49,6 +50,8 @@ export default function SettingsPage() {
       <MyVoiceCard />
 
       <WakeWordCard />
+
+      <VoiceprintCard />
 
       <LocationCard />
 

@@ -70,6 +70,9 @@ export class LiveVoice {
   private modelSpeaking = false;
   private state: LiveState = "off";
   private closedByUs = false;
+  /** What the person said since HIVEMIND last spoke (16 kHz, ±32768), for the voiceprint check. Stays in this tab. */
+  private heard: Float32Array[] = [];
+  private heardLen = 0;
   /** "Speak in my voice": Gemini's audio is not played; the page speaks the transcript in the owner's voice. */
   muted = false;
 
@@ -178,6 +181,12 @@ export class LiveVoice {
   // Batch ~100 ms of 16-bit PCM per message.
   private capture(f32: Float32Array) {
     if (!this.session) return;
+    // Keep the speaker's side only (not HIVEMIND's own voice leaking back), at most the last 15 s.
+    if (!this.modelSpeaking || this.muted) {
+      this.heard.push(f32.map((x) => x * 32768));
+      this.heardLen += f32.length;
+      while (this.heardLen > 16000 * 15 && this.heard.length > 1) this.heardLen -= this.heard.shift()!.length;
+    }
     const i16 = new Int16Array(f32.length);
     for (let i = 0; i < f32.length; i++) i16[i] = Math.max(-1, Math.min(1, f32[i])) * 0x7fff;
     this.pending.push(i16);
@@ -241,8 +250,24 @@ export class LiveVoice {
     else if (this.state === "speaking") this.set("listening");
   }
 
+  /** The person's speech since HIVEMIND last finished speaking. */
+  recentSpeech(): Float32Array {
+    const out = new Float32Array(this.heardLen);
+    let o = 0;
+    for (const c of this.heard) {
+      out.set(c, o);
+      o += c.length;
+    }
+    return out;
+  }
+
   private endTurn(interrupted: boolean) {
     this.h.onTurnEnd(interrupted);
+    // A finished reply starts a fresh "what they said next" (a barge-in keeps what was said so far).
+    if (!interrupted) {
+      this.heard = [];
+      this.heardLen = 0;
+    }
     this.userText = "";
     this.modelSpeaking = false;
     // My voice: the page's player decides when speaking ends.
@@ -330,6 +355,8 @@ export class LiveVoice {
   }
 
   private teardown() {
+    this.heard = [];
+    this.heardLen = 0;
     this.stopPlayback();
     this.mic?.getTracks().forEach((t) => t.stop());
     this.mic = null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, ExternalLink, Loader2, Mic, Phone, Send, UserRound, X } from "lucide-react";
+import { AudioLines, ExternalLink, Loader2, Mic, Phone, Send, ShieldAlert, UserRound, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { cx } from "@/components/ui";
@@ -115,6 +115,32 @@ export function GuestBanner() {
       <button type="button" onClick={v.endGuest} className="shrink-0 border border-core/60 px-2.5 py-1 text-xs text-core hover:bg-core/10">
         Back to me
       </button>
+    </div>
+  );
+}
+
+/** The voiceprint didn't recognise who spoke: the person holding the device confirms or refuses. */
+export function OwnerCheckCard() {
+  const v = useVoice();
+  if (!v.ownerAsk) return null;
+  return (
+    <div
+      role="alertdialog"
+      aria-label="Voice check"
+      className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[61] mx-auto max-w-md border border-alert/60 bg-[#0b1016]/95 p-3 shadow-[0_0_30px_-8px_rgba(248,113,113,0.4)] backdrop-blur-md"
+    >
+      <p className="flex items-center gap-2 text-[13px] font-semibold">
+        <ShieldAlert size={15} className="text-alert" /> Was that you?
+      </p>
+      <p className="mt-1 text-[12.5px] text-soft">I didn&apos;t recognise the voice asking to {v.ownerAsk}.</p>
+      <div className="mt-2 flex gap-2">
+        <button type="button" onClick={() => v.answerOwnerAsk(true)} className="border border-core/60 px-3 py-1 text-xs text-core hover:bg-core/10">
+          It&apos;s me
+        </button>
+        <button type="button" onClick={() => v.answerOwnerAsk(false)} className="border border-line px-3 py-1 text-xs text-soft hover:text-fg">
+          No, don&apos;t
+        </button>
+      </div>
     </div>
   );
 }
