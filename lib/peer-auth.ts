@@ -1,5 +1,5 @@
 /** Browser side of the host check (see peerProof in lib/session.ts). */
-export type PeerKind = "call" | "draw" | "ludo";
+export type PeerKind = "call" | "draw" | "ludo" | "cards";
 
 const post = (path: string, body: unknown) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 

@@ -59,6 +59,7 @@ const fakes = {
     },
   },
   fetch: async () => new Response(JSON.stringify({ token: "t", model: "m", config: {} }), { status: 200 }),
+  location: { pathname: "/" },
 };
 for (const [k, v] of Object.entries(fakes)) vi.stubGlobal(k, v);
 
@@ -154,5 +155,27 @@ describe("tool guard", () => {
     await tool("search_brain", { query: "x" }).catch(() => {});
     expect(asked).toEqual(["remember", "search_brain"]);
     expect(posted).toEqual(["/api/search"]);
+  });
+});
+
+describe("tools not loaded this session", () => {
+  it("use_tool runs the named tool through the same guard, and tool_help answers from the catalog", async () => {
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({}), { status: 200 }));
+    const asked: string[] = [];
+    const ran: string[] = [];
+    const { h } = handlers();
+    const v = new LiveVoice({
+      ...h,
+      beforeTool: async (name: string) => (asked.push(name), name === "web_task" ? { error: "guest mode" } : null),
+      serverTool: async (name: string) => (ran.push(name), { ok: true }),
+    } as never);
+    (v as unknown as { catalog: object }).catalog = { add_birthday: { description: "Add a birthday", how: "say it" } };
+    const tool = (v as unknown as { tool: (n: string, a: object) => Promise<Record<string, unknown>> }).tool.bind(v);
+    expect(await tool("tool_help", { name: "add_birthday" })).toMatchObject({ description: "Add a birthday" });
+    expect(await tool("use_tool", { name: "web_task", args: { goal: "x" } })).toEqual({ error: "guest mode" });
+    expect(await tool("use_tool", { name: "add_birthday", args: { name: "Amma" } })).toEqual({ ok: true });
+    expect(asked).toEqual(["web_task", "add_birthday"]); // the guard saw the real names
+    expect(ran).toEqual(["add_birthday"]);
+    expect(await tool("use_tool", { name: "use_tool" })).toMatchObject({ error: expect.any(String) });
   });
 });

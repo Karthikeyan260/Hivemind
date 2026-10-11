@@ -20,7 +20,7 @@ export type Detector = { stop: () => void };
  * Listens for the wake word until stopped. `onScore` (optional) reports each comparison, for the
  * settings test screen. Quiet audio is never compared, so silence costs almost nothing.
  */
-export async function startDetector(model: WakeModel, onWake: () => void, onScore?: (s: number, thr: number) => void): Promise<Detector> {
+export async function startDetector(model: WakeModel, onWake: (heard: Float32Array) => void, onScore?: (s: number, thr: number) => void): Promise<Detector> {
   const make = await loadWakeFeatures();
   const feat = make();
   const templates = unpackSeqs(model);
@@ -31,10 +31,14 @@ export async function startDetector(model: WakeModel, onWake: () => void, onScor
   let noise = 0;
   let quietUntil = 0;
   let stopped = false;
+  // The last ~2 s of sound, so the voiceprint can check who said the word.
+  const recent: Float32Array[] = [];
 
   const close = await openMic(
     serial(async (chunk) => {
       if (stopped) return;
+      recent.push(chunk.slice());
+      if (recent.length > 25) recent.shift();
       const r = rmsOf(chunk);
       noise = noise ? (r < noise ? noise * 0.9 + r * 0.1 : noise * 0.995 + r * 0.005) : r;
       buf.push(normalize(await feat.push(chunk)));
@@ -52,7 +56,13 @@ export async function startDetector(model: WakeModel, onWake: () => void, onScor
         quietUntil = Date.now() + 2500;
         buf = [];
         loud = [];
-        onWake();
+        const heard = new Float32Array(recent.reduce((n, c) => n + c.length, 0));
+        let o = 0;
+        for (const c of recent) {
+          heard.set(c, o);
+          o += c.length;
+        }
+        onWake(heard);
       }
     }),
   );

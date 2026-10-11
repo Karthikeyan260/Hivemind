@@ -793,3 +793,36 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .ludo-anim { animation: none !important; }
 }
+
+/* Colour Clash: a played card flies onto the pile, drawn cards slide into the hand. */
+@keyframes card-in {
+  0% { transform: translateY(70px) rotate(-18deg) scale(0.7); opacity: 0; }
+  70% { transform: translateY(-6px) rotate(4deg) scale(1.06); opacity: 1; }
+  100% { transform: translateY(0) rotate(var(--tilt, 0deg)) scale(1); }
+}
+@keyframes card-deal {
+  0% { transform: translate(-60px, -90px) rotate(-25deg) scale(0.6); opacity: 0; }
+  100% { transform: translate(0, 0) rotate(0) scale(1); opacity: 1; }
+}
+@keyframes card-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-anim { animation: none !important; }
+}
+@keyframes burst {
+  0% { transform: translate(-50%, -50%) scale(0.3) rotate(-12deg); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1.25) rotate(4deg); opacity: 1; }
+  70% { transform: translate(-50%, -60%) scale(1) rotate(0deg); opacity: 1; }
+  100% { transform: translate(-50%, -90%) scale(0.9); opacity: 0; }
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-3deg) scale(1); }
+  50% { transform: rotate(3deg) scale(1.06); }
+}
+@keyframes confetti {
+  0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(520px) rotate(540deg); opacity: 0.2; }
+}

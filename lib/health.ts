@@ -1,6 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { SCHEDULER_STALE_MS } from "@/lib/alerts";
 import { embeddingStatus } from "@/lib/embedding-migration";
+import { readJSON } from "@/lib/private-store";
 
 export type Check = { name: string; status: "ok" | "warn" | "fail"; detail: string };
 
@@ -17,6 +19,16 @@ export async function systemCheck(supabase: SupabaseClient): Promise<Check[]> {
 
   const ping = await supabase.from("projects").select("id", { count: "exact", head: true });
   checks.push(ping.error ? { name: "Database", status: "fail", detail: ping.error.message } : { name: "Database", status: "ok", detail: "Reachable" });
+
+  const runs = await readJSON<{ lastRun?: string }>(supabase, "notify-state", {}).catch(() => ({}) as { lastRun?: string });
+  const quiet = runs.lastRun ? Date.now() - +new Date(runs.lastRun) : null;
+  checks.push(
+    quiet === null
+      ? { name: "Scheduler", status: "fail", detail: "Has never run: set up the job on cron-job.org (see README). Reminders and the brief need it." }
+      : quiet > SCHEDULER_STALE_MS
+        ? { name: "Scheduler", status: "fail", detail: `Last ran ${Math.round(quiet / 3_600_000)} h ago: reminders and the brief won't arrive. Check cron-job.org.` }
+        : { name: "Scheduler", status: "ok", detail: `Last ran ${Math.max(0, Math.round(quiet / 60_000))} min ago` },
+  );
 
   const open = await openTables(supabase);
   checks.push(

@@ -4,6 +4,7 @@ import { safeEqual } from "@/lib/session";
 import { recoverStuckBuilds } from "@/lib/apps";
 import { reembedMissing } from "@/lib/knowledge";
 import { getMarker } from "@/lib/ai/embeddings";
+import { alertFailure } from "@/lib/alerts";
 import { migrationStep } from "@/lib/embedding-migration";
 import { openTables } from "@/lib/health";
 import { birthdaysToday, runBirthdayAlerts } from "@/lib/birthdays";
@@ -77,16 +78,35 @@ export async function GET(req: Request) {
 
   // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
   await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { news: date } : {}), lastRun: now.toISOString(), lastSent: due.length });
-  if (dreaming) after(() => dream(db(), date).then(() => undefined, (e) => console.warn("dream:", e)));
+  // The jobs that run on their own: a failure becomes a push (once a day each), never silence.
+  if (dreaming)
+    after(() =>
+      dream(db(), date).then(
+        (d) => (/couldn.t think/i.test(d.note ?? "") ? alertFailure(db(), "dream", "Dream mode couldn't think it through tonight (the AI didn't answer). Your memories are unchanged.") : undefined),
+        (e) => alertFailure(db(), "dream", e),
+      ),
+    );
   if (news)
     after(async () => {
-      const b = await makeBrief(db(), date).catch((e) => (console.warn("brief:", e), null));
-      if (b) await notify(db(), { title: "📰 Your morning brief", body: briefHeadline(b), url: "/brief", tag: "news-brief" }).catch(() => 0);
+      try {
+        const b = await makeBrief(db(), date);
+        if (!b) return;
+        if (!b.items.some((i) => i.points.length)) return void (await alertFailure(db(), "brief", "None of your brief topics could be researched this morning (web search or AI failed). Try Refresh on the Brief page."));
+        await notify(db(), { title: "📰 Your morning brief", body: briefHeadline(b), url: "/brief", tag: "news-brief" }).catch(() => 0);
+      } catch (e) {
+        await alertFailure(db(), "brief", e);
+      }
     });
 
   // 4. Autopilot: after the response, so the scheduler's request stays fast.
   const autopilot = await autopilotDue(supabase, now).catch(() => false);
-  if (autopilot) after(() => runAutopilot(db(), { origin: new URL(req.url).origin }).then(() => undefined, (e) => console.warn("autopilot:", e)));
+  if (autopilot)
+    after(() =>
+      runAutopilot(db(), { origin: new URL(req.url).origin }).then(
+        (r) => ("error" in r && r.error ? alertFailure(db(), "autopilot", r.error) : undefined),
+        (e) => alertFailure(db(), "autopilot", e),
+      ),
+    );
 
   // Notes / memories saved while embeddings were down: add their search vectors now.
   const reembedded = await reembedMissing(supabase).catch(() => 0);

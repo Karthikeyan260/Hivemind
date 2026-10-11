@@ -18,9 +18,9 @@ export class SpeakerModel {
   ) {}
 
   /** 16 kHz samples (±32768 scale) → a normalised signature, or null when there's too little speech. */
-  async embed(samples: Float32Array): Promise<Float32Array | null> {
+  async embed(samples: Float32Array, minSeconds = MIN_SECONDS): Promise<Float32Array | null> {
     const speech = voiced(samples);
-    if (speech.length < MIN_SECONDS * 16000) return null;
+    if (speech.length < minSeconds * 16000) return null;
     const feats = fbank(speech.subarray(0, 16000 * 12));
     const flat = new Float32Array(feats.length * 80);
     feats.forEach((row, i) => flat.set(row, i * 80));

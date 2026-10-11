@@ -163,8 +163,14 @@ export function WakeWordCard() {
         <div className="space-y-3 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={model.enabled} onChange={(e) => update({ enabled: e.target.checked })} />
-            Listen for “{model.word}” on this device
+            Use “{model.word}” on this device (turn listening on with the ear button next to the mic)
           </label>
+          {model.enabled && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={!!model.autoStart} onChange={(e) => update({ autoStart: e.target.checked })} />
+              Start listening as soon as I open HIVEMIND <span className="text-xs text-soft">(the mic stays on while the app is open)</span>
+            </label>
+          )}
           <label className="flex flex-wrap items-center gap-2">
             <span className="w-24 text-soft">Sensitivity</span>
             <span className="text-xs text-soft">strict</span>

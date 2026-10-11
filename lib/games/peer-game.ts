@@ -37,6 +37,8 @@ type Opts<S, A> = {
   onHostAway?: () => void;
   /** Guest: checks a state from the host before it's shown (the host is verified, but be safe). */
   accept?: (s: unknown) => s is S;
+  /** Host: what the friend may see of the game (e.g. not the others' cards). The host keeps it all. */
+  viewForGuest?: (s: S) => S;
 };
 
 export function usePeerGame<S, A>(o: Opts<S, A>) {
@@ -90,7 +92,7 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
     (s: S) => {
       stateRef.current = s;
       setLocal(s);
-      if (conn.current?.open && o.role === "host") conn.current.send({ t: "state", s } satisfies Wire<S, A>);
+      if (conn.current?.open && o.role === "host") conn.current.send({ t: "state", s: opts.current.viewForGuest ? opts.current.viewForGuest(s) : s } satisfies Wire<S, A>);
       save();
     },
     [o.role, save],
@@ -169,7 +171,7 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
           setOther(cleanName(m.name) || "Guest");
           back();
           c.send({ t: "hello", name: opts.current.myName } satisfies Wire<S, A>);
-          if (stateRef.current) c.send({ t: "state", s: stateRef.current } satisfies Wire<S, A>);
+          if (stateRef.current) c.send({ t: "state", s: opts.current.viewForGuest ? opts.current.viewForGuest(stateRef.current) : stateRef.current } satisfies Wire<S, A>);
           return;
         }
         if (m.t === "act" && c === conn.current) opts.current.onAction?.(m.a);

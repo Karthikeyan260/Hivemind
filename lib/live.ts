@@ -74,6 +74,8 @@ export class LiveVoice {
   private closedByUs = false;
   /** Changes on every start and stop, so a start that was stopped half-way knows to give up. */
   private run = 0;
+  /** How to use the tools not loaded this session (answers tool_help without a round trip). */
+  private catalog: Record<string, unknown> = {};
   /** What the person said since HIVEMIND last spoke (16 kHz, ±32768), for the voiceprint check. Stays in this tab. */
   private heard: Float32Array[] = [];
   private heardLen = 0;
@@ -116,10 +118,12 @@ export class LiveVoice {
       // Fetch the SDK and the session token at the same time.
       const sdk = import("@google/genai");
       sdk.catch(() => {}); // awaited below; this only stops an early token failure leaving it unhandled
-      const res = await fetch("/api/live/token", { method: "POST" });
+      // The page the owner is on decides which tools load in full (the rest stay one step away).
+      const res = await fetch("/api/live/token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: location.pathname }) });
       if (gone()) return;
       if (!res.ok) throw new Error(res.status === 401 ? "Locked: unlock HIVEMIND first." : "Couldn't start a live session.");
-      const { token, model, config, myVoice } = (await res.json()) as { token: string; model: string; config: LiveConnectConfig; myVoice?: boolean };
+      const { token, model, config, myVoice, catalog } = (await res.json()) as { token: string; model: string; config: LiveConnectConfig; myVoice?: boolean; catalog?: Record<string, unknown> };
+      this.catalog = catalog ?? {};
       this.muted = !!myVoice;
 
       const { GoogleGenAI } = await sdk;
@@ -353,13 +357,22 @@ export class LiveVoice {
     this.session?.sendToolResponse({ functionResponses: responses });
   }
 
-  private async tool(name: string, args: Record<string, unknown>) {
+  private async tool(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const post = async (url: string, body: object) => {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       return j;
     };
+    // tool_help: answered here. use_tool: run the named tool exactly as if it had been called directly
+    // (same guards, same handlers).
+    if (name === "tool_help") return (this.catalog[String(args.name)] as Record<string, unknown>) ?? { error: `No tool "${args.name}".` };
+    if (name === "use_tool") {
+      const inner = String(args.name ?? "");
+      if (!inner || inner === "use_tool" || inner === "tool_help") return { error: "use_tool needs a tool name." };
+      const innerArgs = args.args && typeof args.args === "object" ? (args.args as Record<string, unknown>) : {};
+      return this.tool(inner, innerArgs);
+    }
     const refused = await this.h.beforeTool?.(name, args);
     if (refused) return refused;
     const client = this.h.clientTools?.[name];

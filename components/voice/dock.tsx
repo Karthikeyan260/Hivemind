@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { cx } from "@/components/ui";
 import { isPublicPage } from "@/lib/public-paths";
+import { WakeToggle } from "@/components/wake/wake-toggle";
 import { useVoice } from "./provider";
 
 const STATUS = { off: "", connecting: "CONNECTING", listening: "LISTENING", thinking: "THINKING", speaking: "SPEAKING" } as const;
@@ -51,6 +52,7 @@ export function VoiceDock() {
           )}
         </div>
       )}
+      {!v.on && <WakeToggle />}
       <button
         type="button"
         onClick={v.toggle}

@@ -12,6 +12,7 @@ import { Compass } from "@/components/bridge/compass";
 import { Cursor } from "@/components/bridge/cursor";
 import { Gauge, Holo, Meter } from "@/components/bridge/holo";
 import { HudClock, HudTelemetry } from "@/components/bridge/hud";
+import { WakeToggle } from "@/components/wake/wake-toggle";
 import { Scramble } from "@/components/bridge/scramble";
 import { JobCards } from "@/components/career/job-cards";
 import { HabitsPanel } from "@/components/habits/panel";
@@ -780,6 +781,7 @@ function Bridge() {
           <button type="button" onClick={voice.toggle} aria-label={liveOn ? "Stop voice" : "Talk to HIVEMIND"} title={liveOn ? "Stop voice" : "Talk to HIVEMIND"} className="-my-1 -ml-1 shrink-0">
             <VoiceMascot size={36} />
           </button>
+          {!liveOn && <WakeToggle compact />}
           <input
             ref={inputRef}
             value={input}
