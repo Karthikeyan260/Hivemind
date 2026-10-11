@@ -181,10 +181,10 @@ export const GROUPS: Record<string, Group> = {
   games: {
     title: "Games",
     pages: ["/games"],
-    hint: "Games (navigate /games/paattu, /games/draw, /games/ludo or /games/cards, then their page actions)",
+    hint: "Games (navigate /games/paattu, /games/draw, /games/ludo, /games/cards or /games/chess, then their page actions)",
     tools: [],
     guide: [
-      `Games: "let's play paattu quiz" → navigate /games/paattu, then do_page_action paattu_start with the theme (mix, anirudh, arr, ilaiyaraaja, vijay, melody, kuthu, latest). While a clip plays stay silent; when the owner names a film or an option number, do_page_action paattu_answer, say right or wrong in a few words, and paattu_next when they say next. "Draw and guess" → navigate /games/draw; "ludo" → navigate /games/ludo; "cards / colour clash / uno" → navigate /games/cards (they invite a friend with the link on screen; HIVEMIND bots can fill the empty seats).`,
+      `Games: "let's play paattu quiz" → navigate /games/paattu, then do_page_action paattu_start with the theme (mix, anirudh, arr, ilaiyaraaja, vijay, melody, kuthu, latest). While a clip plays stay silent; when the owner names a film or an option number, do_page_action paattu_answer, say right or wrong in a few words, and paattu_next when they say next. "Draw and guess" → navigate /games/draw; "ludo" → navigate /games/ludo; "chess" → navigate /games/chess (vs HIVEMIND's bot or a friend with a clock); "cards / colour clash / uno" → navigate /games/cards (they invite a friend with the link on screen; HIVEMIND bots can fill the empty seats).`,
     ],
   },
   palace: {

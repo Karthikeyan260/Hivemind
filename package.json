@@ -17,6 +17,7 @@
     "@gsap/react": "^2.1.2",
     "@react-pdf/renderer": "^4.9.0",
     "@supabase/supabase-js": "^2.117.2",
+    "chess.js": "^1.4.0",
     "gsap": "^3.15.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.48.0",

@@ -27,8 +27,8 @@ export async function proxy(request: NextRequest) {
 }
 
 // Only build assets and the few files that must load without a session (app icons for install and
-// notifications) skip the gate. Never exclude by file extension: "/api/x/anything.png" would then
+// notifications, the chess piece pictures a friend's game needs) skip the gate. Never exclude by file extension: "/api/x/anything.png" would then
 // bypass the password, and personal images in public/ would be readable by anyone.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|icons/|api/cron/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|icons/|chess/|api/cron/).*)"],
 };

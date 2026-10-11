@@ -1,0 +1,1 @@
+Chess pieces: "cburnett" set by Colin M.L. Burnett (Wikimedia Commons), used under the BSD licence (also available under GFDL / GPL / CC BY-SA). Files from the lichess repository.
