@@ -17,6 +17,8 @@ const SECURITY_HEADERS = [
 ];
 
 const nextConfig: NextConfig = {
+  // Which build this is: the app compares it with the server's to pick up a new version (see VersionWatcher).
+  env: { NEXT_PUBLIC_BUILD: process.env.VERCEL_GIT_COMMIT_SHA || `local-${Date.now()}` },
   // A stray package-lock.json in the home folder otherwise confuses root detection.
   turbopack: { root: __dirname },
   // PDF rendering uses Node-only internals (fonts, streams); load it at runtime instead of bundling.
