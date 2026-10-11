@@ -1,7 +1,7 @@
 "use client";
 
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
-import { Bot, Copy, Eraser, Mic, MicOff, Send, Trash2, Trophy } from "lucide-react";
+import { Bot, Copy, Eraser, Mic, MicOff, RotateCcw, Send, Trash2, Trophy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { checkHost, proveHost } from "@/lib/peer-auth";
@@ -11,6 +11,11 @@ import { checkHost, proveHost } from "@/lib/peer-auth";
  * HIVEMIND watches the same drawing and guesses too (it only ever sees the picture). Browser to
  * browser like HIVEMIND calls (PeerJS), with voice on so you can laugh at each other's drawings.
  * The owner's side (host) runs the game: words, timer, scores, and HIVEMIND's guesses.
+ *
+ * Phones drop the connection when you switch apps (sharing the link on WhatsApp, a quick look at
+ * another tab) and sometimes reload the page. So each side keeps its game in this tab
+ * (sessionStorage), both sides reconnect on their own, the clock pauses while you're apart, and
+ * the host sends the whole game back to the friend when they meet again.
  */
 const WORDS = [
   "idli", "dosa", "filter coffee", "auto rickshaw", "kolam", "banana leaf", "coconut tree", "temple", "beach", "umbrella",
@@ -23,11 +28,19 @@ const ROUNDS = 6;
 const ROUND_S = 80;
 const AI_EVERY_MS = 6500;
 const COLORS = ["#111111", "#e5484d", "#2f7fe8", "#2fa34a", "#f59e0b", "#8b5cf6"];
+/** How long to keep trying to get back together before calling it. */
+const GIVE_UP_MS = 3 * 60_000;
+/** A saved game older than this is stale (a new visit starts fresh). */
+const SAVED_FOR_MS = 45 * 60_000;
 
 type Who = "host" | "guest";
+type Stage = "connecting" | "waiting" | "lobby" | "playing" | "reconnecting" | "over" | "error";
 type Stroke = { pts: [number, number][]; color: string; w: number };
+type Round = { n: number; drawer: Who; word?: string; len: string; ends: number };
+type Line = { who: string; text: string; kind: "guess" | "ok" | "ai" | "info" };
+type Scores = { host: number; guest: number; ai: number };
 type Msg =
-  | { t: "hello"; name: string }
+  | { t: "hello"; name: string; id?: string }
   | { t: "round"; n: number; drawer: Who; word?: string; len: string; ms: number }
   | { t: "stroke"; s: Stroke }
   | { t: "clear" }
@@ -36,15 +49,19 @@ type Msg =
   | { t: "scores"; scores: Scores }
   | { t: "reveal"; word: string }
   | { t: "over"; scores: Scores }
+  // Host → friend after (re)connecting: the whole game, so a dropped connection or reload resumes.
+  | { t: "sync"; stage: "lobby" | "playing" | "over"; round: (Omit<Round, "ends"> & { ms: number }) | null; scores: Scores; feed: Line[]; strokes: Stroke[] }
   // The guest checks the host is the owner's real browser before anything else (see lib/peer-auth).
   | { t: "challenge"; nonce: string }
   | { t: "proof"; proof: string };
-type Line = { who: string; text: string; kind: "guess" | "ok" | "ai" | "info" };
-type Scores = { host: number; guest: number; ai: number };
+type Game = { n: number; word: string; drawer: Who; ends: number; guessed: boolean; aiGot: boolean; aiTried: string[]; used: Set<string>; dirty: boolean; scores: Scores };
+type Saved = { at: number; stage: Stage; other: string; guestId?: string; round: Round | null; scores: Scores; feed: Line[]; strokes: Stroke[]; game?: Omit<Game, "used" | "dirty"> & { used: string[] } };
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim().replace(/s$/, "");
 const blanks = (w: string) => w.replace(/[a-z]/gi, "_ ").trim();
 const clip = (v: unknown, n: number) => String(v ?? "").slice(0, n);
+const cleanName = (v: unknown) => clip(v, 20).replace(/[^\p{L}\p{N} .'-]/gu, "").trim();
+const NO_SCORES: Scores = { host: 0, guest: 0, ai: 0 };
 /** A stroke from the other player: real points in the canvas, a known colour, a sane size. */
 const okStroke = (st: unknown): st is Stroke => {
   const x = st as Stroke;
@@ -58,15 +75,30 @@ const okStroke = (st: unknown): st is Stroke => {
     (x.w === 6 || x.w === 26)
   );
 };
+const okLine = (l: unknown): l is Line => !!l && typeof (l as Line).text === "string" && ["guess", "ok", "ai", "info"].includes((l as Line).kind);
+const okScores = (s: unknown): s is Scores => !!s && ["host", "guest", "ai"].every((k) => Number.isFinite((s as Record<string, number>)[k]));
+
+function loadSaved(key: string): Saved | null {
+  try {
+    const s = JSON.parse(sessionStorage.getItem(key) ?? "null") as Saved | null;
+    return s && Date.now() - s.at < SAVED_FOR_MS ? s : null;
+  } catch {
+    return null;
+  }
+}
 
 export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: { role: Who; room: string; myName: string; hostName?: string; /** Guest: the host isn't in the game yet (called once). */ onHostAway?: () => void }) {
-  const [stage, setStage] = useState<"connecting" | "waiting" | "lobby" | "playing" | "over" | "error">("connecting");
+  const KEY = `hm-draw-${role}-${room}`;
+  // This tab's saved game, read once (the component only ever renders in the browser).
+  const [saved] = useState(() => loadSaved(KEY));
+  const wasIn = saved && (saved.stage === "playing" || saved.stage === "lobby" || saved.stage === "reconnecting") ? saved : null;
+  const [stage, setStage] = useState<Stage>(saved?.stage === "over" ? "over" : wasIn ? "reconnecting" : "connecting");
   const [err, setErr] = useState("");
-  const [other, setOther] = useState(role === "guest" ? hostName : "");
-  const [round, setRound] = useState<{ n: number; drawer: Who; word?: string; len: string; ends: number } | null>(null);
+  const [other, setOther] = useState(saved?.other || (role === "guest" ? hostName : ""));
+  const [round, setRound] = useState<Round | null>(saved?.round ?? null);
   const [left, setLeft] = useState(ROUND_S);
-  const [feed, setFeed] = useState<Line[]>([]);
-  const [scores, setScores] = useState<Scores>({ host: 0, guest: 0, ai: 0 });
+  const [feed, setFeed] = useState<Line[]>(saved?.feed ?? []);
+  const [scores, setScores] = useState<Scores>(saved?.scores ?? NO_SCORES);
   const [guess, setGuess] = useState("");
   const [color, setColor] = useState(COLORS[0]);
   const [muted, setMuted] = useState(false);
@@ -81,18 +113,32 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   const awayRef = useRef(onHostAway);
 
   const canvas = useRef<HTMLCanvasElement | null>(null);
-  const strokes = useRef<Stroke[]>([]);
+  const strokes = useRef<Stroke[]>(saved?.strokes ?? []);
   const peer = useRef<Peer | null>(null);
   const conn = useRef<DataConnection | null>(null);
   const call = useRef<MediaConnection | null>(null);
   const mic = useRef<MediaStream | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
-  // Guest: the host proved it's the owner; until then nothing is sent or played.
+  // Guest: the host proved it's the owner on this connection; until then nothing is sent or played.
   const verified = useRef(false);
   const nonce = useRef("");
   const roundTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const giveUp = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Where to go back to once reconnected, and when the connection dropped (the clock pauses).
+  const resumeTo = useRef<"lobby" | "playing" | null>(wasIn ? (wasIn.stage === "lobby" ? "lobby" : "playing") : null);
+  const pausedAt = useRef<number | null>(wasIn ? saved!.at : null);
+  // Host: which friend is in the game (a reconnect from the same browser takes their seat back).
+  const guestId = useRef(saved?.guestId ?? "");
+  // Guest: this browser's id, so the host knows it's the same friend coming back.
+  const myId = useRef("");
   // Host-only game state.
-  const game = useRef({ n: 0, word: "", drawer: "host" as Who, ends: 0, guessed: false, aiGot: false, aiTried: [] as string[], used: new Set<string>(), dirty: false, scores: { host: 0, guest: 0, ai: 0 } as Scores });
+  const game = useRef<Game>(
+    saved?.game ? { ...saved.game, used: new Set(saved.game.used), dirty: false } : { n: 0, word: "", drawer: "host", ends: 0, guessed: false, aiGot: false, aiTried: [], used: new Set(), dirty: false, scores: { ...NO_SCORES } },
+  );
+  const stageRef = useRef(stage);
+  useEffect(() => {
+    stageRef.current = stage;
+  }, [stage]);
 
   const me: Who = role;
   const drawing = round?.drawer === me && stage === "playing";
@@ -101,6 +147,48 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   const send = useCallback((m: Msg) => {
     if (conn.current?.open) conn.current.send(m);
   }, []);
+
+  /* ───── this tab's copy of the game ───── */
+  const latest = useRef({ stage, other, round, scores, feed });
+  useEffect(() => {
+    latest.current = { stage, other, round, scores, feed };
+  }, [stage, other, round, scores, feed]);
+  const leaving = useRef(false);
+  const save = useCallback(() => {
+    if (leaving.current) return;
+    const l = latest.current;
+    const g = game.current;
+    const s: Saved = {
+      at: Date.now(),
+      stage: l.stage === "reconnecting" && resumeTo.current ? resumeTo.current : l.stage,
+      other: l.other,
+      guestId: guestId.current || undefined,
+      round: l.round,
+      scores: l.scores,
+      feed: l.feed.slice(-30),
+      strokes: strokes.current,
+      ...(role === "host" ? { game: { n: g.n, word: g.word, drawer: g.drawer, ends: g.ends, guessed: g.guessed, aiGot: g.aiGot, aiTried: g.aiTried, used: [...g.used], scores: g.scores } } : {}),
+    };
+    if (s.stage === "error" || s.stage === "connecting" || s.stage === "waiting") return;
+    try {
+      sessionStorage.setItem(KEY, JSON.stringify(s));
+    } catch {}
+  }, [KEY, role]);
+  useEffect(() => {
+    save();
+  }, [save, stage, other, round, scores, feed]);
+  useEffect(() => {
+    // Strokes change too often for state: save them every couple of seconds, and on leaving the tab.
+    const t = setInterval(save, 2000);
+    const hide = () => document.hidden && save();
+    document.addEventListener("visibilitychange", hide);
+    window.addEventListener("pagehide", save);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", hide);
+      window.removeEventListener("pagehide", save);
+    };
+  }, [save]);
 
   /* ───── canvas ───── */
   const redraw = useCallback(() => {
@@ -238,41 +326,106 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     [stage, hostName, other, tell, pushScores, send, nextRound],
   );
 
+  /** Back together: the clock catches up with the pause, and the stage the game was in comes back. */
+  const resume = useCallback(() => {
+    if (giveUp.current) clearTimeout(giveUp.current);
+    giveUp.current = null;
+    const paused = pausedAt.current ? Date.now() - pausedAt.current : 0;
+    pausedAt.current = null;
+    const to = resumeTo.current;
+    resumeTo.current = null;
+    if (role === "host" && paused > 0 && to === "playing" && !game.current.guessed) {
+      game.current.ends += paused;
+      setRound((r) => (r ? { ...r, ends: r.ends + paused } : r));
+    }
+    return to;
+  }, [role]);
+
+  /** Host → friend: everything they need to carry on where they were. */
+  const syncTo = useCallback(
+    (c: DataConnection, st: Stage) => {
+      const g = game.current;
+      const r = latest.current.round;
+      const showWord = g.drawer === "guest" || g.guessed;
+      c.send({
+        t: "sync",
+        stage: st === "over" ? "over" : st === "playing" ? "playing" : "lobby",
+        round: r ? { n: r.n, drawer: r.drawer, word: showWord ? g.word : undefined, len: r.len, ms: Math.max(0, g.ends - Date.now()) } : null,
+        scores: g.scores,
+        feed: latest.current.feed.slice(-30),
+        strokes: strokes.current,
+      } satisfies Msg);
+    },
+    [],
+  );
+
+  /** The other side went away: keep the game, show "reconnecting", give up after a few minutes. */
+  const lost = useCallback(() => {
+    const st = stageRef.current;
+    if (st === "over" || st === "error") return;
+    if (st === "playing" || st === "lobby") resumeTo.current = st;
+    pausedAt.current ??= Date.now();
+    setStage(resumeTo.current ? "reconnecting" : "waiting");
+    if (!giveUp.current)
+      giveUp.current = setTimeout(() => {
+        giveUp.current = null;
+        if (stageRef.current !== "reconnecting" && stageRef.current !== "waiting") return;
+        setErr(`Lost ${latest.current.other || "the other player"} for a few minutes. Open the game again to carry on.`);
+        setStage("error");
+      }, GIVE_UP_MS);
+  }, []);
+
   const onMsg = useCallback(
-    (m: Msg) => {
+    (m: Msg, c: DataConnection) => {
       if (!m || typeof m !== "object") return;
       if (role === "host") {
         // The guest is untrusted: only these, checked. Scores, rounds and the feed come from here.
         if (m.t === "challenge") {
           const n = clip(m.nonce, 64);
-          void proveHost("draw", room, n).then((proof) => proof && send({ t: "proof", proof }));
+          void proveHost("draw", room, n).then((proof) => proof && c.open && c.send({ t: "proof", proof } satisfies Msg));
           return;
         }
         if (m.t === "hello") {
-          setOther(clip(m.name, 20).replace(/[^\p{L}\p{N} .'-]/gu, "").trim() || "Guest");
-          setStage((st) => (st === "waiting" || st === "connecting" ? "lobby" : st));
-          send({ t: "hello", name: myName });
+          const id = clip(m.id, 64);
+          // A different friend while one is still connected: this game is taken.
+          if (conn.current && conn.current !== c && conn.current.open && guestId.current && id !== guestId.current) {
+            c.close();
+            return;
+          }
+          if (conn.current && conn.current !== c) conn.current.close();
+          conn.current = c;
+          if (id) guestId.current = id;
+          setOther(cleanName(m.name) || "Guest");
+          const to = resume();
+          const cur = stageRef.current;
+          const st = to ?? (cur === "over" ? "over" : cur === "playing" ? "playing" : "lobby");
+          setStage(st);
+          c.send({ t: "hello", name: myName } satisfies Msg);
+          syncTo(c, st);
           return;
         }
+        if (c !== conn.current) return;
         if (m.t === "guess") return checkGuess(clip(m.text, 40), "guest");
         const guestDraws = game.current.drawer === "guest" && !game.current.guessed;
         if (m.t === "clear" && guestDraws) return clearCanvas();
         if (m.t !== "stroke" || !guestDraws || !okStroke(m.s)) return;
       } else if (!verified.current) {
-        // Guest: nothing counts until the host proves it's the owner.
+        // Guest: nothing counts until the host proves it's the owner (again on every reconnect).
         if (m.t !== "proof") return;
         void checkHost("draw", room, nonce.current, m.proof).then((ok) => {
+          if (c !== conn.current) return;
           if (!ok) {
             setErr("This link isn't answered by its owner right now. Try again later.");
             setStage("error");
-            conn.current?.close();
+            c.close();
             return;
           }
           verified.current = true;
-          send({ t: "hello", name: myName });
+          c.send({ t: "hello", name: myName, id: myId.current } satisfies Msg);
           // Voice only to the verified host.
           const p = peer.current;
           if (p && mic.current) {
+            call.current?.close();
             const mc = p.call(`hivemind-draw-${room}`, mic.current);
             call.current = mc;
             mc.on("stream", playVoice);
@@ -281,11 +434,17 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         return;
       } else if (m.t === "stroke" && !okStroke(m.s)) return;
       if (m.t === "hello") {
-        setOther(m.name);
-        if (role === "host") {
-          setStage("lobby");
-          send({ t: "hello", name: myName });
-        } else setStage((s) => (s === "connecting" || s === "waiting" ? "lobby" : s));
+        setOther(cleanName(m.name) || hostName);
+      } else if (m.t === "sync") {
+        // Guest: the host's copy of the game wins.
+        resume();
+        strokes.current = Array.isArray(m.strokes) ? m.strokes.filter(okStroke) : [];
+        redraw();
+        if (okScores(m.scores)) setScores(m.scores);
+        setFeed(Array.isArray(m.feed) ? m.feed.filter(okLine).slice(-30) : []);
+        const r = m.round;
+        setRound(r && Number.isFinite(r.n) ? { n: r.n, drawer: r.drawer === "guest" ? "guest" : "host", word: r.word ? clip(r.word, 40) : undefined, len: clip(r.len, 80), ends: Date.now() + Math.min(Math.max(0, Number(r.ms) || 0), ROUND_S * 1000) } : null);
+        setStage(m.stage === "playing" && r ? "playing" : m.stage === "over" ? "over" : "lobby");
       } else if (m.t === "round") {
         setStage("playing");
         setRound({ n: m.n, drawer: m.drawer, word: m.word, len: m.len, ends: Date.now() + m.ms });
@@ -297,7 +456,6 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         redraw();
         game.current.dirty = true;
       } else if (m.t === "clear") clearCanvas();
-      else if (m.t === "guess" && role === "host") checkGuess(m.text, "guest");
       else if (m.t === "feed") say(m.line);
       else if (m.t === "scores") setScores(m.scores);
       else if (m.t === "reveal") setRound((r) => (r ? { ...r, word: m.word } : r));
@@ -306,7 +464,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         setStage("over");
       }
     },
-    [role, room, myName, send, redraw, clearCanvas, checkGuess, say],
+    [role, room, myName, hostName, redraw, clearCanvas, checkGuess, say, resume, syncTo],
   );
   const onMsgRef = useRef(onMsg);
   useEffect(() => {
@@ -315,20 +473,23 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
 
   const wire = useCallback(
     (c: DataConnection) => {
-      conn.current = c;
-      c.on("data", (d) => onMsgRef.current(d as Msg));
+      c.on("data", (d) => onMsgRef.current(d as Msg, c));
       c.on("open", () => {
         if (role === "host") return;
+        verified.current = false;
         nonce.current = crypto.randomUUID();
         c.send({ t: "challenge", nonce: nonce.current } satisfies Msg);
       });
-      c.on("close", () => {
-        setErr(`${other || "The other player"} left the game.`);
-        setStage((s) => (s === "over" ? s : "error"));
-      });
+      // Only the connection that's actually in the game counts as "they left".
+      c.on("close", () => c === conn.current && lostRef.current());
+      c.on("error", () => c === conn.current && lostRef.current());
     },
-    [role, other],
+    [role],
   );
+  const lostRef = useRef(lost);
+  useEffect(() => {
+    lostRef.current = lost;
+  }, [lost]);
 
   const playVoice = (stream: MediaStream) => {
     if (audio.current) {
@@ -341,55 +502,104 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   // Connect: the host waits for the guest; the guest dials in. Voice rides along when the mic is allowed.
   useEffect(() => {
     let alive = true;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    const later = (fn: () => void, ms: number) => {
+      const t = setTimeout(() => {
+        timers.delete(t);
+        if (alive) fn();
+      }, ms);
+      timers.add(t);
+    };
+    let dial: () => void = () => {};
+    const hostId = `hivemind-draw-${room}`;
+    // A tab coming back to the front: wake the broker connection and (guest) dial again.
+    const back = () => {
+      if (document.hidden || !alive) return;
+      const p = peer.current;
+      if (p && !p.destroyed && p.disconnected) p.reconnect();
+      if (role === "guest" && !conn.current?.open) dial();
+    };
+    document.addEventListener("visibilitychange", back);
+    window.addEventListener("online", back);
+
     (async () => {
       mic.current = (await navigator.mediaDevices?.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).catch(() => null)) ?? null;
       if (!mic.current) setNoMic(true);
       const { default: PeerCtor } = await import("peerjs");
       if (!alive) return;
-      const hostId = `hivemind-draw-${room}`;
       if (role === "host") {
-        const p = new PeerCtor(hostId);
-        peer.current = p;
-        p.on("open", () => setStage("waiting"));
-        p.on("connection", (c) => {
-          if (conn.current?.open) return c.close();
-          wire(c);
-        });
-        p.on("call", (mc) => {
-          call.current = mc;
-          mc.answer(mic.current ?? undefined);
-          mc.on("stream", playVoice);
-        });
-        p.on("error", (e) => {
-          // The broker connection dropped (phone backgrounded…) but the game link may still be up.
-          if (conn.current?.open && ["network", "disconnected", "server-error", "socket-error", "socket-closed"].includes(e.type)) return;
-          setErr(e.type === "unavailable-id" ? "This game is already open in another tab." : "Couldn't open the game. Check your connection.");
-          setStage("error");
-        });
-        p.on("disconnected", () => {
-          if (alive && !p.destroyed) p.reconnect();
-        });
+        // The game's address. After a reload the old tab's claim on it can linger for a little while,
+        // so keep trying for a minute before saying it's open somewhere else.
+        const open = (attempt: number) => {
+          if (!alive) return;
+          const p = new PeerCtor(hostId);
+          peer.current = p;
+          p.on("open", () => setStage((s) => (s === "connecting" ? "waiting" : s)));
+          p.on("connection", (c) => wire(c));
+          p.on("call", (mc) => {
+            call.current?.close();
+            call.current = mc;
+            mc.answer(mic.current ?? undefined);
+            mc.on("stream", playVoice);
+          });
+          p.on("error", (e) => {
+            if (!alive) return;
+            if (e.type === "unavailable-id") {
+              p.destroy();
+              if (attempt < 20) return later(() => open(attempt + 1), 3000);
+              setErr("This game is already open in another tab.");
+              setStage("error");
+              return;
+            }
+            // The broker dropped (phone backgrounded, network blip): carry on and reconnect.
+            if (["network", "disconnected", "server-error", "socket-error", "socket-closed"].includes(e.type)) {
+              later(() => !p.destroyed && p.disconnected && p.reconnect(), 2000);
+              return;
+            }
+            setErr("Couldn't open the game. Check your connection.");
+            setStage("error");
+          });
+          p.on("disconnected", () => alive && later(() => !p.destroyed && p.disconnected && p.reconnect(), 1000));
+        };
+        open(0);
       } else {
+        // This browser's id for this game, so the host gives our seat back after a reconnect.
+        try {
+          myId.current = localStorage.getItem("hm-play-id") || crypto.randomUUID();
+          localStorage.setItem("hm-play-id", myId.current);
+        } catch {
+          myId.current ||= crypto.randomUUID();
+        }
         const p = new PeerCtor();
         peer.current = p;
         // Data first; voice starts only after the host proves it's the owner (see onMsg).
-        const dial = () => {
-          conn.current?.close();
-          wire(p.connect(hostId, { reliable: true }));
+        let lastDial = 0;
+        dial = () => {
+          // One attempt at a time (a retry timer and the tab coming back can both ask).
+          if (!alive || p.destroyed || p.disconnected || Date.now() - lastDial < 2500) return;
+          lastDial = Date.now();
+          const old = conn.current;
+          conn.current = null;
+          old?.close();
+          const c = p.connect(hostId, { reliable: true });
+          conn.current = c;
+          wire(c);
         };
         p.on("open", dial);
+        p.on("disconnected", () => alive && later(() => !p.destroyed && p.disconnected && p.reconnect(), 1000));
         p.on("error", (e) => {
+          if (!alive) return;
           if (e.type === "peer-unavailable") {
-            setStage("waiting");
-            // The host isn't in the game: let them know once, then keep trying quietly.
-            if (awayRef.current) {
+            // The host isn't there (yet, or reloading): let them know once, then keep trying quietly.
+            if (stageRef.current === "connecting") setStage("waiting");
+            if (awayRef.current && !resumeTo.current) {
               awayRef.current();
               awayRef.current = undefined;
               setKnocked(true);
             }
-            setTimeout(() => alive && dial(), 3000);
-          } else if (conn.current?.open && ["network", "disconnected", "server-error", "socket-error", "socket-closed"].includes(e.type)) {
-            if (!p.destroyed) p.reconnect();
+            later(dial, 3000);
+          } else if (["network", "disconnected", "server-error", "socket-error", "socket-closed"].includes(e.type)) {
+            later(() => (!p.destroyed && p.disconnected ? p.reconnect() : dial()), 2000);
           } else {
             setErr("Couldn't join the game. Check your connection.");
             setStage("error");
@@ -397,12 +607,25 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         });
       }
     })();
+
+    // Guest: a dropped connection is dialled again every few seconds (the host waits for us).
+    const redial = setInterval(() => {
+      if (role === "guest" && alive && stageRef.current === "reconnecting" && !conn.current?.open) dial();
+    }, 4000);
+
     return () => {
       alive = false;
+      timers.forEach(clearTimeout);
+      clearInterval(redial);
+      document.removeEventListener("visibilitychange", back);
+      window.removeEventListener("online", back);
       if (roundTimer.current) clearTimeout(roundTimer.current);
+      if (giveUp.current) clearTimeout(giveUp.current);
       if (flush.current) clearInterval(flush.current);
       call.current?.close();
-      conn.current?.close();
+      const c = conn.current;
+      conn.current = null; // so its close doesn't count as the other player leaving
+      c?.close();
       peer.current?.destroy();
       mic.current?.getTracks().forEach((t) => t.stop());
     };
@@ -428,6 +651,12 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     }, 300);
     return () => clearInterval(t);
   }, [stage, round, role, tell, send, nextRound]);
+
+  // Host after a reload mid-round: a round that was already answered moves on by itself.
+  useEffect(() => {
+    if (role !== "host" || stage !== "playing" || !round || !game.current.guessed || roundTimer.current) return;
+    roundTimer.current = setTimeout(nextRound, 3500);
+  }, [role, stage, round, nextRound]);
 
   // Host: HIVEMIND looks at the drawing every few seconds and guesses (it never sees the word).
   useEffect(() => {
@@ -459,6 +688,17 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     }, AI_EVERY_MS);
     return () => clearInterval(t);
   }, [role, stage, tell, pushScores]);
+
+  // Host: a new game with the same friend.
+  function playAgain() {
+    game.current = { n: 0, word: "", drawer: "host", ends: 0, guessed: false, aiGot: false, aiTried: [], used: new Set(), dirty: false, scores: { ...NO_SCORES } };
+    if (roundTimer.current) clearTimeout(roundTimer.current);
+    roundTimer.current = null;
+    setFeed([]);
+    pushScores();
+    setStage("playing");
+    nextRound();
+  }
 
   function submitGuess(e: React.FormEvent) {
     e.preventDefault();
@@ -501,6 +741,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   }
 
   const invite = typeof window === "undefined" ? "" : `${location.origin}/play/${room}?from=${encodeURIComponent(myName)}`;
+  const friend = other || (role === "host" ? "your friend" : hostName);
   const status =
     stage === "connecting"
       ? "Connecting…"
@@ -510,11 +751,14 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
           : knocked
             ? `Waiting for ${hostName}… we sent them a notification, it connects as soon as they open the game.`
             : `Waiting for ${hostName} to open the game…`
-        : stage === "lobby"
-          ? `${other} is here!`
-          : stage === "error"
-            ? err
-            : "";
+        : stage === "reconnecting"
+          ? `Connection lost. Reconnecting to ${friend}… the game and the clock are paused.`
+          : stage === "lobby"
+            ? `${friend} is here!`
+            : stage === "error"
+              ? err
+              : "";
+  const board = (stage === "playing" || stage === "over" || stage === "reconnecting") && !!round;
 
   return (
     <div
@@ -553,7 +797,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         </span>
       </div>
 
-      {status && <p className={cx("text-sm", stage === "error" ? "text-alert" : "text-soft")}>{status}</p>}
+      {status && <p className={cx("text-sm", stage === "error" ? "text-alert" : stage === "reconnecting" ? "animate-pulse text-core" : "text-soft")}>{status}</p>}
 
       {role === "host" && stage === "waiting" && (
         <div className="flex flex-wrap gap-2">
@@ -584,9 +828,29 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         </button>
       )}
       {role === "guest" && stage === "lobby" && <p className="text-sm text-soft">Connected! {hostName} starts the game.</p>}
+      {(stage === "reconnecting" || stage === "error") && (wasIn || round) && (
+        <button
+          type="button"
+          onClick={() => {
+            leaving.current = true;
+            try {
+              sessionStorage.removeItem(KEY);
+            } catch {}
+            location.reload();
+          }}
+          className="self-start text-xs text-soft underline hover:text-fg"
+        >
+          Leave this game and start fresh
+        </button>
+      )}
+      {role === "host" && stage === "over" && conn.current?.open && (
+        <button type="button" onClick={playAgain} className="inline-flex items-center gap-1.5 self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink">
+          <RotateCcw size={14} /> Play again with {friend}
+        </button>
+      )}
 
-      {(stage === "playing" || stage === "over") && (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+      {board && (
+        <div className={cx("grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]", stage === "reconnecting" && "pointer-events-none opacity-60")}>
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-sm">
               {stage === "over" ? (
@@ -595,9 +859,9 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
                 <>
                   <span className="text-soft">Round {round.n}/{ROUNDS}</span>
                   <span className="mx-auto font-mono text-base tracking-widest">
-                    {drawing ? <span className="text-core">Draw: {round.word}</span> : round.word ? <span className="text-ok">{round.word}</span> : round.len}
+                    {round.drawer === me && !round.word?.length ? round.len : round.drawer === me ? <span className="text-core">Draw: {round.word}</span> : round.word ? <span className="text-ok">{round.word}</span> : round.len}
                   </span>
-                  <span className={cx("font-mono tabular-nums", left <= 10 ? "text-alert" : "text-soft")}>{left}s</span>
+                  <span className={cx("font-mono tabular-nums", left <= 10 ? "text-alert" : "text-soft")}>{stage === "reconnecting" ? "⏸" : `${left}s`}</span>
                 </>
               ) : null}
             </div>

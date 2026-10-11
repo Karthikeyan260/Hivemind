@@ -152,7 +152,7 @@ type AgentToolOut = {
   pending_delete: { id: string; title: string } | null;
 };
 type ClientTool = (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>;
-/** While a guest is talking, browser tools that save, send or change things are refused (see lib/agents/guest.ts). */
+/** While a guest is talking, a web search saves nothing (the refusals themselves are in beforeTool). */
 let guestActive: () => boolean = () => false;
 /** Null when the owner's voice isn't needed for this tool or matched; else why it was refused. */
 let ownerCheck: (name: string) => Promise<string | null> = () => Promise.resolve(null);
@@ -160,11 +160,7 @@ function guarded(tools: Record<string, ClientTool>): Record<string, ClientTool> 
   return Object.fromEntries(
     Object.entries(tools).map(([name, run]) => [
       name,
-      async (args: Record<string, unknown>) => {
-        const refused = guestActive() ? guestCheck(name) : null;
-        if (refused) return { error: refused };
-        const notOwner = name === "guest_mode" ? null : await ownerCheck(name);
-        if (notOwner) return { error: notOwner };
+      (args: Record<string, unknown>) => {
         // A guest can search the web, but nothing is saved from it.
         return run(guestActive() && name === "web_search" ? { ...args, save: false } : args);
       },
@@ -388,15 +384,19 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         window.dispatchEvent(new Event(BRAIN_CHANGED));
       },
       onError: setError,
-      serverTool: async (name, args) => {
-        const st = agentState.current;
+      // Every tool, whoever runs it: a guest can only read and look things up, and risky actions
+      // (or, after a guest, any saving) need the owner's own voice.
+      beforeTool: async (name) => {
         if (guestRef.current) {
           const refused = guestCheck(name);
           if (refused) return { error: refused };
         }
-        // Risky actions (and, after a guest, any saving) need the owner's own voice.
+        if (name === "guest_mode") return null; // its "end" checks the voice itself
         const notOwner = await ownerCheck(name);
-        if (notOwner) return { error: notOwner };
+        return notOwner ? { error: notOwner } : null;
+      },
+      serverTool: async (name, args) => {
+        const st = agentState.current;
         // Approving a browser step needs the owner's own words this turn, never an app update or page text.
         if (name === "web_task_answer" && args.decision === "approve" && !/\b(approve[ds]?|yes|yeah|yep|go ahead|do it|submit|confirm|ok(ay)?|sure|proceed|haan|seri|sari)\b/i.test(turn.current.q)) {
           return { error: "Only the owner can approve. Tell them the step and ask 'Should I approve it?', then wait for their answer." };

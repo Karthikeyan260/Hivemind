@@ -21,6 +21,8 @@ type Handlers = {
   clientTools?: Record<string, (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>>;
   /** Every other tool: one of the chat agents' tools, run on the server. */
   serverTool?: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  /** Runs before EVERY tool (built-in, page or server): a refusal stops it (guest mode, voiceprint). */
+  beforeTool?: (name: string, args: Record<string, unknown>) => Promise<Record<string, unknown> | null>;
 };
 
 // Captures mic audio as Float32 frames on the audio thread.
@@ -70,6 +72,8 @@ export class LiveVoice {
   private modelSpeaking = false;
   private state: LiveState = "off";
   private closedByUs = false;
+  /** Changes on every start and stop, so a start that was stopped half-way knows to give up. */
+  private run = 0;
   /** What the person said since HIVEMIND last spoke (16 kHz, ±32768), for the voiceprint check. Stays in this tab. */
   private heard: Float32Array[] = [];
   private heardLen = 0;
@@ -89,13 +93,21 @@ export class LiveVoice {
 
   async start() {
     if (this.active) return;
+    const run = ++this.run;
+    // Stopped (or restarted) while we were waiting: drop what this start opened, quietly.
+    const gone = () => run !== this.run;
     this.closedByUs = false;
     this.set("connecting");
     try {
       // Mic first: the permission prompt must come from the user's click.
-      this.mic = await navigator.mediaDevices.getUserMedia({
+      const mic = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
       });
+      if (gone()) {
+        mic.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      this.mic = mic;
       this.outCtx = new AudioContext({ sampleRate: 24000 });
       this.outAnalyser = this.outCtx.createAnalyser();
       this.outAnalyser.fftSize = 256;
@@ -105,33 +117,46 @@ export class LiveVoice {
       const sdk = import("@google/genai");
       sdk.catch(() => {}); // awaited below; this only stops an early token failure leaving it unhandled
       const res = await fetch("/api/live/token", { method: "POST" });
+      if (gone()) return;
       if (!res.ok) throw new Error(res.status === 401 ? "Locked: unlock HIVEMIND first." : "Couldn't start a live session.");
       const { token, model, config, myVoice } = (await res.json()) as { token: string; model: string; config: LiveConnectConfig; myVoice?: boolean };
       this.muted = !!myVoice;
 
       const { GoogleGenAI } = await sdk;
+      if (gone()) return;
       const ai = new GoogleGenAI({ apiKey: token, httpOptions: { apiVersion: "v1alpha" } });
-      this.session = await ai.live.connect({
+      const session = await ai.live.connect({
         model,
         config,
         callbacks: {
           onmessage: (m) => this.onMessage(m),
           onerror: () => this.h.onError("Live connection error."),
           onclose: (e) => {
+            if (gone()) return; // a session from a start that was already abandoned
             if (!this.closedByUs && this.state !== "off") this.h.onError(e.reason ? `Live session ended: ${e.reason}` : "Live session ended.");
             this.teardown();
           },
         },
       });
+      if (gone()) {
+        try {
+          session.close();
+        } catch {}
+        return;
+      }
+      this.session = session;
       await this.startMic();
+      if (gone()) return;
       this.set("listening");
     } catch (err) {
+      if (gone()) return;
       this.h.onError(err instanceof Error ? (err.name === "NotAllowedError" ? "Microphone permission is blocked for this site." : err.message) : "Couldn't start voice.");
       this.teardown();
     }
   }
 
   stop() {
+    this.run++;
     this.closedByUs = true;
     try {
       this.session?.close();
@@ -165,11 +190,15 @@ export class LiveVoice {
   }
 
   private async startMic() {
+    const mic = this.mic;
+    if (!mic) return;
     this.inCtx = new AudioContext({ sampleRate: 16000 });
     const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
     await this.inCtx.audioWorklet.addModule(url);
     URL.revokeObjectURL(url);
-    const src = this.inCtx.createMediaStreamSource(this.mic!);
+    // The session may have ended while the worklet loaded.
+    if (!this.inCtx || this.mic !== mic) return;
+    const src = this.inCtx.createMediaStreamSource(mic);
     this.inAnalyser = this.inCtx.createAnalyser();
     this.inAnalyser.fftSize = 256;
     const node = new AudioWorkletNode(this.inCtx, "hive-capture");
@@ -331,6 +360,8 @@ export class LiveVoice {
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       return j;
     };
+    const refused = await this.h.beforeTool?.(name, args);
+    if (refused) return refused;
     const client = this.h.clientTools?.[name];
     if (client) return await client(args);
     if (name === "search_brain") {
