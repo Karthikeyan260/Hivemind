@@ -26,7 +26,7 @@ export const POST = handle(async (req: Request) => {
             role: "user",
             parts: [
               {
-                text: `You're playing Pictionary in Chennai. Guess what this (possibly unfinished) drawing shows: an everyday object, animal, food, place or thing from Tamil Nadu life. Answer with the most likely thing in 1-3 words, in English (Tamil things by their usual name, e.g. "idli", "auto rickshaw", "kolam").${tried.length ? ` Already guessed wrong: ${tried.join(", ")}. Guess something different.` : ""} If it's still too empty to tell, answer "???". Return JSON only: {"guess": "..."}`,
+                text: `You're playing Pictionary in Chennai. Guess what this (possibly unfinished) drawing shows: an everyday object, animal, food, place, person, action (like "swimming") or symbol, often from Tamil Nadu life. Answer with the most likely thing in 1-3 words, in English (Tamil things by their usual name, e.g. "idli", "auto rickshaw", "kolam").${tried.length ? ` Already guessed wrong: ${tried.join(", ")}. Guess something different.` : ""} If it's still too empty to tell, answer "???". Return JSON only: {"guess": "..."}`,
               },
               { inlineData: { mimeType: image.slice(5, image.indexOf(";")), data } },
             ],

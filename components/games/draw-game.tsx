@@ -18,13 +18,67 @@ import { checkHost, proveHost } from "@/lib/peer-auth";
  * the host sends the whole game back to the friend when they meet again.
  */
 const WORDS = [
-  "idli", "dosa", "filter coffee", "auto rickshaw", "kolam", "banana leaf", "coconut tree", "temple", "beach", "umbrella",
-  "cricket bat", "kite", "bicycle", "elephant", "mango", "fish", "sun", "house", "train", "bus", "laptop", "guitar", "moon",
-  "rain", "flower", "cat", "dog", "cow", "parrot", "chair", "clock", "spectacles", "shoe", "mobile phone", "book", "rainbow",
-  "tea cup", "rocket", "aeroplane", "boat", "mountain", "tree", "ceiling fan", "bulb", "key", "heart", "jasmine", "drum",
-  "lamp", "pot", "snake", "butterfly", "star", "bridge", "football", "cake", "ice cream", "ladder", "tiger", "peacock",
+  // food
+  "idli", "dosa", "filter coffee", "vada", "biryani", "parotta", "samosa", "banana leaf", "ice cream", "cake", "pizza", "burger",
+  "noodles", "egg", "bread", "sandwich", "popcorn", "lollipop", "donut", "watermelon", "pineapple", "grapes", "apple", "banana",
+  "mango", "coconut", "carrot", "tomato", "onion", "chilli", "corn", "jalebi", "ladoo", "tea cup", "juice", "lemon", "cheese",
+  // home
+  "chair", "table", "bed", "pillow", "ceiling fan", "bulb", "lamp", "clock", "door", "window", "key", "lock", "ladder", "bucket",
+  "broom", "mirror", "comb", "toothbrush", "soap", "towel", "sofa", "television", "remote", "fridge", "mixie", "pressure cooker",
+  "spoon", "fork", "knife", "plate", "pot", "kettle", "candle", "umbrella", "scissors", "pencil", "pen", "book", "bag", "box",
+  // things
+  "laptop", "mobile phone", "headphones", "camera", "spectacles", "watch", "ring", "crown", "shoe", "slipper", "hat", "shirt",
+  "saree", "tie", "sock", "glove", "balloon", "gift", "kite", "ball", "football", "cricket bat", "guitar", "drum", "flute",
+  "violin", "piano", "trophy", "medal", "flag", "map", "envelope", "letter", "calendar", "battery", "magnet", "rope", "hammer",
+  "screwdriver", "paint brush", "dice", "chess", "puzzle", "teddy bear", "robot", "rocket", "telescope", "microscope", "anchor",
+  // getting around
+  "auto rickshaw", "bicycle", "bus", "train", "car", "truck", "aeroplane", "helicopter", "boat", "ship", "submarine", "tractor",
+  "scooter", "ambulance", "fire engine", "traffic light", "bridge", "road", "tunnel", "parachute", "hot air balloon",
+  // nature
+  "sun", "moon", "star", "cloud", "rain", "rainbow", "lightning", "snowman", "mountain", "volcano", "river", "waterfall", "beach",
+  "island", "tree", "coconut tree", "palm tree", "flower", "rose", "lotus", "jasmine", "leaf", "cactus", "mushroom", "fire",
+  "desert", "cave", "wave", "earth",
+  // animals
+  "cat", "dog", "cow", "goat", "elephant", "tiger", "lion", "monkey", "horse", "camel", "giraffe", "zebra", "kangaroo", "panda",
+  "rabbit", "mouse", "snake", "frog", "turtle", "crocodile", "fish", "shark", "whale", "octopus", "crab", "parrot", "peacock",
+  "crow", "owl", "duck", "hen", "penguin", "butterfly", "bee", "ant", "spider", "mosquito", "snail", "dinosaur", "dragon",
+  // places and culture
+  "temple", "church", "mosque", "house", "school", "hospital", "castle", "tent", "lighthouse", "windmill", "pyramid", "kolam",
+  "rangoli", "diya", "pongal pot", "jallikattu", "cinema", "stadium", "market", "zoo", "park", "swing", "slide", "well",
+  // people and actions
+  "doctor", "police", "farmer", "teacher", "pilot", "astronaut", "king", "queen", "pirate", "ghost", "alien", "clown",
+  "dancing", "sleeping", "swimming", "running", "cooking", "fishing", "singing", "crying", "laughing", "selfie",
+  // shapes and symbols
+  "heart", "smile", "arrow", "circle", "triangle", "spiral", "music note", "question mark", "light bulb idea", "thumbs up",
 ];
-const ROUNDS = 6;
+/** Rounds to choose from (even, so both players draw the same number of times). */
+const ROUND_CHOICES = [2, 4, 6, 8, 10];
+const DEFAULT_ROUNDS = 6;
+/** Words drawn recently on this device, kept out of new games until the list runs low. */
+const HISTORY_KEY = "hm-draw-used";
+const HISTORY_MAX = 200;
+
+/** A word for the next round: not used in this game, and not one of the recently drawn ones. */
+function pickWord(usedThisGame: Set<string>) {
+  let history: string[] = [];
+  try {
+    history = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]") as string[];
+  } catch {}
+  const recent = new Set(history);
+  let pool = WORDS.filter((w) => !usedThisGame.has(w) && !recent.has(w));
+  // Played nearly everything: forget the older half of the history.
+  if (pool.length < 10) {
+    history = history.slice(-Math.floor(HISTORY_MAX / 2));
+    const keep = new Set(history);
+    pool = WORDS.filter((w) => !usedThisGame.has(w) && !keep.has(w));
+  }
+  if (!pool.length) pool = WORDS.filter((w) => !usedThisGame.has(w));
+  const w = pool[Math.floor(Math.random() * pool.length)] ?? WORDS[0];
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify([...history.filter((x) => x !== w), w].slice(-HISTORY_MAX)));
+  } catch {}
+  return w;
+}
 const ROUND_S = 80;
 const AI_EVERY_MS = 6500;
 const COLORS = ["#111111", "#e5484d", "#2f7fe8", "#2fa34a", "#f59e0b", "#8b5cf6"];
@@ -36,12 +90,12 @@ const SAVED_FOR_MS = 45 * 60_000;
 type Who = "host" | "guest";
 type Stage = "connecting" | "waiting" | "lobby" | "playing" | "reconnecting" | "over" | "error";
 type Stroke = { pts: [number, number][]; color: string; w: number };
-type Round = { n: number; drawer: Who; word?: string; len: string; ends: number };
+type Round = { n: number; total: number; drawer: Who; word?: string; len: string; ends: number };
 type Line = { who: string; text: string; kind: "guess" | "ok" | "ai" | "info" };
 type Scores = { host: number; guest: number; ai: number };
 type Msg =
   | { t: "hello"; name: string; id?: string }
-  | { t: "round"; n: number; drawer: Who; word?: string; len: string; ms: number }
+  | { t: "round"; n: number; total: number; drawer: Who; word?: string; len: string; ms: number }
   | { t: "stroke"; s: Stroke }
   | { t: "clear" }
   | { t: "guess"; text: string }
@@ -54,7 +108,7 @@ type Msg =
   // The guest checks the host is the owner's real browser before anything else (see lib/peer-auth).
   | { t: "challenge"; nonce: string }
   | { t: "proof"; proof: string };
-type Game = { n: number; word: string; drawer: Who; ends: number; guessed: boolean; aiGot: boolean; aiTried: string[]; used: Set<string>; dirty: boolean; scores: Scores };
+type Game = { n: number; rounds: number; word: string; drawer: Who; ends: number; guessed: boolean; aiGot: boolean; aiTried: string[]; used: Set<string>; dirty: boolean; scores: Scores };
 type Saved = { at: number; stage: Stage; other: string; guestId?: string; round: Round | null; scores: Scores; feed: Line[]; strokes: Stroke[]; game?: Omit<Game, "used" | "dirty"> & { used: string[] } };
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim().replace(/s$/, "");
@@ -62,6 +116,7 @@ const blanks = (w: string) => w.replace(/[a-z]/gi, "_ ").trim();
 const clip = (v: unknown, n: number) => String(v ?? "").slice(0, n);
 const cleanName = (v: unknown) => clip(v, 20).replace(/[^\p{L}\p{N} .'-]/gu, "").trim();
 const NO_SCORES: Scores = { host: 0, guest: 0, ai: 0 };
+const totalOf = (n: unknown) => (typeof n === "number" && n >= 1 && n <= 20 ? Math.round(n) : DEFAULT_ROUNDS);
 /** A stroke from the other player: real points in the canvas, a known colour, a sane size. */
 const okStroke = (st: unknown): st is Stroke => {
   const x = st as Stroke;
@@ -110,6 +165,20 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   const aiTalksRef = useRef(true);
   const [copied, setCopied] = useState(false);
   const [knocked, setKnocked] = useState(false);
+  const [rounds, setRounds] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem("hm-draw-rounds"));
+      return ROUND_CHOICES.includes(n) ? n : DEFAULT_ROUNDS;
+    } catch {
+      return DEFAULT_ROUNDS;
+    }
+  });
+  const chooseRounds = (n: number) => {
+    setRounds(n);
+    try {
+      localStorage.setItem("hm-draw-rounds", String(n));
+    } catch {}
+  };
   const awayRef = useRef(onHostAway);
 
   const canvas = useRef<HTMLCanvasElement | null>(null);
@@ -133,7 +202,9 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   const myId = useRef("");
   // Host-only game state.
   const game = useRef<Game>(
-    saved?.game ? { ...saved.game, used: new Set(saved.game.used), dirty: false } : { n: 0, word: "", drawer: "host", ends: 0, guessed: false, aiGot: false, aiTried: [], used: new Set(), dirty: false, scores: { ...NO_SCORES } },
+    saved?.game
+      ? { ...saved.game, rounds: saved.game.rounds || DEFAULT_ROUNDS, used: new Set(saved.game.used), dirty: false }
+      : { n: 0, rounds: DEFAULT_ROUNDS, word: "", drawer: "host", ends: 0, guessed: false, aiGot: false, aiTried: [], used: new Set(), dirty: false, scores: { ...NO_SCORES } },
   );
   const stageRef = useRef(stage);
   useEffect(() => {
@@ -167,7 +238,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
       scores: l.scores,
       feed: l.feed.slice(-30),
       strokes: strokes.current,
-      ...(role === "host" ? { game: { n: g.n, word: g.word, drawer: g.drawer, ends: g.ends, guessed: g.guessed, aiGot: g.aiGot, aiTried: g.aiTried, used: [...g.used], scores: g.scores } } : {}),
+      ...(role === "host" ? { game: { n: g.n, rounds: g.rounds, word: g.word, drawer: g.drawer, ends: g.ends, guessed: g.guessed, aiGot: g.aiGot, aiTried: g.aiTried, used: [...g.used], scores: g.scores } } : {}),
     };
     if (s.stage === "error" || s.stage === "connecting" || s.stage === "waiting") return;
     try {
@@ -281,15 +352,14 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   // Host: start a round.
   const nextRound = useCallback(() => {
     const g = game.current;
-    if (g.n >= ROUNDS) {
+    if (g.n >= g.rounds) {
       setStage("over");
       send({ t: "over", scores: g.scores });
       return;
     }
     g.n += 1;
     g.drawer = g.n % 2 === 1 ? "host" : "guest";
-    let w = WORDS[Math.floor(Math.random() * WORDS.length)];
-    while (g.used.has(w)) w = WORDS[Math.floor(Math.random() * WORDS.length)];
+    const w = pickWord(g.used);
     g.used.add(w);
     g.word = w;
     g.ends = Date.now() + ROUND_S * 1000;
@@ -298,9 +368,9 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     g.aiTried = [];
     g.dirty = false;
     clearCanvas();
-    setRound({ n: g.n, drawer: g.drawer, word: g.drawer === "host" ? w : undefined, len: blanks(w), ends: g.ends });
+    setRound({ n: g.n, total: g.rounds, drawer: g.drawer, word: g.drawer === "host" ? w : undefined, len: blanks(w), ends: g.ends });
     send({ t: "clear" });
-    send({ t: "round", n: g.n, drawer: g.drawer, word: g.drawer === "guest" ? w : undefined, len: blanks(w), ms: ROUND_S * 1000 });
+    send({ t: "round", n: g.n, total: g.rounds, drawer: g.drawer, word: g.drawer === "guest" ? w : undefined, len: blanks(w), ms: ROUND_S * 1000 });
     tell({ who: "", text: `Round ${g.n}: ${g.drawer === "host" ? hostName : other || "Guest"} draws`, kind: "info" });
   }, [clearCanvas, send, tell, hostName, other]);
 
@@ -350,7 +420,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
       c.send({
         t: "sync",
         stage: st === "over" ? "over" : st === "playing" ? "playing" : "lobby",
-        round: r ? { n: r.n, drawer: r.drawer, word: showWord ? g.word : undefined, len: r.len, ms: Math.max(0, g.ends - Date.now()) } : null,
+        round: r ? { n: r.n, total: g.rounds, drawer: r.drawer, word: showWord ? g.word : undefined, len: r.len, ms: Math.max(0, g.ends - Date.now()) } : null,
         scores: g.scores,
         feed: latest.current.feed.slice(-30),
         strokes: strokes.current,
@@ -443,11 +513,11 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         if (okScores(m.scores)) setScores(m.scores);
         setFeed(Array.isArray(m.feed) ? m.feed.filter(okLine).slice(-30) : []);
         const r = m.round;
-        setRound(r && Number.isFinite(r.n) ? { n: r.n, drawer: r.drawer === "guest" ? "guest" : "host", word: r.word ? clip(r.word, 40) : undefined, len: clip(r.len, 80), ends: Date.now() + Math.min(Math.max(0, Number(r.ms) || 0), ROUND_S * 1000) } : null);
+        setRound(r && Number.isFinite(r.n) ? { n: r.n, total: totalOf(r.total), drawer: r.drawer === "guest" ? "guest" : "host", word: r.word ? clip(r.word, 40) : undefined, len: clip(r.len, 80), ends: Date.now() + Math.min(Math.max(0, Number(r.ms) || 0), ROUND_S * 1000) } : null);
         setStage(m.stage === "playing" && r ? "playing" : m.stage === "over" ? "over" : "lobby");
       } else if (m.t === "round") {
         setStage("playing");
-        setRound({ n: m.n, drawer: m.drawer, word: m.word, len: m.len, ends: Date.now() + m.ms });
+        setRound({ n: m.n, total: totalOf(m.total), drawer: m.drawer, word: m.word, len: m.len, ends: Date.now() + m.ms });
       } else if (m.t === "stroke") {
         const last = strokes.current[strokes.current.length - 1];
         // Pieces of the same stroke arrive in order; join them.
@@ -691,7 +761,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
 
   // Host: a new game with the same friend.
   function playAgain() {
-    game.current = { n: 0, word: "", drawer: "host", ends: 0, guessed: false, aiGot: false, aiTried: [], used: new Set(), dirty: false, scores: { ...NO_SCORES } };
+    game.current = { n: 0, rounds, word: "", drawer: "host", ends: 0, guessed: false, aiGot: false, aiTried: [], used: new Set(), dirty: false, scores: { ...NO_SCORES } };
     if (roundTimer.current) clearTimeout(roundTimer.current);
     roundTimer.current = null;
     setFeed([]);
@@ -815,16 +885,18 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         </div>
       )}
 
+      {role === "host" && (stage === "lobby" || (stage === "over" && conn.current?.open)) && <RoundPicker value={rounds} onChange={chooseRounds} />}
       {role === "host" && stage === "lobby" && (
         <button
           type="button"
           onClick={() => {
+            game.current.rounds = rounds;
             setStage("playing");
             nextRound();
           }}
           className="self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink"
         >
-          Start game ({ROUNDS} rounds)
+          Start game ({rounds} rounds)
         </button>
       )}
       {role === "guest" && stage === "lobby" && <p className="text-sm text-soft">Connected! {hostName} starts the game.</p>}
@@ -857,7 +929,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
                 <span className="font-medium">Game over!</span>
               ) : round ? (
                 <>
-                  <span className="text-soft">Round {round.n}/{ROUNDS}</span>
+                  <span className="text-soft">Round {round.n}/{round.total}</span>
                   <span className="mx-auto font-mono text-base tracking-widest">
                     {round.drawer === me && !round.word?.length ? round.len : round.drawer === me ? <span className="text-core">Draw: {round.word}</span> : round.word ? <span className="text-ok">{round.word}</span> : round.len}
                   </span>
@@ -922,6 +994,28 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Host: how many rounds (each player draws half of them). */
+function RoundPicker({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-sm" role="radiogroup" aria-label="Rounds">
+      <span className="mr-1 text-soft">Rounds:</span>
+      {ROUND_CHOICES.map((n) => (
+        <button
+          key={n}
+          type="button"
+          role="radio"
+          aria-checked={value === n}
+          onClick={() => onChange(n)}
+          className={cx("min-w-9 rounded-full border px-3 py-1 font-mono text-xs", value === n ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}
+        >
+          {n}
+        </button>
+      ))}
+      <span className="ml-1 text-xs text-faint">each of you draws {value / 2}</span>
     </div>
   );
 }
