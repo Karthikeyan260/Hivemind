@@ -1,9 +1,10 @@
-import { Music2, PenLine } from "lucide-react";
+import { Music2, PenLine, Dices } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 
 const GAMES = [
   { href: "/games/paattu", icon: Music2, title: "Paattu Quiz", who: "1 player", about: "Hear a few seconds of a Tamil song and guess the film. Anirudh, Rahman, Ilaiyaraaja, Vijay hits and more." },
+  { href: "/games/ludo", icon: Dices, title: "Ludo", who: "2 players online (+ HIVEMIND bots)", about: "Classic Ludo with a friend on their own phone through your link, voice on. Add two HIVEMIND bots for a full 4-player board, or play quick with 2 tokens each." },
   { href: "/games/draw", icon: PenLine, title: "Draw & Guess", who: "2 players + HIVEMIND", about: "Send a friend a link. One draws, the other guesses, and HIVEMIND guesses too from the drawing. Voice on, so you can laugh at each other's art." },
 ];
 

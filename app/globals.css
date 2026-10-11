@@ -769,3 +769,27 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .palace-rise, .palace-follow, .palace-panel { animation: none; }
 }
+
+/* Ludo: a token hops square to square (two identical names so each step restarts the animation),
+   and the dice tumbles. */
+@keyframes ludo-hop-a {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  45% { transform: translate(-50%, -95%) scale(1.22); }
+}
+@keyframes ludo-hop-b {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  45% { transform: translate(-50%, -95%) scale(1.22); }
+}
+@keyframes ludo-tumble {
+  0% { transform: rotate(-35deg) scale(0.85); }
+  50% { transform: rotate(20deg) scale(1.08); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+@keyframes ludo-knock {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  30% { transform: translate(-50%, -50%) scale(1.5) rotate(25deg); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ludo-anim { animation: none !important; }
+}
