@@ -34,7 +34,7 @@ const okState = (s: unknown): s is LudoState => {
   return !!x && Array.isArray(x.seats) && x.seats.length >= 2 && x.seats.length <= 4 && typeof x.tokens === "object" && Number.isInteger(x.turn) && Array.isArray(x.log);
 };
 
-export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: { role: "host" | "guest"; room: string; myName: string; hostName?: string; onHostAway?: () => void }) {
+export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, solo = false }: { role: "host" | "guest"; room: string; myName: string; hostName?: string; onHostAway?: () => void; /** Just the owner against HIVEMIND's bots, on this device. */ solo?: boolean }) {
   const me = role; // seat id
   const sRef = useRef<LudoState | null>(null);
   const publishRef = useRef<(s: LudoState) => void>(() => {});
@@ -58,6 +58,7 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
     accept: okState,
     // The friend's requests, as the friend's seat only.
     onAction: (a) => apply((s) => (a.type === "roll" ? roll(s, "guest", dice()) : a.type === "move" && Number.isInteger(a.token) ? move(s, "guest", a.token) : s)),
+    solo,
   });
   const s = state;
   useEffect(() => {
@@ -71,7 +72,11 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
   const live = connected;
 
   function start() {
-    const players = bots
+    const players = solo
+      ? bots
+        ? [{ id: "host", name: myName }, { id: "bot1", name: "HIVEMIND", bot: true }, { id: "bot2", name: "HIVEMIND 2", bot: true }, { id: "bot3", name: "HIVEMIND 3", bot: true }]
+        : [{ id: "host", name: myName }, { id: "bot1", name: "HIVEMIND", bot: true }]
+      : bots
       ? [{ id: "host", name: myName }, { id: "bot1", name: "HIVEMIND", bot: true }, { id: "guest", name: other || "Friend" }, { id: "bot2", name: "HIVEMIND 2", bot: true }]
       : [{ id: "host", name: myName }, { id: "guest", name: other || "Friend" }];
     const g = newGame(players, quick ? 2 : 4);
@@ -92,14 +97,14 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
   useEffect(() => {
     if (role !== "host" || !s?.over) return;
     const place = s.finished.indexOf("host") + 1;
-    recordResult(`ludo-${room}-${gameKey(s.seq, ...s.finished)}`, {
+    recordResult(`ludo-${solo ? "solo" : room}-${gameKey(s.seq, ...s.finished)}`, {
       game: "ludo",
-      mode: "friend",
+      mode: solo ? "bot" : "friend",
       outcome: place === 1 ? "win" : "loss",
-      vs: other || "Friend",
+      vs: solo ? "HIVEMIND" : other || "Friend",
       detail: place ? `#${place} of ${s.seats.length}` : undefined,
     });
-  }, [role, room, s, other]);
+  }, [role, room, s, other, solo]);
 
   const myTurn = !!s && !s.over && s.seats[s.turn]?.id === me;
   const canRoll = myTurn && !s!.rolled && live;
@@ -138,7 +143,9 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
           : stage === "error"
             ? err
             : !s
-              ? role === "host"
+              ? solo
+                ? "You against HIVEMIND. Choose the game and start."
+                : role === "host"
                 ? `${other} is here! Choose the game and start.`
                 : `Connected! ${hostName} is setting up the game.`
               : s.over
@@ -163,7 +170,7 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
             <b className="font-mono text-xs tabular-nums">{s.tokens[seat.id].filter((p) => p >= 56).length}/{s.tokens[seat.id].length}</b>
           </span>
         ))}
-        <span className="ml-auto">
+        <span className={cx("ml-auto", solo && "hidden")}>
           {voiceOn ? (
             <button type="button" onClick={toggleMute} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", muted ? "border-alert text-alert" : "border-ok/50 text-ok")}>
               {muted ? <MicOff size={13} /> : <Mic size={13} />} {muted ? "Muted" : "Voice on"}
@@ -184,10 +191,10 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-soft">Players:</span>
             <Choice on={!bots} onClick={() => setBots(false)}>
-              Just us two
+              {solo ? "Me vs HIVEMIND" : "Just us two"}
             </Choice>
             <Choice on={bots} onClick={() => setBots(true)}>
-              + 2 HIVEMIND bots
+              {solo ? "Me vs 3 HIVEMIND bots" : "+ 2 HIVEMIND bots"}
             </Choice>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -200,7 +207,7 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
             </Choice>
           </div>
           <button type="button" onClick={start} className="inline-flex items-center gap-1.5 self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink">
-            {s?.over ? <RotateCcw size={14} /> : null} {s?.over ? `Play again with ${other}` : "Start Ludo"}
+            {s?.over ? <RotateCcw size={14} /> : null} {s?.over ? (solo ? "Play again" : `Play again with ${other}`) : "Start Ludo"}
           </button>
         </div>
       )}

@@ -14,6 +14,6 @@ export const POST = handle(async (req: Request) => {
   const supabase = db();
   if (!(await claimKnock(supabase, room))) return NextResponse.json({ knocked: false });
   const who = name?.replace(/[^\p{L}\p{N} .'-]/gu, "").trim() || "A friend";
-  const sent = await notify(supabase, { title: `🎮 ${who} wants to play ${game === "ludo" ? "Ludo" : game === "cards" ? "Colour Clash" : game === "chess" ? "chess" : "Draw & Guess"}`, body: "Tap to open the game: they're waiting.", url: game === "chess" ? "/games/chess?friend=1" : `/games/${game}`, tag: "game-knock", sticky: true });
+  const sent = await notify(supabase, { title: `🎮 ${who} wants to play ${game === "ludo" ? "Ludo" : game === "cards" ? "Colour Clash" : game === "chess" ? "chess" : "Draw & Guess"}`, body: "Tap to open the game: they're waiting.", url: `/games/${game}?friend=1`, tag: "game-knock", sticky: true });
   return NextResponse.json({ knocked: sent > 0 });
 });

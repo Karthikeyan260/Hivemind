@@ -66,12 +66,15 @@ export function CardsGame({
   myName,
   hostName = "Host",
   onHostAway,
+  solo = false,
 }: {
   role: "host" | "guest";
   room: string;
   myName: string;
   hostName?: string;
   onHostAway?: () => void;
+  /** Just the owner against HIVEMIND's bots, on this device. */
+  solo?: boolean;
 }) {
   const me = role;
   const sRef = useRef<CardsState | null>(null);
@@ -117,6 +120,7 @@ export function CardsGame({
     accept: okState,
     viewForGuest: (s) => viewFor(s, "guest"),
     onAction: (a) => act("guest", a),
+    solo,
   });
   const {
     stage,
@@ -141,7 +145,19 @@ export function CardsGame({
   const [bots, setBots] = useState(false);
   const [picking, setPicking] = useState<number | null>(null);
   function start() {
-    const players = bots
+    const players = solo
+      ? bots
+        ? [
+            { id: "host", name: myName },
+            { id: "bot1", name: "HIVEMIND", bot: true },
+            { id: "bot2", name: "HIVEMIND 2", bot: true },
+            { id: "bot3", name: "HIVEMIND 3", bot: true },
+          ]
+        : [
+            { id: "host", name: myName },
+            { id: "bot1", name: "HIVEMIND", bot: true },
+          ]
+      : bots
       ? [
           { id: "host", name: myName },
           { id: "bot1", name: "HIVEMIND", bot: true },
@@ -191,14 +207,14 @@ export function CardsGame({
   useEffect(() => {
     if (role !== "host" || !s?.winner) return;
     const bots = s.seats.some((x) => x.bot);
-    recordResult(`cards-${room}-${gameKey(s.seq, s.winner, ...s.seats.map((x) => x.id))}`, {
+    recordResult(`cards-${solo ? "solo" : room}-${gameKey(s.seq, s.winner, ...s.seats.map((x) => x.id))}`, {
       game: "cards",
-      mode: "friend",
+      mode: solo ? "bot" : "friend",
       outcome: s.winner === "host" ? "win" : "loss",
-      vs: other || "Friend",
+      vs: solo ? "HIVEMIND" : other || "Friend",
       detail: s.winner === "host" ? (bots ? "with HIVEMIND bots" : undefined) : `${s.seats.find((x) => x.id === s.winner)?.name ?? "?"} won`,
     });
-  }, [role, room, s, other]);
+  }, [role, room, s, other, solo]);
 
   const myTurn = !!s && !s.winner && s.seats[s.turn]?.id === me && connected;
   const mine = s?.hands[me] ?? [];
@@ -229,7 +245,9 @@ export function CardsGame({
           : stage === "error"
             ? err
             : !s
-              ? role === "host"
+              ? solo
+                ? "You against HIVEMIND. Choose and deal."
+                : role === "host"
                 ? `${other} is here! Choose and start.`
                 : `Connected! ${hostName} is setting up the game.`
               : s.winner
@@ -275,7 +293,7 @@ export function CardsGame({
         <span className="bg-gradient-to-r from-[#e5484d] via-[#f5b400] to-[#2f7fe8] bg-clip-text text-lg font-black italic tracking-tight text-transparent">
           COLOUR CLASH
         </span>
-        <span className="ml-auto">
+        <span className={cx("ml-auto", solo && "hidden")}>
           {voiceOn ? (
             <button
               type="button"
@@ -337,7 +355,7 @@ export function CardsGame({
                     : "border-line text-soft hover:text-fg",
                 )}
               >
-                {b ? "🤖 + 2 HIVEMIND bots" : "👥 Just us two"}
+                {solo ? (b ? "🤖🤖🤖 vs 3 HIVEMIND bots" : "🤖 Just me vs HIVEMIND") : b ? "🤖 + 2 HIVEMIND bots" : "👥 Just us two"}
               </button>
             ))}
           </div>
@@ -347,7 +365,7 @@ export function CardsGame({
             className="inline-flex items-center gap-2 self-start rounded-full bg-gradient-to-r from-[#e5484d] via-[#f5b400] to-[#2fa34a] px-6 py-2.5 text-base font-black uppercase tracking-wide text-black shadow-lg transition-transform hover:scale-105"
           >
             {s?.winner ? <RotateCcw size={16} /> : <Layers size={16} />}{" "}
-            {s?.winner ? `Play again with ${other}` : "Deal the cards"}
+            {s?.winner ? (solo ? "Play again" : `Play again with ${other}`) : "Deal the cards"}
           </button>
         </div>
       )}

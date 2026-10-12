@@ -11,6 +11,9 @@ import { checkHost, proveHost, type PeerKind } from "@/lib/peer-auth";
  * just needs the latest state sent again. Also: the friend checks the host is the owner's real
  * browser (lib/peer-auth), voice chat rides along, both sides reconnect on their own, and each side
  * keeps the game in its tab (sessionStorage) so a reload carries on.
+ *
+ * Solo (`solo: true`): the same game against HIVEMIND's bots on this device only. No connection,
+ * no mic; the game is kept on the device (localStorage) for a week, so closing the app carries on.
  */
 export type PeerStage = "connecting" | "waiting" | "connected" | "reconnecting" | "error";
 type Wire<S, A> =
@@ -39,21 +42,26 @@ type Opts<S, A> = {
   accept?: (s: unknown) => s is S;
   /** Host: what the friend may see of the game (e.g. not the others' cards). The host keeps it all. */
   viewForGuest?: (s: S) => S;
+  /** Just the owner and HIVEMIND's bots, no friend: nothing goes over the network. */
+  solo?: boolean;
 };
 
+const SOLO_KEEP_MS = 7 * 24 * 60 * 60_000;
+const store = (solo?: boolean) => (solo ? localStorage : sessionStorage);
+
 export function usePeerGame<S, A>(o: Opts<S, A>) {
-  const KEY = `hm-${o.kind}-${o.role}-${o.room}`;
+  const KEY = o.solo ? `hm-${o.kind}-solo` : `hm-${o.kind}-${o.role}-${o.room}`;
   const [saved] = useState(() => {
     try {
-      const v = JSON.parse(sessionStorage.getItem(KEY) ?? "null") as { at: number; state: S | null; other: string; guestId?: string } | null;
-      return v && Date.now() - v.at < KEEP_MS ? v : null;
+      const v = JSON.parse(store(o.solo).getItem(KEY) ?? "null") as { at: number; state: S | null; other: string; guestId?: string } | null;
+      return v && Date.now() - v.at < (o.solo ? SOLO_KEEP_MS : KEEP_MS) ? v : null;
     } catch {
       return null;
     }
   });
-  const [stage, setStage] = useState<PeerStage>(saved?.state ? "reconnecting" : "connecting");
+  const [stage, setStage] = useState<PeerStage>(o.solo ? "connected" : saved?.state ? "reconnecting" : "connecting");
   const [err, setErr] = useState("");
-  const [other, setOther] = useState(saved?.other || (o.role === "guest" ? o.hostName : ""));
+  const [other, setOther] = useState(o.solo ? "HIVEMIND" : saved?.other || (o.role === "guest" ? o.hostName : ""));
   const [state, setLocal] = useState<S | null>(saved?.state ?? null);
   const [voiceOn, setVoiceOn] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -83,7 +91,7 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
 
   const save = useCallback(() => {
     try {
-      sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), state: stateRef.current, other: otherRef.current, guestId: guestId.current || undefined }));
+      store(opts.current.solo).setItem(KEY, JSON.stringify({ at: Date.now(), state: stateRef.current, other: otherRef.current, guestId: guestId.current || undefined }));
     } catch {}
   }, [KEY]);
 
@@ -105,7 +113,7 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
   const forget = useCallback(() => {
     stateRef.current = null;
     try {
-      sessionStorage.removeItem(KEY);
+      store(opts.current.solo).removeItem(KEY);
     } catch {}
   }, [KEY]);
 
@@ -141,7 +149,9 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
   }, []);
 
   useEffect(() => {
-    const { role, kind, room } = opts.current;
+    const { role, kind, room, solo } = opts.current;
+    // Solo: nobody to connect to.
+    if (solo) return;
     let alive = true;
     const timers = new Set<ReturnType<typeof setTimeout>>();
     const later = (fn: () => void, ms: number) => {

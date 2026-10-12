@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Copy, Send } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { CardsGame } from "@/components/games/cards-game";
+import { ModeTabs, useGameMode } from "@/components/games/mode-tabs";
 import { useFetch } from "@/lib/client-api";
 
 type Room = { room: string; name: string; link: string };
@@ -12,6 +13,7 @@ type Room = { room: string; name: string; link: string };
 export default function CardsHost() {
   const room = useFetch<Room>("/api/games/room");
   const [copied, setCopied] = useState(false);
+  const [mode, setMode] = useGameMode();
   const r = room.data;
   const link = r ? `${r.link}${r.link.includes("?") ? "&" : "?"}g=cards` : "";
 
@@ -21,9 +23,11 @@ export default function CardsHost() {
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">Colour Clash</h1>
-      <p className="mb-3 text-sm text-soft">The colour-matching card game (Uno-style) online with a friend on their own phone, voice on. Match the colour or number, hit them with +2s and Wild +4s, and don&apos;t forget to shout &ldquo;Last card!&rdquo;. Add two HIVEMIND bots for a 4-player table.</p>
+      <p className="mb-3 text-sm text-soft">The colour-matching card game (Uno-style) against HIVEMIND on this device, or online with a friend on their own phone, voice on. Match the colour or number, hit them with +2s and Wild +4s, and don&apos;t forget to shout &ldquo;Last card!&rdquo;. Add two HIVEMIND bots for a 4-player table.</p>
 
-      {r && (
+      <ModeTabs mode={mode} onChange={setMode} />
+
+      {mode === "friend" && r && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
           <span className="w-full text-soft sm:w-auto">Your Colour Clash link (always the same):</span>
           <code className="hidden min-w-0 flex-1 truncate font-mono text-xs text-data sm:block">{link}</code>
@@ -37,7 +41,14 @@ export default function CardsHost() {
         </div>
       )}
 
-      {r ? <CardsGame key={r.room} role="host" room={r.room} myName={r.name} hostName={r.name} /> : <p className="text-sm text-soft">{room.error ?? "Loading…"}</p>}
+      {mode === "bot" ? (
+        // After the room loads (so only in the browser: the saved solo game lives on this device).
+        r || room.error ? (
+          <CardsGame key="solo" role="host" room="solo" myName={r?.name ?? "You"} solo />
+        ) : (
+          <p className="text-sm text-soft">Loading…</p>
+        )
+      ) : r ? <CardsGame key={r.room} role="host" room={r.room} myName={r.name} hostName={r.name} /> : <p className="text-sm text-soft">{room.error ?? "Loading…"}</p>}
     </div>
   );
 }
