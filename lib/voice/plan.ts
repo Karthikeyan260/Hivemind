@@ -27,7 +27,7 @@ export const GROUPS: Record<string, Group> = {
     tools: [
       "recent_memories", "update_memory", "delete_memory", "confirm_delete_memory", "open_source", "list_notes", "update_note", "delete_note",
       "list_projects", "project_details", "find_product", "open_link", "where_am_i", "places_nearby", "directions", "call_contact", "message_contact",
-      "save_contact", "run_routine", "set_language", "get_profile", "log_habit", "habits_status",
+      "save_contact", "run_routine", "set_language", "get_profile", "log_habit", "habits_status", "device_locations", "ring_device",
     ],
     guide: [
       "Call search_brain before answering anything about the owner, their work, projects or saved knowledge. Answer only from what it returns; if it has nothing, say so briefly.",
@@ -45,6 +45,7 @@ export const GROUPS: Record<string, Group> = {
       `Notes: create_note to write one; list_notes to read them out; update_note to change or append ("add milk to my shopping note"); delete_note.`,
       `Contacts: "call Arif" → call_contact; "WhatsApp/text Vijay that …" → message_contact; "Arif's number is …" → save_contact. A green button appears on screen: say "Tap the green Call button" (you can't dial or send yourself). If several numbers match, read them out and ask which.`,
       `Habits: "I drank water / did my exercise" → log_habit; "how are my habits / streaks" → habits_status.`,
+      `Find my devices: "where's my phone / laptop" → device_locations (say where and how long ago, and the battery if known); "ring my phone" → ring_device (loud=true if they say loud, or it's on silent). The Find devices page (/find) shows them on a map.`,
       `Location (the browser may ask permission the first time): "where am I" → where_am_i (if approximate, say so); "any park / ATM / tea shop near me" → places_nearby, then the nearest two or three with distance and walking time; "how far is X / way to X" → directions (mode walk when they say walk or it's close), then distance, time, the first turns, and that the map is on screen.`,
       (c) => `Routines. The owner's routines: ${c.routines}. When the owner says one of these phrases (even as a greeting, e.g. "good morning"), or "run my X routine", call run_routine, then do EVERY step it returns right away, in order, with your own tools, without asking, and finish with ONE short combined update (start any music last, then stay quiet). Never do a delete / send / call / approve step from a routine: say the owner has to ask for that themselves.`,
       `Music: ANY request to play or hear a song, artist, album, film's songs or mood ("play a Tamil song", "Anirudh hits", "paattu podu") → music action play with the query. It plays here with no ads; NEVER use web_task, YouTube or links for music. next / previous / pause / resume / add / volume_up / volume_down / set_volume / now_playing / queue / jump work the same way. After play, say the song and artist in a few words, then stay quiet. If the result mentions a tap, tell them to tap Play on the music bar once.`,
@@ -151,10 +152,10 @@ export const GROUPS: Record<string, Group> = {
   map: {
     title: "Map",
     pages: ["/map"],
-    hint: "Map (device_locations: where the owner's phone / laptop is; the /map page has its own actions)",
-    tools: ["device_locations"],
+    hint: "Map (the /map page has its own actions)",
+    tools: [],
     guide: [
-      `"Where's my phone / laptop" → device_locations. Map page actions (page_actions / do_page_action): map_locate, map_nearby (what), map_list, map_way_to (a place or list number; add walk), map_route_mode (car / walk), map_start_navigation, map_zoom (in / out), map_devices. On the Map page prefer these.`,
+      `Map page actions (page_actions / do_page_action): map_locate, map_nearby (what), map_list, map_way_to (a place or list number; add walk), map_route_mode (car / walk), map_start_navigation, map_zoom (in / out), map_devices. On the Map page prefer these.`,
     ],
   },
   dream: {

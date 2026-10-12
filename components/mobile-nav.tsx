@@ -20,6 +20,7 @@ const MORE = [
   { label: "Autopilot", href: "/autopilot", icon: Compass },
   { label: "Web tasks", href: "/web", icon: Globe },
   { label: "Map", href: "/map", icon: MapIcon },
+  { label: "Find devices", href: "/find", icon: Radar },
   { label: "Apps", href: "/apps", icon: Blocks },
   { label: "Routines", href: "/routines", icon: Zap },
   { label: "Morning brief", href: "/brief", icon: Newspaper },
