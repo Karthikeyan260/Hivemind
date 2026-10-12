@@ -66,18 +66,3 @@ export async function notify(supabase: SupabaseClient, n: Notice) {
   if (gone.length) await writeJSON(supabase, KEY, subs.filter((s) => !gone.includes(s.endpoint)));
   return sent;
 }
-
-/** Sends to one subscribed device (by its endpoint). Returns 1 when it went through. */
-export async function notifyOne(supabase: SupabaseClient, endpoint: string, n: Notice) {
-  if (!setup()) return 0;
-  const sub = (await listSubscriptions(supabase)).find((s) => s.endpoint === endpoint);
-  if (!sub) return 0;
-  try {
-    await webpush.sendNotification(sub, JSON.stringify(n), { TTL: 600, urgency: "high" });
-    return 1;
-  } catch (err) {
-    const code = (err as { statusCode?: number }).statusCode;
-    if (code === 404 || code === 410) await removeSubscription(supabase, endpoint);
-    return 0;
-  }
-}

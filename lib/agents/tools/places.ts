@@ -71,46 +71,20 @@ export const places: Record<string, Tool> = {
     description: "Where the owner's devices last were ('where's my phone', 'where is my laptop'), from devices with location sharing on.",
     parameters: obj({}),
     async run(_args, ctx) {
-      const [{ listDevices }, { listFinder }, { whereIs }] = await Promise.all([import("@/lib/device-location"), import("@/lib/finder"), import("@/lib/places")]);
-      const [shared, finder] = await Promise.all([listDevices(ctx.supabase), listFinder(ctx.supabase).catch(() => [])]);
-      // Devices with the helper app (they check in even with HIVEMIND closed), then browsers sharing location.
-      const all = [
-        ...finder.filter((d) => d.last).map((d) => ({ name: d.name, lat: d.last!.lat, lng: d.last!.lng, accuracy: d.last!.acc ?? 50, at: d.last!.at, battery: d.last!.battery, lost: !!d.lost })),
-        ...shared.map((d) => ({ name: d.name, lat: d.lat, lng: d.lng, accuracy: d.accuracy, at: d.at, battery: undefined as number | undefined, lost: false })),
-      ].sort((a, b) => b.at.localeCompare(a.at));
-      if (!all.length) return { error: "No device has checked in yet. Set one up on the Find devices page (the helper app works even with HIVEMIND closed)." };
-      ctx.actions.push({ label: "Find devices", href: "/find", navigate: true });
+      const [{ listDevices }, { whereIs }] = await Promise.all([import("@/lib/device-location"), import("@/lib/places")]);
+      const devices = await listDevices(ctx.supabase);
+      if (!devices.length) return { error: "No device is sharing its location. Turn it on in Settings → Location on the device you want to find." };
+      ctx.actions.push({ label: "Open map", href: "/map" });
       return {
         devices: await Promise.all(
-          all.slice(0, 5).map(async (d) => ({
+          devices.slice(0, 4).map(async (d) => ({
             device: d.name,
             near: (await whereIs(d).catch(() => ({ address: "unknown" }))).address,
             last_seen_minutes_ago: Math.round((Date.now() - +new Date(d.at)) / 60_000),
             precise: d.accuracy <= 200,
-            ...(d.battery !== undefined ? { battery_percent: d.battery } : {}),
-            ...(d.lost ? { lost_mode: true } : {}),
           })),
         ),
       };
-    },
-  },
-  ring_device: {
-    name: "ring_device",
-    description: "Ring one of the owner's devices so they can find it ('ring my phone', 'where's my phone, make it ring'). loud=true uses the helper app's alarm at full volume, even on silent; otherwise a notification with a long buzz.",
-    parameters: obj({ which: { type: "string", description: "The device's name, e.g. 'phone'. Empty = the only / most recent device." }, loud: { type: "boolean" } }),
-    async run(args, ctx) {
-      const { listFinder, ringDevice } = await import("@/lib/finder");
-      const devices = await listFinder(ctx.supabase);
-      if (!devices.length) return { error: "No devices set up yet. Add one on the Find devices page." };
-      const want = String(args.which ?? "").toLowerCase().trim();
-      const d = (want && devices.find((x) => x.name.toLowerCase().includes(want))) || (devices.length === 1 || !want ? [...devices].sort((a, b) => (b.last?.at ?? "").localeCompare(a.last?.at ?? ""))[0] : null);
-      if (!d) return { error: `Which device? You have: ${devices.map((x) => x.name).join(", ")}.` };
-      const loud = args.loud === true || (!d.pushEndpoint && !!d.ringUrl);
-      try {
-        return await ringDevice(ctx.supabase, d.id, loud ? "loud" : "push");
-      } catch (e) {
-        return { error: e instanceof Error ? e.message : "Couldn't ring it." };
-      }
     },
   },
 };

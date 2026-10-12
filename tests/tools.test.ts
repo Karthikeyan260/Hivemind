@@ -15,7 +15,7 @@ const ORIGINAL_TOOL_NAMES = [
   "list_projects", "project_details", "create_project",
   "create_reminder", "list_reminders", "complete_reminder", "cancel_reminder", "reschedule_reminder",
   "get_profile", "refresh_profile",
-  "where_am_i", "places_nearby", "directions", "device_locations", "ring_device",
+  "where_am_i", "places_nearby", "directions", "device_locations",
   "create_app", "list_apps", "open_app", "change_app", "delete_app",
   "morning_brief", "brief_topics", "dream_report", "day_comic", "kitchen_mode",
   "create_routine", "list_routines", "run_routine", "delete_routine",
@@ -26,8 +26,8 @@ const ORIGINAL_TOOL_NAMES = [
 ];
 
 describe("TOOLS", () => {
-  it("has exactly the expected 80 tools", () => {
-    expect(ORIGINAL_TOOL_NAMES).toHaveLength(80);
+  it("has exactly the original 79 tools", () => {
+    expect(ORIGINAL_TOOL_NAMES).toHaveLength(79);
     expect(Object.keys(TOOLS).sort()).toEqual([...ORIGINAL_TOOL_NAMES].sort());
   });
 

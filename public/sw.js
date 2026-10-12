@@ -135,8 +135,7 @@ self.addEventListener("push", (e) => {
       tag: n.tag,
       renotify: !!n.tag,
       requireInteraction: !!n.sticky,
-      // Find my device: a long, insistent buzz.
-      vibrate: n.data && n.data.ring ? [1000, 300, 1000, 300, 1000, 300, 1000, 300, 1000, 300, 1000] : n.sticky ? [400, 200, 400, 200, 400] : [120, 60, 120],
+      vibrate: n.sticky ? [400, 200, 400, 200, 400] : [120, 60, 120],
       actions: n.actions || [],
       data: { url: n.url || "/", ...(n.data || {}) },
     }),
