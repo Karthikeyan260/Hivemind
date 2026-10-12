@@ -5,12 +5,14 @@ import { usePathname } from "next/navigation";
 import { isPublicPage } from "@/lib/public-paths";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { hasAnything, ListenButton, YourDay } from "@/components/day/your-day";
+import type { DayBrief } from "@/lib/day-brief";
+import { readAloud } from "@/lib/read-aloud";
 import { BRAIN_CHANGED } from "@/lib/client-api";
 import { sfx } from "@/lib/sfx";
 
 type Reminder = { id: string; title: string; details: string; when: string; all_day: boolean; status: "pending" | "done" };
-type Agenda = { overdue: Reminder[]; today: Reminder[]; tomorrow: Reminder[] };
-type Toast = { key: string; kind: "alert"; reminder: Reminder } | { key: string; kind: "brief"; agenda: Agenda };
+type Toast = { key: string; kind: "alert"; reminder: Reminder } | { key: string; kind: "brief"; day: DayBrief };
 
 const POLL_MS = 60_000;
 const BRIEF_KEY = "hivemind-brief-date";
@@ -22,7 +24,8 @@ function chime() {
 
 /**
  * In-app reminders for every page: polls for due alerts once a minute (and when the tab regains
- * focus), shows them as toasts with a chime, and once per day shows a brief of today and tomorrow.
+ * focus), shows them as toasts with a chime, and once per day shows "Your day" (reminders, habits,
+ * birthdays, the news headline) with a button to hear it.
  * When the tab is in the background and the owner allowed it, a system notification is shown too.
  */
 export function ReminderWatcher() {
@@ -64,18 +67,20 @@ export function ReminderWatcher() {
     try {
       if (localStorage.getItem(BRIEF_KEY) === today) return;
     } catch {}
-    const r = await fetch("/api/reminders?days=2", { cache: "no-store" }).catch(() => null);
+    const r = await fetch("/api/brief/day", { cache: "no-store" }).catch(() => null);
     if (!r?.ok) {
       briefed.current = null;
       return;
     }
-    const agenda = (await r.json()) as Agenda;
+    const day = (await r.json()) as DayBrief;
     try {
       localStorage.setItem(BRIEF_KEY, today);
     } catch {}
-    const pending = (l: Reminder[]) => l.filter((x) => x.status === "pending");
-    if (!pending(agenda.overdue).length && !pending(agenda.today).length && !pending(agenda.tomorrow).length) return;
-    setToasts((t) => [...t.filter((x) => x.key !== "brief"), { key: "brief", kind: "brief", agenda: { overdue: pending(agenda.overdue), today: pending(agenda.today), tomorrow: pending(agenda.tomorrow) } }]);
+    if (!hasAnything(day)) return;
+    setToasts((t) => [...t.filter((x) => x.key !== "brief"), { key: "brief", kind: "brief", day }]);
+    // Read it out straight away when the browser allows sound already (the owner has tapped this
+    // session, e.g. unlocking); otherwise the card's "Hear your day" button does it with one tap.
+    if ((navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive) void readAloud(day.speech).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -149,28 +154,12 @@ export function ReminderWatcher() {
               </div>
             </>
           ) : (
-            <div className="mt-2 space-y-2 text-[13px]">
-              {(
-                [
-                  ["Overdue", t.agenda.overdue, "text-alert"],
-                  ["Today", t.agenda.today, "text-core"],
-                  ["Tomorrow", t.agenda.tomorrow, "text-data"],
-                ] as const
-              ).map(([label, list, tone]) =>
-                list.length ? (
-                  <div key={label}>
-                    <div className={cx("font-mono text-[10px] uppercase tracking-widest", tone)}>{label}</div>
-                    <ul className="mt-0.5 space-y-0.5">
-                      {list.map((r) => (
-                        <li key={r.id} className="flex justify-between gap-3">
-                          <span className="truncate">{r.title}</span>
-                          <span className="shrink-0 font-mono text-[10.5px] text-soft">{r.all_day ? "all day" : r.when.split(", ").pop()}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null,
-              )}
+            <div className="mt-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-[15px] font-semibold">{t.day.greeting} 👋</span>
+                <ListenButton day={t.day} />
+              </div>
+              <YourDay day={t.day} compact />
             </div>
           )}
         </div>

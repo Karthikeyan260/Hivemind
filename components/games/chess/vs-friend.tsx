@@ -1,12 +1,13 @@
 "use client";
 
 import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
-import { Copy, Flag, Handshake, Mic, MicOff, RotateCcw, Send, X } from "lucide-react";
+import { Flag, Handshake, Mic, MicOff, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { sfx } from "@/lib/sfx";
 import { Board, captured, Taken } from "./board";
+import { gameKey, recordResult } from "@/lib/games/record";
 import { endOf, MoveList, Pick, resultText, TimePicker, tcLabel, type Result, type TimeControl } from "./shared";
 import { Action, PlayerBar } from "./vs-bot";
 
@@ -100,10 +101,22 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
     publishRef.current = publish;
   });
 
+  // The owner's record: the host's device saves each finished game once.
+  useEffect(() => {
+    if (role !== "host" || !s?.result) return;
+    const mine = colourOf(s, "host");
+    recordResult(`chess-friend-${room}-${gameKey(...s.history, s.result.reason, s.white)}`, {
+      game: "chess",
+      mode: "friend",
+      outcome: !s.result.winner ? "draw" : s.result.winner === mine ? "win" : "loss",
+      vs: s.names.guest,
+      detail: s.result.reason,
+    });
+  }, [role, room, s]);
+
   // Host settings for a new game.
   const [tc, setTc] = useState<TimeControl>({ base: 10, inc: 0 });
   const [colour, setColour] = useState<"w" | "b" | "random">("random");
-  const [copied, setCopied] = useState(false);
   function start(rematch = false) {
     const prev = stateRef.current;
     const hostWhite = rematch && prev ? prev.white !== "host" : colour === "random" ? Math.random() < 0.5 : colour === "w";
@@ -198,7 +211,6 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
     return s.clock[c] - Math.max(0, since);
   };
 
-  const invite = typeof window === "undefined" ? "" : `${location.origin}/play/${room}?g=chess&from=${encodeURIComponent(myName)}`;
   const status =
     stage === "connecting"
       ? "Connecting…"
@@ -239,16 +251,6 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
         </span>
       </div>
 
-      {role === "host" && stage === "waiting" && !s && (
-        <div className="flex flex-wrap gap-2">
-          <a href={`https://wa.me/?text=${encodeURIComponent(`${myName} challenges you to chess on HIVEMIND! Tap to play: ${invite}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-ok/90 px-4 py-2 text-sm font-medium text-black">
-            <Send size={14} /> Invite on WhatsApp
-          </a>
-          <button type="button" onClick={() => void navigator.clipboard?.writeText(invite).then(() => setCopied(true))} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-soft">
-            <Copy size={14} /> {copied ? "Link copied" : "Copy link"}
-          </button>
-        </div>
-      )}
 
       {role === "host" && connected && !s && (
         <div className="flex flex-col gap-4 rounded-2xl border border-line bg-panel p-4">

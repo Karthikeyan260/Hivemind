@@ -1,8 +1,9 @@
 "use client";
 
-import { Bot, Copy, Crown, Mic, MicOff, RotateCcw, Send } from "lucide-react";
+import { Bot, Crown, Mic, MicOff, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { gameKey, recordResult } from "@/lib/games/record";
 import { cellOf, HOME_CELLS, TRACK_CELLS, type Cell } from "@/lib/games/ludo-board";
 import { botChoice, move, movable, newGame, roll, SAFE, type Color, type LudoState } from "@/lib/games/ludo";
 import { usePeerGame } from "@/lib/games/peer-game";
@@ -67,7 +68,6 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
   // Host settings, remembered.
   const [bots, setBots] = useState(false);
   const [quick, setQuick] = useState(false);
-  const [copied, setCopied] = useState(false);
   const live = connected;
 
   function start() {
@@ -87,6 +87,19 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
     const t = setTimeout(() => apply((cur) => (cur.seq !== s.seq ? cur : !cur.rolled ? roll(cur, seat.id, dice()) : move(cur, seat.id, botChoice(cur) ?? 0))), s.rolled ? 700 : 900);
     return () => clearTimeout(t);
   }, [role, s, live, apply]);
+
+  // The owner's record: the host's device saves each finished game once.
+  useEffect(() => {
+    if (role !== "host" || !s?.over) return;
+    const place = s.finished.indexOf("host") + 1;
+    recordResult(`ludo-${room}-${gameKey(s.seq, ...s.finished)}`, {
+      game: "ludo",
+      mode: "friend",
+      outcome: place === 1 ? "win" : "loss",
+      vs: other || "Friend",
+      detail: place ? `#${place} of ${s.seats.length}` : undefined,
+    });
+  }, [role, room, s, other]);
 
   const myTurn = !!s && !s.over && s.seats[s.turn]?.id === me;
   const canRoll = myTurn && !s!.rolled && live;
@@ -110,7 +123,6 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [s?.seq, canMove.length]);
 
-  const invite = typeof window === "undefined" ? "" : `${location.origin}/play/${room}?g=ludo&from=${encodeURIComponent(myName)}`;
   const turnSeat = s && !s.over ? s.seats[s.turn] : null;
   const status =
     stage === "connecting"
@@ -166,16 +178,6 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway }: 
 
       {status && <p className={cx("text-sm", stage === "error" ? "text-alert" : stage === "reconnecting" ? "animate-pulse text-core" : myTurn ? "font-medium text-core" : "text-soft")}>{status}</p>}
 
-      {role === "host" && stage === "waiting" && !s && (
-        <div className="flex flex-wrap gap-2">
-          <a href={`https://wa.me/?text=${encodeURIComponent(`${myName} challenges you to Ludo on HIVEMIND! Tap to play: ${invite}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-ok/90 px-4 py-2 text-sm font-medium text-black">
-            <Send size={14} /> Invite on WhatsApp
-          </a>
-          <button type="button" onClick={() => void navigator.clipboard?.writeText(invite).then(() => setCopied(true))} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-soft">
-            <Copy size={14} /> {copied ? "Link copied" : "Copy link"}
-          </button>
-        </div>
-      )}
 
       {role === "host" && live && (!s || s.over) && (
         <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel p-3 text-sm">

@@ -54,8 +54,8 @@ export default function ChessPage() {
       ) : r ? (
         <>
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
-            <span className="text-soft">Your chess link (always the same):</span>
-            <code className="min-w-0 flex-1 truncate font-mono text-xs text-data">{link}</code>
+            <span className="w-full text-soft sm:w-auto">Your chess link (always the same):</span>
+            <code className="hidden min-w-0 flex-1 truncate font-mono text-xs text-data sm:block">{link}</code>
             <button type="button" onClick={() => void navigator.clipboard?.writeText(link).then(() => setCopied(true))} className="inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1 text-xs">
               {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copied" : "Copy"}
             </button>

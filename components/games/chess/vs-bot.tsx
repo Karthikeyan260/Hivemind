@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { cx } from "@/components/ui";
 import { LEVELS, type Level } from "@/lib/games/chess-bot";
 import { think } from "@/lib/games/chess-think";
+import { gameKey, recordResult } from "@/lib/games/record";
 import { sfx } from "@/lib/sfx";
 import { Board, captured, ClockFace, Taken } from "./board";
 import { endOf, left, MoveList, Pick, resultText, TimePicker, tcLabel, type Result, type TimeControl } from "./shared";
@@ -14,8 +15,8 @@ import { endOf, left, MoveList, Pick, resultText, TimePicker, tcLabel, type Resu
  * Chess against HIVEMIND's bot, on this device: four levels, either colour, an optional clock,
  * hints and take-backs. The game is kept on this device, so a reload carries on.
  */
-/** turnStart: when the side to move started thinking (the clock runs from there). */
-type Saved = { history: string[]; me: Color; level: Level; tc: TimeControl; clock: { w: number; b: number } | null; result: Result; turnStart: number };
+/** turnStart: when the side to move started thinking (the clock runs from there). id: when it began. */
+type Saved = { id?: number; history: string[]; me: Color; level: Level; tc: TimeControl; clock: { w: number; b: number } | null; result: Result; turnStart: number };
 const KEY = "hm-chess-bot";
 const load = (): Saved | null => {
   try {
@@ -57,9 +58,11 @@ export function ChessVsBot({ myName }: { myName: string }) {
   const bot: Color | null = g ? (g.me === "w" ? "b" : "w") : null;
   const names: Record<Color, string> = g ? (g.me === "w" ? { w: myName, b: "HIVEMIND" } : { w: "HIVEMIND", b: myName }) : { w: "", b: "" };
 
-  function start() {
-    const me = colour === "random" ? (Math.random() < 0.5 ? "w" : "b") : colour;
-    save({ history: [], me, level, tc, clock: tc ? { w: tc.base * 60_000, b: tc.base * 60_000 } : null, result: null, turnStart: Date.now() });
+  function start(opts?: { me: Color; level: Level; tc: TimeControl }) {
+    const me = opts?.me ?? (colour === "random" ? (Math.random() < 0.5 ? "w" : "b") : colour);
+    const lv = opts?.level ?? level;
+    const t = opts ? opts.tc : tc;
+    save({ id: Date.now(), history: [], me, level: lv, tc: t, clock: t ? { w: t.base * 60_000, b: t.base * 60_000 } : null, result: null, turnStart: Date.now() });
     setHint(null);
     sfx.boot();
   }
@@ -134,6 +137,19 @@ export function ChessVsBot({ myName }: { myName: string }) {
     return () => clearInterval(t);
   }, [g, turn, save]);
 
+  // A finished game goes into the owner's record (once, even across reloads).
+  useEffect(() => {
+    if (!g?.result) return;
+    recordResult(`chess-bot-${g.id ?? gameKey(...g.history)}`, {
+      game: "chess",
+      mode: "bot",
+      outcome: !g.result.winner ? "draw" : g.result.winner === g.me ? "win" : "loss",
+      vs: "HIVEMIND",
+      level: g.level,
+      detail: g.result.reason,
+    });
+  }, [g]);
+
   function onMove(from: Square, to: Square, promotion?: PieceSymbol) {
     const m = game.moves({ verbose: true }).find((x) => x.from === from && x.to === to && (!x.promotion || x.promotion === (promotion ?? "q")));
     if (m) play(m.san);
@@ -177,7 +193,7 @@ export function ChessVsBot({ myName }: { myName: string }) {
           <p className="mb-2 text-sm font-semibold">Clock</p>
           <TimePicker value={tc} onChange={setTc} />
         </div>
-        <button type="button" onClick={start} className="self-start rounded-full bg-core px-6 py-2.5 text-base font-bold text-core-ink shadow-lg transition-transform hover:scale-105">
+        <button type="button" onClick={() => start()} className="self-start rounded-full bg-core px-6 py-2.5 text-base font-bold text-core-ink shadow-lg transition-transform hover:scale-105">
           Start the game
         </button>
       </div>
@@ -198,9 +214,14 @@ export function ChessVsBot({ myName }: { myName: string }) {
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-black/55 backdrop-blur-[2px]">
               <div className="text-3xl font-black text-white drop-shadow">{end.title}</div>
               <div className="mt-1 text-sm text-white/80">{end.sub}</div>
-              <button type="button" onClick={() => save(null)} className="mt-4 rounded-full bg-core px-5 py-2 font-bold text-core-ink">
-                New game
-              </button>
+              <div className="mt-4 flex gap-2">
+                <button type="button" onClick={() => start({ me: g.me, level: g.level, tc: g.tc })} className="flex items-center gap-1.5 rounded-full bg-core px-5 py-2 font-bold text-core-ink">
+                  <RotateCcw size={15} /> Rematch
+                </button>
+                <button type="button" onClick={() => save(null)} className="rounded-full border-2 border-white/60 px-5 py-2 font-bold text-white">
+                  New game
+                </button>
+              </div>
             </div>
           )}
         </div>

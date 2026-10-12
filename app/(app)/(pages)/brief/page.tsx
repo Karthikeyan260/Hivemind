@@ -3,6 +3,8 @@
 import { ExternalLink, Loader2, Newspaper, Plus, Square, Volume2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, cx, ErrorText, Input, PageHeader } from "@/components/ui";
+import { ListenButton, YourDay } from "@/components/day/your-day";
+import type { DayBrief } from "@/lib/day-brief";
 import { useVoiceActions } from "@/components/voice/provider";
 import { api, useFetch } from "@/lib/client-api";
 
@@ -17,6 +19,7 @@ const pretty = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("en-I
 export default function BriefPage() {
   const [date, setDate] = useState<string | null>(null);
   const feed = useFetch<Feed>(`/api/brief${date ? `?date=${date}` : ""}`);
+  const day = useFetch<DayBrief>("/api/brief/day");
   const [topic, setTopic] = useState("");
   const [busy, setBusy] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -86,7 +89,7 @@ export default function BriefPage() {
       <PageHeader
         eyebrow="Every morning"
         title="Morning brief"
-        subtitle="Pick up to 4 topics. Every morning HIVEMIND searches the web for what's new, writes 3 short lines on each with sources, saves it to your brain and notifies you."
+        subtitle="Your day at a glance, plus the news you follow. Pick up to 4 topics. Every morning HIVEMIND searches the web for what's new, writes 3 short lines on each with sources, saves it to your brain and notifies you."
         actions={
           <Button onClick={makeNow} disabled={busy || !topics.length}>
             {busy ? <Loader2 size={15} className="animate-spin" /> : <Newspaper size={15} />} {busy ? "Researching…" : "Brief me now"}
@@ -94,6 +97,19 @@ export default function BriefPage() {
         }
       />
       <ErrorText error={error ?? feed.error} />
+
+      {day.data && (
+        <section className="mb-5 rounded-xl border border-core/40 bg-panel p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-core">Your day</div>
+              <h2 className="text-lg font-semibold">{day.data.greeting} 👋</h2>
+            </div>
+            <ListenButton day={day.data} />
+          </div>
+          <YourDay day={day.data} />
+        </section>
+      )}
 
       {d && (
         <section className="mb-5 space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">

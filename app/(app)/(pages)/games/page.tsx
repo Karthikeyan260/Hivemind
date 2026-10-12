@@ -1,5 +1,6 @@
 import { Music2, PenLine, Dices, Layers, Crown } from "lucide-react";
 import Link from "next/link";
+import { GameRecord } from "@/components/games/game-record";
 import { PageHeader } from "@/components/ui";
 
 const GAMES = [
@@ -24,6 +25,7 @@ export default function GamesPage() {
           </Link>
         ))}
       </div>
+      <GameRecord />
     </div>
   );
 }

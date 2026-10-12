@@ -2,7 +2,6 @@
 
 import {
   Bot,
-  Copy,
   Crown,
   Hand,
   Layers,
@@ -10,10 +9,10 @@ import {
   Mic,
   MicOff,
   RotateCcw,
-  Send,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { gameKey, recordResult } from "@/lib/games/record";
 import {
   botMove,
   callLast,
@@ -140,7 +139,6 @@ export function CardsGame({
   });
 
   const [bots, setBots] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [picking, setPicking] = useState<number | null>(null);
   function start() {
     const players = bots
@@ -189,6 +187,18 @@ export function CardsGame({
   useEffect(() => {
     if (won) sfx.done();
   }, [won]);
+  // The owner's record: the host's device saves each finished game once.
+  useEffect(() => {
+    if (role !== "host" || !s?.winner) return;
+    const bots = s.seats.some((x) => x.bot);
+    recordResult(`cards-${room}-${gameKey(s.seq, s.winner, ...s.seats.map((x) => x.id))}`, {
+      game: "cards",
+      mode: "friend",
+      outcome: s.winner === "host" ? "win" : "loss",
+      vs: other || "Friend",
+      detail: s.winner === "host" ? (bots ? "with HIVEMIND bots" : undefined) : `${s.seats.find((x) => x.id === s.winner)?.name ?? "?"} won`,
+    });
+  }, [role, room, s, other]);
 
   const myTurn = !!s && !s.winner && s.seats[s.turn]?.id === me && connected;
   const mine = s?.hands[me] ?? [];
@@ -204,10 +214,6 @@ export function CardsGame({
     doAct({ type: "play", card: c.id, color: null });
   }
 
-  const invite =
-    typeof window === "undefined"
-      ? ""
-      : `${location.origin}/play/${room}?g=cards&from=${encodeURIComponent(myName)}`;
   const turnSeat = s && !s.winner ? s.seats[s.turn] : null;
   const status =
     stage === "connecting"
@@ -314,29 +320,6 @@ export function CardsGame({
         </p>
       )}
 
-      {role === "host" && stage === "waiting" && !s && (
-        <div className="flex flex-wrap gap-2">
-          <a
-            href={`https://wa.me/?text=${encodeURIComponent(`${myName} challenges you to Colour Clash (cards) on HIVEMIND! Tap to play: ${invite}`)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full bg-ok/90 px-4 py-2 text-sm font-medium text-black"
-          >
-            <Send size={14} /> Invite on WhatsApp
-          </a>
-          <button
-            type="button"
-            onClick={() =>
-              void navigator.clipboard
-                ?.writeText(invite)
-                .then(() => setCopied(true))
-            }
-            className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-soft"
-          >
-            <Copy size={14} /> {copied ? "Link copied" : "Copy link"}
-          </button>
-        </div>
-      )}
       {role === "host" && connected && (!s || s.winner) && (
         <div className="flex flex-col gap-3 rounded-2xl border border-line bg-panel p-4 text-sm">
           <div className="flex flex-wrap items-center gap-2">

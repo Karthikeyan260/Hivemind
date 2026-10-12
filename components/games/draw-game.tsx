@@ -1,9 +1,10 @@
 "use client";
 
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
-import { Bot, Copy, Eraser, Mic, MicOff, RotateCcw, Send, Trash2, Trophy } from "lucide-react";
+import { Bot, Eraser, Mic, MicOff, RotateCcw, Trash2, Trophy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { gameKey, recordResult } from "@/lib/games/record";
 import { checkHost, proveHost } from "@/lib/peer-auth";
 
 /**
@@ -163,7 +164,6 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   const [listening, setListening] = useState(false);
   const [aiTalks, setAiTalks] = useState(true);
   const aiTalksRef = useRef(true);
-  const [copied, setCopied] = useState(false);
   const [knocked, setKnocked] = useState(false);
   const [rounds, setRounds] = useState(() => {
     try {
@@ -355,6 +355,9 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     if (g.n >= g.rounds) {
       setStage("over");
       send({ t: "over", scores: g.scores });
+      // The owner's record (you vs your friend; HIVEMIND's points are just for fun).
+      const { host, guest } = g.scores;
+      recordResult(`draw-${room}-${gameKey(host, guest, g.scores.ai, ...g.used)}`, { game: "draw", mode: "friend", outcome: host > guest ? "win" : host < guest ? "loss" : "draw", vs: other || "Friend", detail: `${host} – ${guest}` });
       return;
     }
     g.n += 1;
@@ -372,7 +375,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     send({ t: "clear" });
     send({ t: "round", n: g.n, total: g.rounds, drawer: g.drawer, word: g.drawer === "guest" ? w : undefined, len: blanks(w), ms: ROUND_S * 1000 });
     tell({ who: "", text: `Round ${g.n}: ${g.drawer === "host" ? hostName : other || "Guest"} draws`, kind: "info" });
-  }, [clearCanvas, send, tell, hostName, other]);
+  }, [clearCanvas, send, tell, hostName, other, room]);
 
   // Host: someone guessed (the guesser is whoever isn't drawing).
   const checkGuess = useCallback(
@@ -810,7 +813,6 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     setMuted(on);
   }
 
-  const invite = typeof window === "undefined" ? "" : `${location.origin}/play/${room}?from=${encodeURIComponent(myName)}`;
   const friend = other || (role === "host" ? "your friend" : hostName);
   const status =
     stage === "connecting"
@@ -869,21 +871,6 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
 
       {status && <p className={cx("text-sm", stage === "error" ? "text-alert" : stage === "reconnecting" ? "animate-pulse text-core" : "text-soft")}>{status}</p>}
 
-      {role === "host" && stage === "waiting" && (
-        <div className="flex flex-wrap gap-2">
-          <a
-            href={`https://wa.me/?text=${encodeURIComponent(`${myName} challenges you to Draw & Guess on HIVEMIND! Tap to play: ${invite}`)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full bg-ok/90 px-4 py-2 text-sm font-medium text-black"
-          >
-            <Send size={14} /> Invite on WhatsApp
-          </a>
-          <button type="button" onClick={() => void navigator.clipboard?.writeText(invite).then(() => setCopied(true))} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm text-soft">
-            <Copy size={14} /> {copied ? "Link copied" : "Copy link"}
-          </button>
-        </div>
-      )}
 
       {role === "host" && (stage === "lobby" || (stage === "over" && conn.current?.open)) && <RoundPicker value={rounds} onChange={chooseRounds} />}
       {role === "host" && stage === "lobby" && (
