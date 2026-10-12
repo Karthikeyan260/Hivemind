@@ -1,12 +1,12 @@
 "use client";
 
-import { Crown, Dices, Layers, PenLine, Trophy } from "lucide-react";
+import { Crown, Dices, Grid3x3, Layers, PenLine, Trophy } from "lucide-react";
 import { cx } from "@/components/ui";
 import { useFetch } from "@/lib/client-api";
 
-type Row = { game: "chess" | "cards" | "ludo" | "draw"; mode: "bot" | "friend"; outcome: "win" | "loss" | "draw"; vs: string; level?: string; detail?: string; at: string };
+type Row = { game: "chess" | "cards" | "ludo" | "draw" | "dots"; mode: "bot" | "friend"; outcome: "win" | "loss" | "draw"; vs: string; level?: string; detail?: string; at: string };
 
-const GAMES = { chess: { title: "Chess", icon: Crown }, cards: { title: "Colour Clash", icon: Layers }, ludo: { title: "Ludo", icon: Dices }, draw: { title: "Draw & Guess", icon: PenLine } } as const;
+const GAMES = { chess: { title: "Chess", icon: Crown }, cards: { title: "Colour Clash", icon: Layers }, ludo: { title: "Ludo", icon: Dices }, draw: { title: "Draw & Guess", icon: PenLine }, dots: { title: "Dots & Boxes", icon: Grid3x3 } } as const;
 const LEVELS = ["beginner", "easy", "medium", "hard"] as const;
 const LABEL: Record<string, string> = { beginner: "Beginner", easy: "Easy", medium: "Medium", hard: "Hard" };
 const TONE = { win: "bg-ok text-black", loss: "bg-alert text-white", draw: "bg-raised text-soft" } as const;
@@ -42,7 +42,7 @@ export function GameRecord() {
       <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
         <Trophy size={18} className="text-core" /> Your record
       </h2>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {(Object.keys(GAMES) as Row["game"][]).map((g) => {
           const t = tally(rows.filter((r) => r.game === g));
           const n = t.win + t.loss + t.draw;

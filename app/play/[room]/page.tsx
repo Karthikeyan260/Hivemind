@@ -6,6 +6,7 @@ import { DrawGame } from "@/components/games/draw-game";
 import { LudoGame } from "@/components/games/ludo-game";
 import { CardsGame } from "@/components/games/cards-game";
 import { ChessVsFriend } from "@/components/games/chess/vs-friend";
+import { DotsGame } from "@/components/games/dots-game";
 
 /**
  * A friend's side of Draw & Guess (open to anyone with the link, no password): only the game, never
@@ -26,8 +27,8 @@ function Play() {
   const host = (params.get("from") || "Your friend").slice(0, 30);
   // Which game the link is for (the same room serves every game; Draw & Guess when not given).
   const g = params.get("g");
-  const game = g === "ludo" || g === "cards" || g === "chess" ? g : "draw";
-  const title = game === "ludo" ? "Ludo" : game === "cards" ? "Colour Clash" : game === "chess" ? "Chess" : "Draw & Guess";
+  const game = g === "ludo" || g === "cards" || g === "chess" || g === "dots" ? g : "draw";
+  const title = game === "ludo" ? "Ludo" : game === "cards" ? "Colour Clash" : game === "chess" ? "Chess" : game === "dots" ? "Dots & Boxes" : "Draw & Guess";
   const key = `hm-play-${room}`;
   const [name, setName] = useState("");
   const [joined, setJoined] = useState(false);
@@ -63,6 +64,14 @@ function Play() {
           hostName={host}
           onHostAway={() => void fetch("/api/games/knock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room, name: name.trim(), game: "cards" }) }).catch(() => {})}
         />
+      ) : joined && game === "dots" ? (
+        <DotsGame
+          role="guest"
+          room={room}
+          myName={name.trim() || "Guest"}
+          hostName={host}
+          onHostAway={() => void fetch("/api/games/knock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room, name: name.trim(), game: "dots" }) }).catch(() => {})}
+        />
       ) : joined && game === "ludo" ? (
         <LudoGame
           role="guest"
@@ -94,7 +103,7 @@ function Play() {
             {host} challenged you to {title}
           </h1>
           <p className="text-sm text-soft">
-            {game === "ludo" ? "Classic Ludo, you against your friend (and maybe HIVEMIND bots)." : game === "cards" ? "The colour-matching card game: match the colour or number, and don't forget to call Last card!" : game === "chess" ? "A game of chess with a clock, voice on." : "Take turns drawing and guessing. HIVEMIND, an AI, plays too."} Allow the microphone to talk while you play.
+            {game === "ludo" ? "Classic Ludo, you against your friend (and maybe HIVEMIND bots)." : game === "cards" ? "The colour-matching card game: match the colour or number, and don't forget to call Last card!" : game === "chess" ? "A game of chess with a clock, voice on." : game === "dots" ? "Take turns drawing lines between dots. Close a box to claim it and go again: most boxes wins." : "Take turns drawing and guessing. HIVEMIND, an AI, plays too."} Allow the microphone to talk while you play.
           </p>
           <input value={name} onChange={(e) => setName(e.target.value.slice(0, 20))} placeholder="Your name" aria-label="Your name" className="rounded-full border border-line bg-panel px-4 py-3 text-center text-sm" />
           <button type="submit" className="rounded-full bg-core py-3 text-sm font-semibold text-core-ink">

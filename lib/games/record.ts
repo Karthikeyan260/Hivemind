@@ -6,7 +6,7 @@
  * second render never counts it twice.
  */
 export type Outcome = "win" | "loss" | "draw";
-type Result = { game: "chess" | "cards" | "ludo" | "draw"; mode: "bot" | "friend"; outcome: Outcome; vs: string; level?: string; detail?: string };
+type Result = { game: "chess" | "cards" | "ludo" | "draw" | "dots"; mode: "bot" | "friend"; outcome: Outcome; vs: string; level?: string; detail?: string };
 
 const SEEN = "hm-games-recorded";
 

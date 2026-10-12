@@ -7,7 +7,7 @@ import { peerProof, safeEqual } from "@/lib/session";
 export const POST = handle(async (req: Request) => {
   const { kind, room, nonce, proof } = await parseBody(
     req,
-    z.object({ kind: z.enum(["call", "draw", "ludo", "cards", "chess"]), room: z.string().regex(/^[a-z0-9]{8,40}$/i), nonce: z.string().regex(/^[a-z0-9-]{16,64}$/i), proof: z.string().max(128) }),
+    z.object({ kind: z.enum(["call", "draw", "ludo", "cards", "chess", "dots"]), room: z.string().regex(/^[a-z0-9]{8,40}$/i), nonce: z.string().regex(/^[a-z0-9-]{16,64}$/i), proof: z.string().max(128) }),
   );
   return NextResponse.json({ ok: safeEqual(proof, await peerProof(kind, room, nonce)) });
 });
