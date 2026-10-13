@@ -74,18 +74,23 @@ export const routines: Record<string, Tool> = {
   /* ───── kitchen / hands-free mode (full-screen voice, screen stays on) ───── */
   todays_kural: {
     name: "todays_kural",
-    description: "Today's Thirukkural couplet ('today's kural', 'இன்றைய குறள்', 'read me the kural'), chosen each morning for the owner's last night (check-in or chats), with Tamil and English meanings and a line for their day. Also: a specific kural by number ('kural 391').",
-    parameters: obj({ number: { type: "integer", minimum: 1, maximum: 1330 } }),
+    description:
+      "The Thirukkural. ALWAYS use this for any kural; never quote one from memory. Today's kural ('today's kural', 'இன்றைய குறள்'), chosen each morning for the owner's last night; a kural on a topic ('a motivational kural', 'kural about anger / friendship / learning') via topic; or one by number ('kural 391').",
+    parameters: obj({ number: { type: "integer", minimum: 1, maximum: 1330 }, topic: S }),
     async run(args, ctx) {
-      const { kuralAt, todaysKural } = await import("@/lib/kural");
+      const { kuralAt, kuralFor, todaysKural } = await import("@/lib/kural");
+      // The reply's shape: the verse exactly, then Tamil, then English (chat renders these as plain lines).
+      const FORMAT =
+        "Reply in exactly this layout, as plain lines (no '>' quotes, no headings): line 1 '**குறள் <number> · <chapter in Tamil>**'; then the two Tamil lines of the verse EXACTLY as given, each on its own line, in bold; a blank line; '**தமிழில்:** <its meaning in simple Tamil script, 1-2 sentences>'; '**In English:** <plain English, 1-2 sentences>'; then '**For you:** <one or two sentences linking it to the owner's life or what they asked>'. Never change a word of the verse. Write Tamil only in Tamil script (never Malayalam or other scripts); no [n] citations in this reply.";
       const n = Number(args.number);
-      if (n >= 1 && n <= 1330) {
-        const k = kuralAt(n)!;
-        return { kural: k.num, chapter: `${k.chapter.ta} (${k.chapter.en})`, tamil: `${k.line1} / ${k.line2}`, pope_translation: k.pope, note: "Recite the Tamil lines exactly as given, then explain the meaning simply in Tamil and English." };
+      const topic = String(args.topic ?? "").trim();
+      if ((n >= 1 && n <= 1330) || topic) {
+        const k = n >= 1 && n <= 1330 ? kuralAt(n)! : kuralFor(topic);
+        return { kural: k.num, chapter_tamil: k.chapter.ta, chapter_english: k.chapter.en, verse_line_1: k.line1, verse_line_2: k.line2, pope_translation: k.pope, note: FORMAT };
       }
       const k = await todaysKural(ctx.supabase);
       ctx.actions.push({ label: "Open the brief", href: "/brief" });
-      return { kural: k.num, chapter: `${k.chapter.ta} (${k.chapter.en})`, tamil: `${k.line1} / ${k.line2}`, meaning_tamil: k.ta, meaning_english: k.en || k.pope, for_your_day: k.forYou, note: "Recite the Tamil lines exactly as given (never change a word), then the meanings and the line for their day." };
+      return { kural: k.num, chapter_tamil: k.chapter.ta, chapter_english: k.chapter.en, verse_line_1: k.line1, verse_line_2: k.line2, meaning_tamil: k.ta, meaning_english: k.en || k.pope, for_your_day: k.forYou, note: `${FORMAT} Use the meanings given here (they were written for today).` };
     },
   },
   night_checkin: {

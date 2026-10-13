@@ -114,7 +114,7 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
   );
 }
 
-/** Minimal safe markdown: headings, **bold**, *italic*, bullet lists, [n] citations linked to sources. No HTML injection. */
+/** Minimal safe markdown: headings, **bold**, *italic*, bullet lists, > quotes, [n] citations linked to sources. No HTML injection. */
 export function RichText({ text, sources, caret }: { text: string; sources?: { n: number; href: string }[]; caret?: boolean }) {
   const lines = text.split("\n");
   let lastLine = -1;
@@ -189,6 +189,18 @@ export function RichText({ text, sources, caret }: { text: string; sources?: { n
           {tail(i)}
         </h3>,
       );
+      return;
+    }
+    // "> a quoted line" (verses, quotes): an indented line with a bar, not a raw ">".
+    const quote = line.match(/^\s*>\s?(.*)/);
+    if (quote) {
+      if (quote[1].trim())
+        blocks.push(
+          <p key={`q${i}`} className="my-0.5 border-l-2 border-core/60 pl-3 text-fg">
+            {inline(quote[1].replace(/^"|"$/g, ""), `q${i}`)}
+            {tail(i)}
+          </p>,
+        );
       return;
     }
     if (line.trim()) {

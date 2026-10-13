@@ -101,8 +101,10 @@ async function step(contents: Content[], system: string, tools: FunctionDeclarat
       });
       const parts: Part[] = [];
       let text = "";
+      let finish = "";
       for await (const chunk of stream) {
         clearTimeout(stall);
+        finish = chunk.candidates?.[0]?.finishReason ?? finish;
         for (const part of chunk.candidates?.[0]?.content?.parts ?? []) {
           parts.push(part);
           if (part.text && !part.thought) {
@@ -113,7 +115,14 @@ async function step(contents: Content[], system: string, tools: FunctionDeclarat
         }
       }
       stop?.removeEventListener("abort", cut);
-      return { parts, text, model, calls: parts.filter((p) => p.functionCall).map((p) => p.functionCall!) };
+      const calls = parts.filter((p) => p.functionCall).map((p) => p.functionCall!);
+      // Nothing at all (no words, no tool call): say why in the log, and let the next model try.
+      if (!text.trim() && !calls.length) {
+        console.warn(`agent step: ${model} gave an empty reply (${finish || "no reason"})`);
+        lastErr = new Error(`empty reply (${finish || "no reason"})`);
+        continue;
+      }
+      return { parts, text, model, calls };
     } catch (err) {
       clearTimeout(stall);
       stop?.removeEventListener("abort", cut);

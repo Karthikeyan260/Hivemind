@@ -10,3 +10,13 @@ describe("Thirukkural text", () => {
     expect(kuralAt(1331)).toBeNull();
   });
 });
+
+describe("a kural on a topic", () => {
+  it("picks from the chapters that fit, from the real text", async () => {
+    const { kuralFor } = await import("@/lib/kural");
+    expect([60, 61, 62, 63]).toContain(kuralFor("tell me a motivational kural", () => 0.5).chapter.n);
+    expect(kuralFor("something about anger", () => 0).chapter.n).toBe(31);
+    expect(kuralFor("learning", () => 0).chapter.en).toBe("Learning");
+    expect(kuralFor("xyz", () => 0).line1.length).toBeGreaterThan(5);
+  });
+});

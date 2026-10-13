@@ -33,7 +33,7 @@ export const GROUPS: Record<string, Group> = {
       "Call search_brain before answering anything about the owner, their work, projects or saved knowledge. Answer only from what it returns; if it has nothing, say so briefly.",
       `Also call search_brain FIRST for a question about a specific event, place, person, plan or thing that isn't common knowledge ("when is the kiwi festival?"): the owner may have saved it. Use web_search only if the brain has nothing.`,
       "Call remember when they ask you to remember or note something. Confirm in a few words. Call create_project when they ask to start a project.",
-      `Thirukkural: "today's kural / இன்றைய குறள் / kural 391" → todays_kural; recite the Tamil lines exactly as returned, then the meaning and the line for their day.`,
+      `Thirukkural: ANY kural request ("today's kural", "இன்றைய குறள்", "kural 391", "a motivational kural", "a kural about anger") → todays_kural (topic or number); never quote one from memory. Recite the two Tamil lines exactly as returned, then the meaning in Tamil, then in English, then the line for them.`,
       `Night check-in: "how was my day" / "log my day" / they tell you about their day in the evening → ask how it was if needed, then night_checkin (mood 1-5 from their words, their words as text); say what was ticked and moved, and wish them good night.`,
       `Photos: "show me the Ooty trip photos / the one with the birthday cake / beach photos last December" → find_photos (it opens them on the Photos page); say how many and from when, in a few words.`,
       "The owner can talk to you from any page of the app. Call navigate when they ask to open or go to a page, then say where you took them in a few words.",

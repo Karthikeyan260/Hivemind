@@ -12,10 +12,12 @@ const RouteSchema = z.object({ agent: z.enum(AGENT_IDS) });
 export function ruleBasedAgent(message: string, previous?: AgentId | null): AgentId | null {
   const m = message.trim().toLowerCase();
   if (/^(hi|hello|hey|thanks|thank you|good (morning|night|evening))\b[\s!.]*$/.test(m)) return "core";
+  // Thirukkural ("tell me a kural on hard work", "இன்றைய குறள்") and the night check-in / diary.
+  if (/\b(thiru\s?k+ural|kurals?)\b|குறள்|\b(night check-?in|log my day|my diary)\b/u.test(m)) return "core";
   // "tell amma I'm late", "let Arif know the meeting moved": a message for that person (before the
   // scheduler rules, which would take "meeting").
   if (
-    /^(please\s+)?(tell|inform)\s+(?!me\b|us\b|the\b|a\b|an\b|about\b|what\b|how\b|why\b|when\b|where\b|who\b|which\b|something\b|some\b|your\b|it\b|this\b|that\b|them\b|stories\b|jokes?\b)\p{L}+/u.test(m) ||
+    /^(please\s+)?(tell|inform)\s+(?!me\b|us\b|the\b|a\b|an\b|about\b|what\b|how\b|why\b|when\b|where\b|who\b|which\b|something\b|some\b|any\b|one\b|your\b|it\b|this\b|that\b|them\b|stories\b|jokes?\b)\p{L}+/u.test(m) ||
     /^(please\s+)?let\s+(?!me\b|us\b)\p{L}+\s+know\b/u.test(m)
   )
     return "comms";

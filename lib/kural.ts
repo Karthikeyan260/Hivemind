@@ -40,6 +40,39 @@ export function kuralAt(num: number) {
   return { num, line1: k[0], line2: k[1], pope: k[2], chapter: { n: ch.n, ta: ch.ta, en: ch.en } };
 }
 
+/** Everyday topics → the chapters that speak to them. */
+const TOPICS: [RegExp, number[]][] = [
+  [/motivat|hard ?work|effort|success|goal|achiev|never give up|persever|inspir|ambition/, [62, 60, 61, 63]],
+  [/lazy|procrastinat|sluggish/, [61, 62]],
+  [/fail|setback|trouble|stress|tension|sad|hard time|difficult|worr/, [63, 62, 16]],
+  [/learn|study|exam|knowledge|educat|read/, [40, 42, 43]],
+  [/anger|angry|temper|calm/, [31, 16]],
+  [/patien|forgiv|toleran/, [16, 31]],
+  [/friend/, [79, 80, 83]],
+  [/love|kind|compassion|care/, [8, 25, 10]],
+  [/speak|speech|talk|words|interview|present/, [65, 10, 73]],
+  [/time|timing|right moment/, [49, 47]],
+  [/plan|decide|decision|think before/, [47, 49, 68]],
+  [/money|wealth|rich|earn|save/, [76, 101]],
+  [/honest|truth|integrity/, [30, 36, 29]],
+  [/grat|thank/, [11]],
+  [/family|home|parents|children/, [5, 7, 103]],
+  [/help|giving|charity|donat/, [23, 22, 9]],
+  [/work|job|career|action|do it/, [67, 66, 68, 62]],
+];
+
+/** A kural about a topic ("motivation", "anger", "friendship"): the chapter that fits, a random kural in it. */
+export function kuralFor(topic: string, rand: () => number = Math.random) {
+  const t = topic.toLowerCase();
+  const fromTopic = TOPICS.find(([re]) => re.test(t))?.[1];
+  // Else a chapter whose name has one of the words ("learning", "gratitude").
+  const words = t.split(/[^a-z]+/).filter((w) => w.length > 3);
+  const byName = D.chapters.filter((c) => c.part <= 2 && words.some((w) => c.en.toLowerCase().includes(w.slice(0, -1)))).map((c) => c.n);
+  const chapters = fromTopic ?? (byName.length ? byName : [62, 60, 63]);
+  const ch = D.chapters.find((c) => c.n === chapters[Math.floor(rand() * chapters.length)])!;
+  return kuralAt(ch.start + Math.floor(rand() * (ch.end - ch.start + 1)))!;
+}
+
 const key = (date: string) => `kural/${date}`;
 const SEEN = "kural/seen";
 
