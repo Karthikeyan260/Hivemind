@@ -832,7 +832,7 @@ function Bridge() {
         </div>
         {liveError && <p className="mt-1.5 text-xs text-alert">{liveError}</p>}
         <div className="mt-1.5 flex items-center justify-between gap-3 font-mono text-[9.5px] tracking-widest text-faint">
-          <span className="hidden truncate xl:inline">{liveOn ? "TALK ANY TIME · INTERRUPT FREELY · SPACE ENDS" : "SPACE = LIVE VOICE · ESC STOPS"}</span>
+          <span className="hidden min-w-0 truncate xl:inline">{liveOn ? "TALK ANY TIME · INTERRUPT FREELY · SPACE ENDS" : "SPACE = LIVE VOICE · ESC STOPS"}</span>
           <button
             type="button"
             onClick={() => {
@@ -844,7 +844,7 @@ function Bridge() {
             }}
             aria-pressed={speakAll}
             title={speakAll ? "HIVEMIND speaks every reply" : "HIVEMIND speaks only when you ask by voice"}
-            className={cx("ml-auto flex items-center gap-1.5 hover:text-core", speakAll ? "text-core" : "text-faint")}
+            className={cx("ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap hover:text-core", speakAll ? "text-core" : "text-faint")}
           >
             <AudioLines size={12} /> VOICE: {speakAll ? "ALWAYS" : "WHEN SPOKEN TO"}
           </button>

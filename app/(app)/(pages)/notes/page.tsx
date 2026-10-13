@@ -81,6 +81,7 @@ function Notes() {
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
+        eyebrow="Knowledge"
         title="Notes"
         subtitle="AI adds a summary, category, tags and an embedding when you save."
         actions={<Button onClick={() => { setDraft(blank); router.replace("/notes"); }}>New note</Button>}
@@ -139,7 +140,7 @@ function Notes() {
           </div>
         ) : (
           // On a phone the list is the page; the empty side pane only makes sense next to it.
-          <div className="hidden md:block">
+          <div className="hidden md:sticky md:top-6 md:block md:self-start">
             <Empty>Select a note or create a new one.</Empty>
           </div>
         )}

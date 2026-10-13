@@ -418,7 +418,7 @@ function WebTasks() {
               )}
             </div>
 
-            <ol className="space-y-1.5">
+            <ol className="max-w-3xl space-y-1.5">
               {task.steps.map((s, i) => (
                 <li key={s.at + "-" + i}>
                   <button

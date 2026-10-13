@@ -57,7 +57,7 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
           </span>
           <span className="font-mono text-sm font-semibold tracking-[0.3em]">HIVEMIND</span>
         </Link>
-        <nav className="flex flex-1 flex-col gap-0.5 px-3" aria-label="Main">
+        <nav className="no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]" aria-label="Main">
           {NAV.map(({ label, href, icon: Icon }) => (
             <Link
               key={href}
@@ -90,7 +90,7 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
           )}
         </nav>
         {canLock && (
-          <button onClick={lock} className="mx-3 mb-4 flex items-center gap-3 rounded-md px-3 py-2 text-sm text-faint hover:bg-raised/60 hover:text-fg">
+          <button onClick={lock} className="mx-3 mb-4 flex shrink-0 items-center gap-3 rounded-md px-3 py-2 text-sm text-faint hover:bg-raised/60 hover:text-fg">
             <Lock size={16} strokeWidth={1.75} /> Lock
           </button>
         )}

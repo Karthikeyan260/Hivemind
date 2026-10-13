@@ -200,7 +200,7 @@ export const LifeStory = forwardRef<StoryHandle, { lanes: Lane[]; commits: Commi
   const lanesOf = (a: Age) => stages.filter((x) => x.age === a);
 
   return (
-    <div className="relative h-[70vh] min-h-[520px] w-full overflow-hidden border border-data/20 bg-[#05080d]">
+    <div className="relative h-[min(70vh,calc(100dvh-22rem))] min-h-[460px] w-full overflow-hidden border border-data/20 bg-[#05080d]">
       <svg viewBox={`0 0 ${W} 520`} preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full">
         <AvatarDefs />
         <defs>

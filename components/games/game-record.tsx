@@ -42,7 +42,7 @@ export function GameRecord() {
       <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
         <Trophy size={18} className="text-core" /> Your record
       </h2>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {(Object.keys(GAMES) as Row["game"][]).map((g) => {
           const t = tally(rows.filter((r) => r.game === g));
           const n = t.win + t.loss + t.draw;

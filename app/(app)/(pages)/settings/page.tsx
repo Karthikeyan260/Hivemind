@@ -7,11 +7,12 @@ import { NotificationsCard } from "@/components/notifications";
 import { SessionsCard } from "@/components/sessions-card";
 import { SystemCheckCard } from "@/components/system-check-card";
 import { providers } from "@/lib/ai/providers";
+import { PageHeader } from "@/components/ui";
 
 export default function SettingsPage() {
   const rows: { role: string; note?: string; p: typeof providers.gemini }[] = [
     { role: "Agents and answers", p: providers.gemini },
-    { role: "Embeddings", note: "768-dim, switch models in System check", p:{ ...providers.gemini, model: process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001" } },
+    { role: "Embeddings", note: "768-dim, switch models in System check", p: { ...providers.gemini, model: process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001" } },
     { role: "Fallback answers", p: providers.nvidia },
     { role: "Free fallback, Autopilot backup", p: providers.openrouter },
     { role: "Free fallback, small tasks", p: providers.github },
@@ -20,7 +21,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Settings & privacy</h1>
+      <PageHeader eyebrow="You" title="Settings & privacy" subtitle="Voice, notifications, location, devices and the AI behind HIVEMIND." />
 
       <section className="rounded-xl border border-line bg-panel p-4">
         <h2 className="mb-3 font-semibold">AI providers</h2>

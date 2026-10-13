@@ -122,15 +122,11 @@ export default function RoutinesPage() {
         <ul className="space-y-3">
           {routines.map((r) => (
             <li key={r.id} className="rounded-xl border border-line bg-panel p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <Zap size={16} className="text-core" />
-                <h2 className="font-medium">{r.name}</h2>
-                {r.triggers.map((t) => (
-                  <span key={t} className="rounded-full bg-raised px-2 py-0.5 font-mono text-[10.5px] text-soft">
-                    &quot;{t}&quot;
-                  </span>
-                ))}
-                <div className="ml-auto flex items-center gap-1">
+              {/* Name and actions on one row; the phrases wrap underneath, so every card lines up. */}
+              <div className="flex items-center gap-2">
+                <Zap size={16} className="shrink-0 text-core" />
+                <h2 className="min-w-0 flex-1 truncate font-medium">{r.name}</h2>
+                <div className="flex shrink-0 items-center gap-1">
                   <Button size="sm" onClick={() => run(r)}>
                     <Play size={13} /> Run
                   </Button>
@@ -142,6 +138,15 @@ export default function RoutinesPage() {
                   </Button>
                 </div>
               </div>
+              {!!r.triggers.length && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5 pl-6">
+                  {r.triggers.map((t) => (
+                    <span key={t} className="rounded-full bg-raised px-2 py-0.5 font-mono text-[10.5px] text-soft">
+                      &quot;{t}&quot;
+                    </span>
+                  ))}
+                </div>
+              )}
               <ol className="mt-2 list-decimal space-y-0.5 pl-6 text-sm text-soft">
                 {r.steps.map((s, i) => (
                   <li key={i}>{s}</li>

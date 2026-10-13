@@ -63,7 +63,7 @@ function Documents() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader title="Documents" subtitle="PDF, TXT, Markdown, DOCX, CSV up to 4MB. Text is chunked and embedded for search." />
+      <PageHeader eyebrow="Knowledge" title="Documents" subtitle="PDF, TXT, Markdown, DOCX, CSV up to 4MB. Text is chunked and embedded for search." />
 
       <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-line bg-panel p-4">
         <label className={cx("inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-core px-3 py-2 text-sm font-medium text-core-ink", busy && "pointer-events-none opacity-50")}>

@@ -43,7 +43,7 @@ export default function SourcesPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader title="Sources" subtitle="Pull your own data into your brain. Re-syncing replaces the previous import — no duplicates." />
+      <PageHeader eyebrow="Import" title="Sources" subtitle="Pull your own data into your brain. Re-syncing replaces the previous import — no duplicates." />
       <ErrorText error={error ?? status.error} />
       {message && <p className="rounded-lg bg-accent/10 px-3 py-2 text-sm text-accent">{message}</p>}
 

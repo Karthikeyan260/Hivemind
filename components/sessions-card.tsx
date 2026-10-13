@@ -57,7 +57,7 @@ export function SessionsCard() {
         {list.data && !list.data.sessions.length && <li className="text-soft">No sessions.</li>}
       </ul>
       {sessions.length > 5 && (
-        <button type="button" onClick={() => setAll((x) => !x)} className="mb-3 text-xs text-data hover:underline">
+        <button type="button" onClick={() => setAll((x) => !x)} className="mb-3 block text-xs text-data hover:underline">
           {all ? "Show fewer" : `Show all ${sessions.length}`}
         </button>
       )}

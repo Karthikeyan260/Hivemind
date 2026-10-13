@@ -221,7 +221,7 @@ function MapView() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader title="Map" subtitle="Where you are, your devices, places near you and the way there (OpenStreetMap)." />
+      <PageHeader eyebrow="Places" title="Map" subtitle="Where you are, your devices, places near you and the way there (OpenStreetMap)." />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Button size="sm" variant="ghost" onClick={() => void locate()}>

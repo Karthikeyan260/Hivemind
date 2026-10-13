@@ -41,7 +41,7 @@ export default function SearchPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader title="Semantic search" subtitle="Search by meaning across notes, memories and documents." />
+      <PageHeader eyebrow="Knowledge" title="Semantic search" subtitle="Search by meaning across notes, memories and documents." />
       <form onSubmit={run} className="mb-6 flex flex-wrap gap-2">
         <Input className="min-w-60 flex-1" placeholder="e.g. how does vector search work in postgres" value={query} onChange={(e) => setQuery(e.target.value)} />
         <ProjectSelect projects={projects.data} value={projectId} onChange={setProjectId} allLabel="All projects" />
@@ -49,6 +49,16 @@ export default function SearchPage() {
       </form>
       <ErrorText error={error} />
       {results && results.length === 0 && <Empty>No close matches. Try different words.</Empty>}
+      {!results && !busy && (
+        <div className="flex flex-wrap items-center gap-1.5 text-sm text-soft">
+          <span className="mr-1">Try:</span>
+          {["what did I learn about RAG", "my AI agent projects", "Python tips", "notes from last week"].map((x) => (
+            <button key={x} type="button" onClick={() => setQuery(x)} className="rounded-full border border-line px-2.5 py-0.5 text-xs hover:border-data hover:text-data">
+              {x}
+            </button>
+          ))}
+        </div>
+      )}
       <ul className="space-y-2">
         {results?.map((r) => (
           <li key={r.source_type + r.source_id}>

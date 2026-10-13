@@ -179,7 +179,7 @@ export const LifeStory3D = forwardRef<StoryHandle, { lanes: Lane[]; commits: Com
   const s = stages[index];
 
   return (
-    <div className="relative h-[72vh] min-h-[540px] w-full overflow-hidden border border-data/20 bg-[#05080d]">
+    <div className="relative h-[min(72vh,calc(100dvh-22rem))] min-h-[460px] w-full overflow-hidden border border-data/20 bg-[#05080d]">
       <canvas ref={canvas} className="absolute inset-0 h-full w-full" />
       {/* Scene-change fade */}
       <div className="pointer-events-none absolute inset-0 bg-[#05080d]" style={{ opacity: fade }} />
