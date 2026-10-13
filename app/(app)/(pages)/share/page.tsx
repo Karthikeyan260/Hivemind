@@ -1,11 +1,12 @@
 "use client";
 
-import { Bell, Check, FileText, Image as ImageIcon, Link2, Loader2, Paperclip, Share2 } from "lucide-react";
+import { Bell, Check, FileText, Image as ImageIcon, ImagePlus, Link2, Loader2, Paperclip, Share2 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Button, ErrorText, PageHeader, Textarea } from "@/components/ui";
 import { api, BRAIN_CHANGED } from "@/lib/client-api";
+import { uploadPhotos } from "@/lib/photo-prep";
 
 type Saved = { kind: "memory" | "document"; title: string; href: string; note?: string; reminder?: { title: string; date: string; time?: string } };
 type Result = Saved | { error: string };
@@ -63,6 +64,7 @@ function Share() {
   const [files, setFiles] = useState<File[]>([]);
   const [incoming, setIncoming] = useState<Inbox | null>(null);
   const [busy, setBusy] = useState(false);
+  const router = useRouter();
   const [results, setResults] = useState<Result[] | null>(null);
   const [error, setError] = useState<string | null>(params.get("error") ? "That share didn't come through. Share it to HIVEMIND once more." : null);
   const [added, setAdded] = useState<Set<number>>(new Set());
@@ -111,6 +113,19 @@ function Share() {
     void readInbox().then((inbox) => inbox && setIncoming(inbox));
   }, []);
 
+  // Gallery photos: into Photo memories (described, findable by place and date) instead of a memory.
+  async function toPhotos(item: Inbox) {
+    setBusy(true);
+    setError(null);
+    const { total, failed } = await uploadPhotos(item.files, { onProgress: (_d, _t, _f, err) => err && setError(err) });
+    setBusy(false);
+    if (failed < total) {
+      void clearInbox();
+      setIncoming(null);
+      router.push("/photos");
+    }
+  }
+
   async function addReminder(i: number, r: NonNullable<Saved["reminder"]>) {
     await api("/api/reminders", { method: "POST", json: { title: r.title, date: r.date, time: r.time } });
     setAdded((s) => new Set(s).add(i));
@@ -136,6 +151,11 @@ function Share() {
             <Button onClick={() => save(incoming)} disabled={busy}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save to HIVEMIND
             </Button>
+            {incoming.files.length > 0 && incoming.files.every((f) => f.type.startsWith("image/")) && (
+              <Button variant="ghost" disabled={busy} onClick={() => void toPhotos(incoming)}>
+                <ImagePlus size={14} /> Add to Photos
+              </Button>
+            )}
             <Button
               variant="quiet"
               disabled={busy}

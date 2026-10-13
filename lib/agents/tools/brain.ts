@@ -28,6 +28,21 @@ export const brain: Record<string, Tool> = {
     },
   },
 
+  /* ───── photos ───── */
+  find_photos: {
+    name: "find_photos",
+    description: "Find the owner's photos by what's in them, where and when ('show me the Ooty trip photos', 'the one with the birthday cake', 'beach photos last December'). Opens them on the Photos page.",
+    parameters: obj({ query: S }, ["query"]),
+    async run(args, ctx) {
+      const { listPhotos, searchPhotos } = await import("@/lib/photos");
+      const q = str(args.query).slice(0, 120);
+      const { photos } = searchPhotos(await listPhotos(ctx.supabase), q);
+      ctx.actions.push({ label: photos.length ? `Show ${photos.length} photo${photos.length === 1 ? "" : "s"}` : "Open Photos", href: `/photos?q=${encodeURIComponent(q)}`, navigate: true });
+      if (!photos.length) return { found: 0, note: "No matching photos. The owner adds them on the Photos page or with Share → HIVEMIND." };
+      return { found: photos.length, photos: photos.slice(0, 6).map((p) => ({ title: p.title, taken: p.taken.slice(0, 10), place: p.place, about: p.description.slice(0, 160) })) };
+    },
+  },
+
   /* ───── memory ───── */
   remember: {
     name: "remember",

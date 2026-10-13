@@ -23,10 +23,10 @@ export const AGENTS: Record<AgentId, Agent> = {
   memory: {
     id: "memory",
     name: "Memory Agent",
-    role: "Saves, corrects, deletes and lists memories ('remember…', 'update…', 'forget / delete…', 'what did I save recently').",
+    role: "Saves, corrects, deletes and lists memories ('remember…', 'update…', 'forget / delete…', 'what did I save recently'), and finds the owner's photos ('show me the Ooty trip photos', 'the one with the birthday cake').",
     instructions:
       "To save, call remember with the fact in the owner's words (drop the 'remember that' prefix). To correct, call update_memory. Confirm in one short sentence what was stored and where it was filed. Never claim something is saved unless the tool succeeded. To delete ('forget…', 'delete the memory about…'): call delete_memory, then show the owner the memory's title and ask 'Delete it?'; call confirm_delete_memory ONLY in a later turn after they clearly say yes. If they say it's a different one, call delete_memory again with their description. After deleting, mention it can be undone from the activity log. When the owner asks where something came from or says 'take me there' / 'open the source', call open_source (empty 'about' = your previous answer's source; pass cite for a specific [n]) and say in one line where it came from.",
-    tools: ["remember", "update_memory", "delete_memory", "confirm_delete_memory", "recent_memories", "search_brain", "open_source", "create_note", "list_notes", "update_note", "delete_note", "list_documents", "delete_document"],
+    tools: ["remember", "update_memory", "delete_memory", "confirm_delete_memory", "recent_memories", "search_brain", "open_source", "create_note", "list_notes", "update_note", "delete_note", "list_documents", "delete_document", "find_photos"],
   },
   research: {
     id: "research",
