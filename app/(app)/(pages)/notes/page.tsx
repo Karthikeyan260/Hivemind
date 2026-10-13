@@ -5,6 +5,15 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { Badge, Button, Empty, ErrorText, Input, PageHeader, ProjectSelect, Textarea } from "@/components/ui";
 import { api, fmtDate, type Note, type Project, useFetch } from "@/lib/client-api";
 
+/** A note's preview without Markdown marks (headings, bold, list dashes, link targets). */
+const plain = (t: string) =>
+  t
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}(#{1,6}|[-*+]|\d+\.)\s+/gm, "")
+    .replace(/[*_`~]{1,3}/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 export default function NotesPage() {
   return (
     <Suspense>
@@ -93,7 +102,7 @@ function Notes() {
                     className={`w-full rounded-md border p-3 text-left ${draft?.id === n.id ? "border-core bg-core/5" : "border-line bg-raised hover:border-line-strong"}`}
                   >
                     <div className="truncate text-sm font-medium">{n.title}</div>
-                    <div className="mt-1 line-clamp-2 text-xs text-soft">{n.summary || n.content}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-soft">{plain(n.summary || n.content)}</div>
                     <div className="mt-2 flex flex-wrap gap-1">
                       {n.category && <Badge tone="accent">{n.category}</Badge>}
                       {n.tags.slice(0, 3).map((t) => <Badge key={t}>{t}</Badge>)}
@@ -129,7 +138,10 @@ function Notes() {
             )}
           </div>
         ) : (
-          <Empty>Select a note or create a new one.</Empty>
+          // On a phone the list is the page; the empty side pane only makes sense next to it.
+          <div className="hidden md:block">
+            <Empty>Select a note or create a new one.</Empty>
+          </div>
         )}
       </div>
     </div>

@@ -20,6 +20,10 @@ export function SessionsCard() {
   const list = useFetch<{ sessions: S[] }>("/api/sessions");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
+  // Newest first; a long list folds to the latest few.
+  const sessions = [...(list.data?.sessions ?? [])].sort((a, b) => b.created.localeCompare(a.created));
+  const shown = all ? sessions : sessions.slice(0, 5);
 
   async function everywhere() {
     if (!confirm("Log out every device, including this one? You'll need the password again everywhere.")) return;
@@ -43,7 +47,7 @@ export function SessionsCard() {
       <h2 className="mb-2 font-semibold">Signed-in devices</h2>
       <p className="mb-3 text-sm text-soft">Each sign-in lasts 180 days, ends when you lock or log out, and every one ends when the password changes.</p>
       <ul className="mb-3 space-y-1.5 text-sm">
-        {(list.data?.sessions ?? []).map((s, i) => (
+        {shown.map((s, i) => (
           <li key={i} className="flex items-center gap-2">
             <MonitorSmartphone size={14} className="shrink-0 text-data" />
             <span className="min-w-0 flex-1 truncate">{describe(s.device)}</span>
@@ -52,6 +56,11 @@ export function SessionsCard() {
         ))}
         {list.data && !list.data.sessions.length && <li className="text-soft">No sessions.</li>}
       </ul>
+      {sessions.length > 5 && (
+        <button type="button" onClick={() => setAll((x) => !x)} className="mb-3 text-xs text-data hover:underline">
+          {all ? "Show fewer" : `Show all ${sessions.length}`}
+        </button>
+      )}
       <ErrorText error={error} />
       <Button variant="danger" size="sm" onClick={everywhere} disabled={busy}>
         <LogOut size={13} /> Log out all devices

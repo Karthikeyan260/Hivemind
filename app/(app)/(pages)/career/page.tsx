@@ -210,7 +210,7 @@ function Career() {
                       <span className="font-mono text-[11px] text-core">{h.fit_score ?? "–"}</span>
                       <span className="font-mono text-[11px] text-data">{h.ats_score ?? "–"}%</span>
                     </Link>
-                    <button onClick={() => remove(h.id)} aria-label="Delete analysis" className="p-1 text-faint opacity-0 hover:text-alert group-hover:opacity-100">
+                    <button onClick={() => remove(h.id)} aria-label="Delete analysis" className="p-1 text-faint hover:text-alert md:opacity-0 md:group-hover:opacity-100">
                       <Trash2 size={14} />
                     </button>
                   </li>

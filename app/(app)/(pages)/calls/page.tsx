@@ -56,7 +56,7 @@ export default function CallsPage() {
           <section className="mb-4 space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">
             <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
               <label className="flex items-center gap-2 text-soft">
-                Answer for me
+                <span className="whitespace-nowrap">Answer for me</span>
                 <Select value={d.settings.mode} onChange={(e) => set({ mode: e.target.value as Settings["mode"] })}>
                   <option value="missed">when I don&apos;t pick up</option>
                   <option value="always">every call (I can still pick up)</option>

@@ -9,9 +9,9 @@ import { SystemCheckCard } from "@/components/system-check-card";
 import { providers } from "@/lib/ai/providers";
 
 export default function SettingsPage() {
-  const rows = [
+  const rows: { role: string; note?: string; p: typeof providers.gemini }[] = [
     { role: "Agents and answers", p: providers.gemini },
-    { role: "Embeddings (768-dim; switch models in System check)", p: { ...providers.gemini, model: process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001" } },
+    { role: "Embeddings", note: "768-dim, switch models in System check", p:{ ...providers.gemini, model: process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001" } },
     { role: "Fallback answers", p: providers.nvidia },
     { role: "Free fallback, Autopilot backup", p: providers.openrouter },
     { role: "Free fallback, small tasks", p: providers.github },
@@ -25,12 +25,13 @@ export default function SettingsPage() {
       <section className="rounded-xl border border-line bg-panel p-4">
         <h2 className="mb-3 font-semibold">AI providers</h2>
         <ul className="divide-y divide-line text-sm">
-          {rows.map(({ role, p }) => (
+          {rows.map(({ role, p, note }) => (
             <li key={role} className="flex flex-wrap items-center justify-between gap-2 py-2">
               <div>
                 <div className="font-medium">{role}</div>
                 <div className="text-xs text-soft">
                   {p.name} · {p.model}
+                  {note && ` · ${note}`}
                 </div>
               </div>
               <span className={p.isConfigured() ? "text-green-600" : "text-red-500"}>

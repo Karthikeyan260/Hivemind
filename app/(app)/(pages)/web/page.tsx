@@ -273,8 +273,8 @@ function WebTasks() {
 
         {task ? (
           <div className="min-w-0 space-y-4">
-            <div className="flex flex-wrap items-start gap-2">
-              <h2 className="min-w-0 flex-1 font-medium">{task.goal}</h2>
+            <h2 className="font-medium">{task.goal}</h2>
+            <div className="flex flex-wrap items-center gap-2">
               <Badge tone={STATUS[task.status].tone}>{STATUS[task.status].label}</Badge>
               {ACTIVE.includes(task.status) && (
                 <Button size="sm" variant="danger" onClick={() => decide("cancel")}>

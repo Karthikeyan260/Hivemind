@@ -109,8 +109,8 @@ export default function SourcesPage() {
           .filter((p) => !MY_PAGES.some((m) => m.url === p.source_url) && p.source_url.startsWith("http"))
           .map((p) => (
             <div key={p.id} className="mt-2 flex items-center justify-between gap-2 text-sm">
-              <Link href={`/documents?open=${p.id}`} className="truncate hover:text-accent">{p.filename}</Link>
-              <Badge>{p.chunk_count} chunks</Badge>
+              <Link href={`/documents?open=${p.id}`} className="min-w-0 truncate hover:text-accent">{p.filename}</Link>
+              <span className="shrink-0"><Badge>{p.chunk_count} chunks</Badge></span>
             </div>
           ))}
       </section>

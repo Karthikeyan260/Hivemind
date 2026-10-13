@@ -11,7 +11,11 @@ import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, Skeleton } from
 import { api, type Brain, useFetch } from "@/lib/client-api";
 
 // The 3D showcase (three.js) loads only on this page.
-const ProjectReel = dynamic(() => import("@/components/projects/reel").then((m) => m.ProjectReel), { ssr: false });
+const ProjectReel = dynamic(() => import("@/components/projects/reel").then((m) => m.ProjectReel), {
+  ssr: false,
+  // While the 3D code downloads, the reel's own frame (not a blank page).
+  loading: () => <div className="grid h-[74dvh] min-h-[460px] place-items-center rounded-3xl border border-white/10 font-mono text-[11px] tracking-[0.3em] text-data">LOADING YOUR WORK…</div>,
+});
 
 const STATUS_DOT: Record<string, string> = { active: "bg-ok", paused: "bg-core", done: "bg-faint" };
 const FILTERS = ["all", "active", "paused", "done"] as const;

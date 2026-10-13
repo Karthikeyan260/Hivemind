@@ -2,7 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
-import { Badge, Button, Empty, ErrorText, PageHeader, ProjectSelect } from "@/components/ui";
+import { Upload } from "lucide-react";
+import { Badge, Button, cx, Empty, ErrorText, PageHeader, ProjectSelect } from "@/components/ui";
 import { api, fmtDate, type Project, useFetch } from "@/lib/client-api";
 
 type Doc = {
@@ -65,14 +66,17 @@ function Documents() {
       <PageHeader title="Documents" subtitle="PDF, TXT, Markdown, DOCX, CSV up to 4MB. Text is chunked and embedded for search." />
 
       <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-line bg-panel p-4">
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".pdf,.txt,.md,.markdown,.docx,.csv"
-          disabled={busy}
-          onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
-          className="text-sm file:mr-3 file:rounded-md file:border-0 file:bg-core file:px-3 file:py-2 file:text-sm file:font-medium file:text-core-ink"
-        />
+        <label className={cx("inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-core px-3 py-2 text-sm font-medium text-core-ink", busy && "pointer-events-none opacity-50")}>
+          <Upload size={14} /> Upload a document
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.txt,.md,.markdown,.docx,.csv"
+            disabled={busy}
+            onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+            className="sr-only"
+          />
+        </label>
         <ProjectSelect projects={projects.data} value={projectId} onChange={setProjectId} />
         {busy && <span className="text-sm text-soft">Parsing and embedding… this can take up to a minute.</span>}
       </div>

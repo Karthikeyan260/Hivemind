@@ -53,7 +53,7 @@ export function GameRecord() {
                 <G.icon size={13} /> {G.title}
               </div>
               <div className="mt-1 font-mono text-lg font-bold">
-                <span className="text-ok">{t.win}W</span> <span className="text-alert">{t.loss}L</span>
+                <span className={t.win ? "text-ok" : "text-faint"}>{t.win}W</span> <span className={t.loss ? "text-alert" : "text-faint"}>{t.loss}L</span>
                 {!!t.draw && <span className="text-soft"> {t.draw}D</span>}
               </div>
               <div className="text-[11px] text-faint">{n ? `${Math.round((t.win / n) * 100)}% wins · ${n} played` : "Not played yet"}</div>
@@ -104,10 +104,12 @@ export function GameRecord() {
           return (
             <li key={i} className="flex items-center gap-2 py-1.5">
               <G.icon size={14} className="shrink-0 text-soft" />
-              <span className="min-w-0 flex-1 truncate">
-                {G.title} vs {r.vs}
-                {r.level ? ` (${LABEL[r.level] ?? r.level})` : ""}
-                {r.detail && <span className="text-faint"> · {r.detail}</span>}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">
+                  {G.title} vs {r.vs}
+                  {r.level ? ` (${LABEL[r.level] ?? r.level})` : ""}
+                </span>
+                {r.detail && <span className="block truncate text-xs text-faint">{r.detail}</span>}
               </span>
               <span className={cx("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase", TONE[r.outcome])}>{r.outcome}</span>
               <span className="w-14 shrink-0 text-right font-mono text-[10.5px] text-faint">{ago(r.at)}</span>

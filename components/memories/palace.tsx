@@ -228,7 +228,7 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose }: P
       <canvas ref={canvas} className="block h-full w-full outline-none" aria-label="Memory Palace: walk through your memories. Use List view for a text list." />
 
       {/* Where am I: the meta line decodes, the name rises out of a mask, the tagline follows. */}
-      <div key={zoneWing?.id ?? "hub"} className="pointer-events-none absolute left-4 top-4 max-w-[60%]">
+      <div key={zoneWing?.id ?? "hub"} className="pointer-events-none absolute left-3 top-3 max-w-[62%] rounded-md bg-[#0b0e15]/60 px-2 py-1.5 backdrop-blur-sm">
         <p className="font-mono text-[10px] tracking-[0.25em]" style={{ color: zoneWing?.color ?? "#f2c46d" }}>
           <Scramble text={`${zoneWing ? "WING" : "ROTUNDA"} · ${zoneCount} ${zoneCount === 1 ? "MEMORY" : "MEMORIES"}`} />
         </p>

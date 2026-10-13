@@ -548,7 +548,7 @@ function Explorer() {
       <div className="mb-5 space-y-2">
         <div className="relative">
           <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search your memories… e.g. “Python”, “what did I learn about RAG”" className="pl-9" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search memories… e.g. “RAG”" className="pl-9" />
           {q && (
             <button type="button" onClick={() => setQ("")} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 text-faint hover:text-fg">
               <X size={14} />

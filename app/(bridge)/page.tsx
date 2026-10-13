@@ -1017,7 +1017,8 @@ function Bridge() {
 
           {/* Sector strip */}
           <div className={cx("absolute inset-x-0 bottom-0 border-t border-line bg-sunken/85", galleryOnly && "hidden")}>
-            <div className="no-scrollbar flex items-center gap-1 overflow-x-auto px-3 py-2">
+            {/* The right edge fades, so it reads as a strip that scrolls. */}
+            <div className="no-scrollbar flex items-center gap-1 overflow-x-auto py-2 pl-3 pr-12 [mask-image:linear-gradient(to_right,black_88%,transparent)] md:pr-3 md:[mask-image:none]">
               <span className="mr-1 shrink-0 font-mono text-[10px] tracking-[0.2em] text-faint">SECTORS</span>
               {b?.projects.map((p) => (
                 <button
@@ -1030,7 +1031,7 @@ function Bridge() {
                 >
                   <span className="h-1.5 w-1.5 rotate-45 bg-core" />
                   {p.name}
-                  <span className="font-mono text-[10px] text-faint">{p.items}</span>
+                  {!!p.items && <span className="font-mono text-[10px] text-faint">{p.items}</span>}
                 </button>
               ))}
               <button
