@@ -13,6 +13,7 @@ import { dream, getDream, getDreamSettings } from "@/lib/dream";
 import { db } from "@/lib/db";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { runHabitAlerts } from "@/lib/habits";
+import { listCheckins } from "@/lib/checkin";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { notify, pushConfigured } from "@/lib/push";
 import { agenda, dueAlerts, HOME_TZ, releaseAlert } from "@/lib/reminders";
@@ -51,7 +52,7 @@ export async function GET(req: Request) {
     new Intl.DateTimeFormat("en-CA", { timeZone: HOME_TZ }).format(now),
     Number(new Intl.DateTimeFormat("en-GB", { timeZone: HOME_TZ, hour: "2-digit", hourCycle: "h23" }).format(now)),
   ];
-  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; news?: string; rls?: string }>(supabase, "notify-state", {});
+  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; news?: string; rls?: string; checkin?: string }>(supabase, "notify-state", {});
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
   if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
@@ -69,6 +70,13 @@ export async function GET(req: Request) {
   // 3. Birthdays (week / eve / day) and habits (times, snoozes, 8 pm nudge, Sunday summary).
   const [birthdays, habits] = await Promise.all([runBirthdayAlerts(supabase, now).catch(() => 0), runHabitAlerts(supabase, now).catch(() => 0)]);
 
+  // Night check-in: one nudge at 9 pm if tonight's isn't done yet.
+  let checkin = false;
+  if (hour >= 21 && hour < 23 && state.checkin !== date) {
+    const done = (await listCheckins(supabase).catch(() => [])).some((c) => c.date === date);
+    checkin = done || (await notify(supabase, { title: "🌙 How was your day?", body: "A 30-second check-in: your mood, a few words, and what moves to tomorrow.", url: "/?checkin=1", tag: "checkin" }).catch(() => 0)) > 0;
+  }
+
   // Dream mode: once a night, from its hour until 7 am (marked first, so later checks don't start it again).
   const dreamSet = await getDreamSettings(supabase).catch(() => null);
   const dreaming = !!dreamSet?.enabled && hour >= dreamSet.hour && hour < 7 && state.dream !== date;
@@ -77,7 +85,7 @@ export async function GET(req: Request) {
   const news = !!briefSet?.enabled && !!briefSet.topics.length && hour >= BRIEF_HOUR && hour < 12 && state.news !== date;
 
   // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
-  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { news: date } : {}), lastRun: now.toISOString(), lastSent: due.length });
+  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { news: date } : {}), ...(checkin ? { checkin: date } : {}), lastRun: now.toISOString(), lastSent: due.length });
   // The jobs that run on their own: a failure becomes a push (once a day each), never silence.
   if (dreaming)
     after(() =>

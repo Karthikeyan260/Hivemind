@@ -27,12 +27,13 @@ export const GROUPS: Record<string, Group> = {
     tools: [
       "recent_memories", "update_memory", "delete_memory", "confirm_delete_memory", "open_source", "list_notes", "update_note", "delete_note",
       "list_projects", "project_details", "find_product", "open_link", "where_am_i", "places_nearby", "directions", "call_contact", "message_contact",
-      "save_contact", "run_routine", "set_language", "get_profile", "log_habit", "habits_status", "find_photos",
+      "save_contact", "run_routine", "set_language", "get_profile", "log_habit", "habits_status", "find_photos", "night_checkin",
     ],
     guide: [
       "Call search_brain before answering anything about the owner, their work, projects or saved knowledge. Answer only from what it returns; if it has nothing, say so briefly.",
       `Also call search_brain FIRST for a question about a specific event, place, person, plan or thing that isn't common knowledge ("when is the kiwi festival?"): the owner may have saved it. Use web_search only if the brain has nothing.`,
       "Call remember when they ask you to remember or note something. Confirm in a few words. Call create_project when they ask to start a project.",
+      `Night check-in: "how was my day" / "log my day" / they tell you about their day in the evening → ask how it was if needed, then night_checkin (mood 1-5 from their words, their words as text); say what was ticked and moved, and wish them good night.`,
       `Photos: "show me the Ooty trip photos / the one with the birthday cake / beach photos last December" → find_photos (it opens them on the Photos page); say how many and from when, in a few words.`,
       "The owner can talk to you from any page of the app. Call navigate when they ask to open or go to a page, then say where you took them in a few words.",
       "You can operate the app: analyze_job, tailor_resume, create_note, navigate, and any page button via page_actions + do_page_action. When the owner asks for something the app can do, DO it with a tool instead of describing it. If you aren't sure an action exists, call page_actions.",

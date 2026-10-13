@@ -72,6 +72,21 @@ export const routines: Record<string, Tool> = {
   },
 
   /* ───── kitchen / hands-free mode (full-screen voice, screen stays on) ───── */
+  night_checkin: {
+    name: "night_checkin",
+    description:
+      "The owner's night check-in / diary ('my day was good, I went to the gym', 'log my day', 'check in for tonight'). Saves a diary note with the mood, ticks habits they say they did, and (unless they say not to) moves today's unfinished reminders to tomorrow. mood: 1 rough, 2 meh, 3 okay, 4 good, 5 great (infer from their words). Ask how their day was first if they haven't said.",
+    parameters: obj({ mood: { type: "integer", minimum: 1, maximum: 5 }, text: S, move_unfinished: { type: "boolean" } }, ["mood", "text"]),
+    async run(args, ctx) {
+      const { checkinContext, saveCheckin } = await import("@/lib/checkin");
+      const mood = Math.min(5, Math.max(1, Math.round(Number(args.mood) || 3))) as 1 | 2 | 3 | 4 | 5;
+      const c = await checkinContext(ctx.supabase);
+      const r = await saveCheckin(ctx.supabase, { mood, text: str(args.text), move: args.move_unfinished === false ? [] : c.unfinished.map((u) => u.id) });
+      ctx.changed = true;
+      ctx.actions.push({ label: "Open the diary note", href: r.noteId ? `/notes?open=${r.noteId}` : "/notes" });
+      return { saved: true, habits_ticked: r.habitsDone, moved_to_tomorrow: r.movedTitles, note: "Say it back warmly in one or two short sentences and wish them good night." };
+    },
+  },
   kitchen_mode: {
     name: "kitchen_mode",
     description: "Open kitchen / hands-free / focus mode: full screen, a big voice orb with the mascot, the screen stays on ('kitchen mode', 'hands-free mode', 'keep the screen on', 'I'm cooking').",
