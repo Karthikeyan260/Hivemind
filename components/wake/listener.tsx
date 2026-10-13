@@ -5,16 +5,27 @@ import { useEffect, useState } from "react";
 import { useVoice } from "@/components/voice/provider";
 import { isPublicPage } from "@/lib/public-paths";
 import { sfx } from "@/lib/sfx";
-import { startDetector } from "@/lib/wake/detector";
-import { cosine } from "@/lib/voiceprint/fbank";
-import { loadSpeakerModel } from "@/lib/voiceprint/model";
 import { THRESHOLD } from "@/lib/voiceprint/policy";
 import { loadVoiceprint, type Voiceprint } from "@/lib/voiceprint/store";
-import { loadWake, WAKE_CHANGED, WAKE_REJECTED, wakeOnThisTab, type WakeModel } from "@/lib/wake/store";
+import {
+  loadWake,
+  WAKE_CHANGED,
+  WAKE_REJECTED,
+  wakeOnThisTab,
+  type WakeModel,
+} from "@/lib/wake/store";
+
+// The detector and the speaker model load only when the wake word is switched on, so every page
+// doesn't download them for nothing.
+const speakerModel = () =>
+  import("@/lib/voiceprint/model").then((m) => m.loadSpeakerModel());
 
 /** Was the wake word said by the owner? A wake word is short, so a little less speech is accepted. */
 async function isOwner(heard: Float32Array, vp: Voiceprint) {
-  const model = await loadSpeakerModel();
+  const [model, { cosine }] = await Promise.all([
+    speakerModel(),
+    import("@/lib/voiceprint/fbank"),
+  ]);
   const e = await model.embed(heard, 0.5);
   return !!e && cosine(e, vp.print) >= THRESHOLD[vp.strictness] - 0.05;
 }
@@ -45,7 +56,13 @@ export function WakeListener() {
 
   // The settings page runs its own test listener; voice uses the mic itself.
   // Only when switched on (the ear button, or "start listening when I open HIVEMIND"): never by surprise.
-  const active = !!model?.enabled && (!!model.autoStart || tabOn) && visible && voice.state === "off" && !isPublicPage(pathname) && !pathname.startsWith("/settings");
+  const active =
+    !!model?.enabled &&
+    (!!model.autoStart || tabOn) &&
+    visible &&
+    voice.state === "off" &&
+    !isPublicPage(pathname) &&
+    !pathname.startsWith("/settings");
   const start = voice.start;
 
   useEffect(() => {
@@ -55,20 +72,25 @@ export function WakeListener() {
     // With a voiceprint, only the owner saying the word starts voice (not a guest, not the TV).
     const vp = loadVoiceprint();
     const checkVoice = vp?.enabled;
-    if (checkVoice) void loadSpeakerModel().catch(() => {}); // ready before the word is said
-    startDetector(model, async (heard) => {
-      if (checkVoice) {
-        const ok = await isOwner(heard, vp!).catch(() => false);
-        if (!ok) {
-          window.dispatchEvent(new Event(WAKE_REJECTED));
-          return;
-        }
-      }
-      sfx.lock();
-      start();
-    })
+    if (checkVoice) void speakerModel().catch(() => {}); // ready before the word is said
+    import("@/lib/wake/detector")
+      .then(({ startDetector }) =>
+        startDetector(model, async (heard) => {
+          if (checkVoice) {
+            const ok = await isOwner(heard, vp!).catch(() => false);
+            if (!ok) {
+              window.dispatchEvent(new Event(WAKE_REJECTED));
+              return;
+            }
+          }
+          sfx.lock();
+          start();
+        }),
+      )
       .then((d) => (cancelled ? d.stop() : (det = d)))
-      .catch((e) => console.warn("wake word:", e instanceof Error ? e.message : e));
+      .catch((e) =>
+        console.warn("wake word:", e instanceof Error ? e.message : e),
+      );
     return () => {
       cancelled = true;
       det?.stop();

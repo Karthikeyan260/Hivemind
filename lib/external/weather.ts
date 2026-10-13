@@ -27,11 +27,32 @@ async function json<T>(url: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+// Weather barely changes in minutes and places never move: keep both while the server is warm, so the
+// home card and "what's the weather" answer at once instead of making two web calls every time.
+type Place = { name: string; latitude: number; longitude: number; admin1?: string; country?: string };
+const places = new Map<string, Place>();
+const recent = new Map<string, { at: number; w: Weather }>();
+const FRESH_MS = 10 * 60_000;
+
 export async function getWeather(place = HOME_CITY): Promise<Weather> {
-  type Geo = { results?: { name: string; latitude: number; longitude: number; admin1?: string; country?: string }[] };
-  const geo = await json<Geo>(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(place.trim() || HOME_CITY)}`);
-  const p = geo.results?.[0];
-  if (!p) throw new HttpError(404, `I couldn't find a place called “${place}”.`);
+  const key = (place.trim() || HOME_CITY).toLowerCase();
+  const hit = recent.get(key);
+  if (hit && Date.now() - hit.at < FRESH_MS) return hit.w;
+  const w = await loadWeather(place);
+  recent.set(key, { at: Date.now(), w });
+  if (recent.size > 50) recent.delete(recent.keys().next().value!);
+  return w;
+}
+
+async function loadWeather(place: string): Promise<Weather> {
+  const key = (place.trim() || HOME_CITY).toLowerCase();
+  let p = places.get(key);
+  if (!p) {
+    const geo = await json<{ results?: Place[] }>(`https://geocoding-api.open-meteo.com/v1/search?count=1&name=${encodeURIComponent(place.trim() || HOME_CITY)}`);
+    p = geo.results?.[0];
+    if (!p) throw new HttpError(404, `I couldn't find a place called “${place}”.`);
+    places.set(key, p);
+  }
 
   type Forecast = {
     current: { time: string; temperature_2m: number; apparent_temperature: number; relative_humidity_2m: number; weather_code: number; wind_speed_10m: number; precipitation: number };
