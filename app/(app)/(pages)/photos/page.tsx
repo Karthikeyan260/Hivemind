@@ -128,8 +128,9 @@ function Photos() {
                 multiple
                 className="sr-only"
                 onChange={(e) => {
-                  void add([...(e.target.files ?? [])]);
-                  e.target.value = "";
+                  // Cleared only after the photos are read: clearing at once can make Android drop them.
+                  const el = e.target;
+                  void add([...(el.files ?? [])]).finally(() => (el.value = ""));
                 }}
               />
             </label>

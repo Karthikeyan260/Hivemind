@@ -96,14 +96,39 @@ export async function preparePhoto(file: File) {
   }
 }
 
-/** Send photos one at a time (each is shrunk here, stored, then described). Returns how many failed. */
+/** The browser's "file can't be read" errors, in plain words. */
+const readable = (e: unknown) => {
+  const name = (e as { name?: string })?.name;
+  return name === "NotReadableError" || name === "NotFoundError" || /could not be read|permission problems/i.test(String((e as Error)?.message))
+    ? "Your phone stopped letting HIVEMIND read one of the photos. Add it again (it works best straight from the Gallery or Files)."
+    : e instanceof Error
+      ? e.message
+      : String(e);
+};
+
+/**
+ * Send photos (each is shrunk here, stored, then described). Every photo is read and shrunk FIRST,
+ * straight after it's picked: Android only lends the picked files for a short while, so reading the
+ * 10th photo after the first nine have uploaded fails ("the requested file could not be read").
+ */
 export async function uploadPhotos(files: File[], opts: { private?: boolean; onProgress?: (done: number, total: number, failed: number, error?: string) => void } = {}) {
-  const list = files.filter((f) => f.type.startsWith("image/")).slice(0, 30);
+  const list = files.filter((f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)).slice(0, 30);
   let failed = 0;
-  for (let i = 0; i < list.length; i++) {
+  let lastError: string | undefined;
+  const ready: Awaited<ReturnType<typeof preparePhoto>>[] = [];
+  for (const f of list) {
+    try {
+      ready.push(await preparePhoto(f));
+    } catch (e) {
+      failed++;
+      lastError = readable(e);
+    }
+  }
+  if (failed) opts.onProgress?.(0, list.length, failed, lastError);
+  for (let i = 0; i < ready.length; i++) {
     let error: string | undefined;
     try {
-      const p = await preparePhoto(list[i]);
+      const p = ready[i];
       const form = new FormData();
       form.set("full", new File([p.full], "full.jpg", { type: "image/jpeg" }));
       form.set("thumb", new File([p.thumb], "thumb.jpg", { type: "image/jpeg" }));
@@ -119,9 +144,9 @@ export async function uploadPhotos(files: File[], opts: { private?: boolean; onP
       if (!r.ok) throw new Error(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `Upload failed (${r.status})`);
     } catch (e) {
       failed++;
-      error = e instanceof Error ? e.message : String(e);
+      error = readable(e);
     }
-    opts.onProgress?.(i + 1, list.length, failed, error);
+    opts.onProgress?.(list.length - ready.length + i + 1, list.length, failed, error);
   }
   return { total: list.length, failed };
 }
