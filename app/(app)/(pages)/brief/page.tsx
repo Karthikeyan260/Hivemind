@@ -4,6 +4,7 @@ import { ExternalLink, Loader2, Newspaper, Plus, Square, Volume2, X } from "luci
 import { useEffect, useState } from "react";
 import { Button, cx, ErrorText, Input, PageHeader } from "@/components/ui";
 import { ListenButton, YourDay } from "@/components/day/your-day";
+import { TodaysKural } from "@/components/day/kural-card";
 import type { DayBrief } from "@/lib/day-brief";
 import { useVoiceActions } from "@/components/voice/provider";
 import { api, useFetch } from "@/lib/client-api";
@@ -110,6 +111,9 @@ export default function BriefPage() {
           <YourDay day={day.data} />
         </section>
       )}
+      <div className="mb-5">
+        <TodaysKural />
+      </div>
 
       {d && (
         <section className="mb-5 space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">

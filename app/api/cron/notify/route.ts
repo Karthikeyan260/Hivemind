@@ -14,6 +14,7 @@ import { db } from "@/lib/db";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { runHabitAlerts } from "@/lib/habits";
 import { listCheckins, nudgeDue } from "@/lib/checkin";
+import { todaysKural } from "@/lib/kural";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { notify, pushConfigured } from "@/lib/push";
 import { agenda, dueAlerts, HOME_TZ, releaseAlert } from "@/lib/reminders";
@@ -56,7 +57,13 @@ export async function GET(req: Request) {
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
   if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
-    const [a, w, bdays] = await Promise.all([agenda(supabase, 2), getWeather(HOME_CITY).catch(() => null), birthdaysToday(supabase).catch(() => [])]);
+    // Today's kural is chosen now (from last night's check-in), so it's ready when the app opens.
+    const [a, w, bdays, kural] = await Promise.all([
+      agenda(supabase, 2),
+      getWeather(HOME_CITY).catch(() => null),
+      birthdaysToday(supabase).catch(() => []),
+      Promise.race([todaysKural(supabase, date), new Promise<null>((r) => setTimeout(() => r(null), 25_000))]).catch(() => null),
+    ]);
     const items = [...a.overdue.map((r) => `${r.title} (overdue)`), ...a.today.map((r) => `${r.title}, ${r.when.replace(/^Today,?\s*/i, "")}`)];
     const weather = w ? `${w.place}: ${Math.round(w.current.temp_c)}°C, ${w.current.condition}${w.days[0] ? `, rain ${w.days[0].rain_chance_pct}%` : ""}.` : "";
     // What Dream mode did last night, in one line.
@@ -65,7 +72,7 @@ export async function GET(req: Request) {
     const dreamLine = counts.length ? `💤 Last night I ${counts.map(([k, n]) => `${k} ${n}`).join(", ")} memories.` : "";
     const plan = items.length ? `Today: ${items.slice(0, 4).join("; ")}${items.length > 4 ? ` +${items.length - 4} more` : ""}.` : "Nothing scheduled today.";
     // Only counts as sent once a device actually got it (so subscribing later today still gets one).
-    brief = (await notify(supabase, { title: "Good morning ☀️", body: [bdays.join(" · "), plan, weather, dreamLine].filter(Boolean).join(" "), url: "/", tag: "brief" })) > 0;
+    brief = (await notify(supabase, { title: "Good morning ☀️", body: [bdays.join(" · "), plan, weather, dreamLine, kural ? `📜 Kural ${kural.num}: ${kural.en || kural.pope}` : ""].filter(Boolean).join(" "), url: "/", tag: "brief" })) > 0;
   }
   // 3. Birthdays (week / eve / day) and habits (times, snoozes, 8 pm nudge, Sunday summary).
   const [birthdays, habits] = await Promise.all([runBirthdayAlerts(supabase, now).catch(() => 0), runHabitAlerts(supabase, now).catch(() => 0)]);

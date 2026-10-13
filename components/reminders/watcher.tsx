@@ -6,6 +6,7 @@ import { isPublicPage } from "@/lib/public-paths";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { hasAnything, ListenButton, YourDay } from "@/components/day/your-day";
+import { TodaysKural } from "@/components/day/kural-card";
 import type { DayBrief } from "@/lib/day-brief";
 import { readAloud } from "@/lib/read-aloud";
 import { BRAIN_CHANGED } from "@/lib/client-api";
@@ -76,7 +77,7 @@ export function ReminderWatcher() {
     try {
       localStorage.setItem(BRIEF_KEY, today);
     } catch {}
-    if (!hasAnything(day)) return;
+    if (!hasAnything(day) && new Date().getHours() >= 12) return;
     setToasts((t) => [...t.filter((x) => x.key !== "brief"), { key: "brief", kind: "brief", day }]);
     // Read it out straight away when the browser allows sound already (the owner has tapped this
     // session, e.g. unlocking); otherwise the card's "Hear your day" button does it with one tap.
@@ -160,6 +161,12 @@ export function ReminderWatcher() {
                 <ListenButton day={t.day} />
               </div>
               <YourDay day={t.day} compact />
+              {/* Mornings only: the day's kural, chosen from last night. */}
+              {new Date().getHours() < 12 && (
+                <div className="mt-2.5 max-h-[38dvh] overflow-y-auto">
+                  <TodaysKural compact />
+                </div>
+              )}
             </div>
           )}
         </div>

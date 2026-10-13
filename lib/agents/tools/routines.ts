@@ -72,6 +72,22 @@ export const routines: Record<string, Tool> = {
   },
 
   /* ───── kitchen / hands-free mode (full-screen voice, screen stays on) ───── */
+  todays_kural: {
+    name: "todays_kural",
+    description: "Today's Thirukkural couplet ('today's kural', 'இன்றைய குறள்', 'read me the kural'), chosen each morning for the owner's last night (check-in or chats), with Tamil and English meanings and a line for their day. Also: a specific kural by number ('kural 391').",
+    parameters: obj({ number: { type: "integer", minimum: 1, maximum: 1330 } }),
+    async run(args, ctx) {
+      const { kuralAt, todaysKural } = await import("@/lib/kural");
+      const n = Number(args.number);
+      if (n >= 1 && n <= 1330) {
+        const k = kuralAt(n)!;
+        return { kural: k.num, chapter: `${k.chapter.ta} (${k.chapter.en})`, tamil: `${k.line1} / ${k.line2}`, pope_translation: k.pope, note: "Recite the Tamil lines exactly as given, then explain the meaning simply in Tamil and English." };
+      }
+      const k = await todaysKural(ctx.supabase);
+      ctx.actions.push({ label: "Open the brief", href: "/brief" });
+      return { kural: k.num, chapter: `${k.chapter.ta} (${k.chapter.en})`, tamil: `${k.line1} / ${k.line2}`, meaning_tamil: k.ta, meaning_english: k.en || k.pope, for_your_day: k.forYou, note: "Recite the Tamil lines exactly as given (never change a word), then the meanings and the line for their day." };
+    },
+  },
   night_checkin: {
     name: "night_checkin",
     description:
