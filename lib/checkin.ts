@@ -24,6 +24,14 @@ export const MOODS: Record<Mood, { emoji: string; word: string }> = {
 const KEY = "checkins/index";
 export const listCheckins = (supabase: SupabaseClient) => readJSON<CheckIn[]>(supabase, KEY, []);
 
+/**
+ * The 9 pm nudge: once a night, between 9 and 11 pm (home time), only if tonight's check-in isn't done
+ * and tonight's nudge hasn't already reached a device.
+ */
+export function nudgeDue(hour: number, today: string, lastNudged: string | undefined, doneToday: boolean) {
+  return hour >= 21 && hour < 23 && lastNudged !== today && !doneToday;
+}
+
 /** What the evening card needs: done today?, unfinished reminders, habits still open, recent moods. */
 export async function checkinContext(supabase: SupabaseClient) {
   const today = localParts().date;

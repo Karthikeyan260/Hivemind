@@ -13,7 +13,7 @@ import { dream, getDream, getDreamSettings } from "@/lib/dream";
 import { db } from "@/lib/db";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { runHabitAlerts } from "@/lib/habits";
-import { listCheckins } from "@/lib/checkin";
+import { listCheckins, nudgeDue } from "@/lib/checkin";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { notify, pushConfigured } from "@/lib/push";
 import { agenda, dueAlerts, HOME_TZ, releaseAlert } from "@/lib/reminders";
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
   let checkin = false;
   if (hour >= 21 && hour < 23 && state.checkin !== date) {
     const done = (await listCheckins(supabase).catch(() => [])).some((c) => c.date === date);
-    checkin = done || (await notify(supabase, { title: "🌙 How was your day?", body: "A 30-second check-in: your mood, a few words, and what moves to tomorrow.", url: "/?checkin=1", tag: "checkin" }).catch(() => 0)) > 0;
+    checkin = !nudgeDue(hour, date, state.checkin, done) || (await notify(supabase, { title: "🌙 How was your day?", body: "A 30-second check-in: your mood, a few words, and what moves to tomorrow.", url: "/?checkin=1", tag: "checkin" }).catch(() => 0)) > 0;
   }
 
   // Dream mode: once a night, from its hour until 7 am (marked first, so later checks don't start it again).
