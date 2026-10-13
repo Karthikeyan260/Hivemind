@@ -13,8 +13,9 @@ export async function synthesize(text: string, voiceId: string | null): Promise<
   try {
     const res = await geminiClient().models.generateContent({
       model: MODEL,
-      // A cloned voice reads any style hint aloud: give it only the words (it keeps the owner's own way of speaking).
-      contents: [{ role: "user", parts: [{ text: voiceId ? text : `Say at a brisk, energetic, fast pace: ${text}` }] }],
+      // Only the words, never a style hint: the voice sometimes read the hint aloud ("Say at a brisk,
+      // energetic, fast pace…") and it made every sentence sound rushed. Its natural tone is calmer.
+      contents: [{ role: "user", parts: [{ text }] }],
       config: {
         responseModalities: ["AUDIO"],
         speechConfig: { voiceConfig: voiceId ? { voice: voiceId } : { prebuiltVoiceConfig: { voiceName: VOICE } } },

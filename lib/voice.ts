@@ -92,7 +92,7 @@ export class Speaker {
   private cache = new Map<string, Promise<AudioBuffer | null>>();
   onSpeakingChange?: (speaking: boolean) => void;
   /** Playback speed (1 = normal). */
-  rate = 1.15;
+  rate = 1.05;
   /**
    * "gemini": HIVEMIND's TTS voice, falling back to the browser when out of quota (chat replies).
    * "browser": always the device's speech engine with one locked male voice, so a long narration
