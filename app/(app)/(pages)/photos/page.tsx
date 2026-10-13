@@ -1,11 +1,11 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, ImagePlus, Loader2, Lock, MapPin, Search, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImagePlus, Loader2, Lock, MapPin, Pencil, Search, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { cx, Empty, ErrorText, Input, PageHeader } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { useFetch } from "@/lib/client-api";
+import { api, useFetch } from "@/lib/client-api";
 import { uploadPhotos } from "@/lib/photo-prep";
 import type { Photo } from "@/lib/photos";
 
@@ -85,6 +85,27 @@ function Photos() {
   });
 
   const cur = open !== null ? photos[open] : null;
+
+  // Fix a photo's title, date or place (photos from WhatsApp arrive without them).
+  const [draft, setDraft] = useState<{ title: string; taken: string; place: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a different photo closes the form
+    setDraft(null);
+  }, [open]);
+  async function saveEdit(p: Photo) {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      await api("/api/photos", { method: "PATCH", json: { id: p.id, title: draft.title, taken: draft.taken, place: draft.place } });
+      setDraft(null);
+      await feed.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -205,14 +226,47 @@ function Photos() {
             )}
           </div>
           <div className="max-h-[35dvh] overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-sm text-white/85">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/60">
-              <span>{cur.hasTakenDate ? when(cur) : `Added ${when(cur)}`}</span>
-              {cur.place && (
-                <span className="flex items-center gap-1">
-                  <MapPin size={12} /> {cur.place}
-                </span>
-              )}
-            </div>
+            {draft ? (
+              <form
+                className="space-y-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void saveEdit(cur);
+                }}
+              >
+                <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} maxLength={80} placeholder="Title" aria-label="Title" className="w-full rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm text-white" />
+                <div className="flex gap-2">
+                  <input type="date" value={draft.taken} onChange={(e) => setDraft({ ...draft, taken: e.target.value })} aria-label="Date taken" className="rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm text-white [color-scheme:dark]" />
+                  <input value={draft.place} onChange={(e) => setDraft({ ...draft, place: e.target.value })} maxLength={80} placeholder="Place, e.g. Ooty" aria-label="Place" className="min-w-0 flex-1 rounded-md border border-white/20 bg-white/5 px-3 py-2 text-sm text-white" />
+                </div>
+                <div className="flex gap-2">
+                  <button type="submit" disabled={saving} className="rounded-md bg-core px-4 py-1.5 text-sm font-semibold text-core-ink disabled:opacity-50">
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                  <button type="button" onClick={() => setDraft(null)} className="rounded-md border border-white/20 px-4 py-1.5 text-sm">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/60">
+                <span>{cur.hasTakenDate ? when(cur) : `Added ${when(cur)} · date unknown`}</span>
+                {cur.place ? (
+                  <span className="flex items-center gap-1">
+                    <MapPin size={12} /> {cur.place}
+                  </span>
+                ) : (
+                  <span>· place unknown</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setDraft({ title: cur.title, taken: cur.taken.slice(0, 10), place: cur.place ?? "" })}
+                  className="ml-auto flex items-center gap-1 rounded-full border border-white/25 px-2.5 py-0.5 text-white/80 hover:border-white/60"
+                >
+                  <Pencil size={11} /> {cur.hasTakenDate && cur.place ? "Edit" : "Add date / place"}
+                </button>
+              </div>
+            )}
             {cur.description && <p className="mt-1.5 leading-relaxed">{cur.description}</p>}
             {!!cur.tags.length && (
               <div className="mt-2 flex flex-wrap gap-1">

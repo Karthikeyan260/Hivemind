@@ -37,3 +37,12 @@ describe("photo search: names and short words", () => {
     expect(searchPhotos([ooty], "birthday cake", NOW).photos).toHaveLength(0);
   });
 });
+
+describe("place nicknames", () => {
+  it("shows the name people say, but not for cities that changed names", async () => {
+    const { nickname } = await import("@/lib/photos");
+    expect(nickname("Udhagamandalam")).toBe("Ooty (Udhagamandalam)");
+    expect(nickname("Ooty")).toBe("Ooty");
+    expect(nickname("Chennai")).toBe("Chennai");
+  });
+});

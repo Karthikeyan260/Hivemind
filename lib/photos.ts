@@ -108,7 +108,7 @@ export async function addPhoto(
   const taken = input.taken && !Number.isNaN(Date.parse(input.taken)) && Date.parse(input.taken) <= Date.now() + 864e5 ? new Date(input.taken).toISOString() : null;
   const gps = okLat(input.lat) && okLng(input.lng) && !(input.lat === 0 && input.lng === 0) ? { lat: input.lat!, lng: input.lng! } : null;
   const where = gps ? await whereIs(gps).catch(() => null) : null;
-  const place = where ? [where.area, where.city].filter(Boolean).join(", ") || where.address : undefined;
+  const place = where ? nickname([where.area, where.city].filter(Boolean).join(", ") || where.address) : undefined;
   const when = new Date(taken ?? now).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
   const d = input.private ? null : await describe(input.full, when, place);
 
@@ -132,6 +132,26 @@ export async function addPhoto(
   const all = await listPhotos(supabase);
   await saveIndex(supabase, [...all, photo]);
   return { photo, described: !!d };
+}
+
+/** The owner fixes a photo's title, date or place (e.g. one shared through WhatsApp, which drops them). */
+export async function updatePhoto(supabase: SupabaseClient, id: string, patch: { title?: string; taken?: string; place?: string }) {
+  const all = await listPhotos(supabase);
+  const p = all.find((x) => x.id === id);
+  if (!p) return null;
+  if (patch.title !== undefined) p.title = clip(patch.title, 80) || p.title;
+  if (patch.taken !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(patch.taken)) {
+    p.taken = new Date(`${patch.taken}T12:00:00`).toISOString();
+    p.hasTakenDate = true;
+  }
+  if (patch.place !== undefined) {
+    const v = clip(patch.place, 80);
+    if (v) p.place = nickname(v);
+    else delete p.place;
+    delete p.where; // typed by hand: the old map address no longer applies
+  }
+  await saveIndex(supabase, all);
+  return p;
 }
 
 export async function removePhoto(supabase: SupabaseClient, id: string) {
@@ -169,6 +189,17 @@ const NAMES: string[][] = [
   ["trivandrum", "thiruvananthapuram"],
 ];
 const ALIASES: Record<string, string[]> = Object.fromEntries(NAMES.flatMap((g) => g.map((n) => [n, g.filter((x) => x !== n)])));
+
+/** "Udhagamandalam" → "Ooty (Udhagamandalam)": the name people say, with the map's name kept for searching. */
+export function nickname(place: string) {
+  const low = place.toLowerCase();
+  // Only where the nickname is what people actually say (not "Madras" for Chennai).
+  for (const [nick, ...official] of NAMES.filter((g) => ["ooty", "kodai", "pondy", "trichy", "vizag"].includes(g[0]))) {
+    if (low.includes(nick)) return place;
+    if (official.some((o) => low.includes(o))) return `${nick[0].toUpperCase()}${nick.slice(1)} (${place})`;
+  }
+  return place;
+}
 
 const STOP = new Set("a an the of in on at to for from with and or my me i photo photos pic pics picture pictures image images show find where was that this one some any all".split(" "));
 const words = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));

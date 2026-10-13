@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { handle, HttpError } from "@/lib/api";
+import { z } from "zod";
+import { handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
-import { addPhoto, listPhotos, removePhoto, searchPhotos } from "@/lib/photos";
+import { addPhoto, listPhotos, removePhoto, searchPhotos, updatePhoto } from "@/lib/photos";
 
 export const maxDuration = 60;
 const MAX = 3 * 1024 * 1024;
@@ -39,6 +40,17 @@ export const POST = handle(async (req: Request) => {
     private: form!.get("private") === "1",
   });
   return NextResponse.json(r, { status: 201 });
+});
+
+/** Fix a photo's title, date (YYYY-MM-DD) or place. */
+export const PATCH = handle(async (req: Request) => {
+  const { id, ...patch } = await parseBody(
+    req,
+    z.object({ id: z.string().regex(/^[0-9a-f-]{36}$/), title: z.string().max(80).optional(), taken: z.string().max(10).optional(), place: z.string().max(80).optional() }),
+  );
+  const photo = await updatePhoto(db(), id, patch);
+  if (!photo) throw new HttpError(404, "No such photo.");
+  return NextResponse.json({ photo });
 });
 
 export const DELETE = handle(async (req: Request) => {
