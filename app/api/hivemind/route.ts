@@ -3,6 +3,7 @@ import { runAgent } from "@/lib/agents/orchestrator";
 import { routeAgent } from "@/lib/agents/router";
 import type { Action, AgentEvent, AgentId, RunContext, Source } from "@/lib/agents/types";
 import { generateWithFallback } from "@/lib/ai/providers";
+import { ACTION_BUSY_REPLY, asksForAction, NO_TOOLS_RULE } from "@/lib/ai/no-tools";
 import type { ChatMessage } from "@/lib/ai/types";
 import { dbError, handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
@@ -162,6 +163,11 @@ export const POST = handle(async (req: Request) => {
             reply = `The AI is busy right now (Google's free limit), so here are the store links for **${product}**:\n\n${links.map((l) => `- [${l.label}](${l.href})`).join("\n")}\n\nAsk again in a minute for exact product pages and prices.`;
             send({ type: "delta", text: reply });
             done = { type: "done", provider: "store links", model: "none", latency_ms: Date.now() - started };
+          } else if (asksForAction(message)) {
+            // A request to DO something: the plain models have no tools, so say so instead of faking "Done!".
+            reply = ACTION_BUSY_REPLY;
+            send({ type: "delta", text: reply });
+            done = { type: "done", provider: "none (AI busy)", model: "none", latency_ms: Date.now() - started };
           } else {
             // Gemini down before the first token: answer from the brain with NVIDIA/Groq, no tools.
             const context = await searchKnowledge(supabase, message, { projectId: project_id, limit: 8 });
@@ -169,7 +175,7 @@ export const POST = handle(async (req: Request) => {
             const userTurn = context.length
               ? `Context from my brain:\n${context.map((c, i) => `[${i + 1}] (${c.source_type}) ${c.title}\n${c.content.slice(0, 1500)}`).join("\n\n---\n\n")}\n\nMe: ${message}`
               : message;
-            const res = await generateWithFallback([...history, { role: "user", content: userTurn }], { system: `${system}\n\n${closing}`, order: ["nvidia", "openrouter", "github", "mistral", "groq"], temperature: 0.3 });
+            const res = await generateWithFallback([...history, { role: "user", content: userTurn }], { system: `${system}\n\n${NO_TOOLS_RULE}\n\n${closing}`, order: ["nvidia", "openrouter", "github", "mistral", "groq"], temperature: 0.3 });
             reply = res.text;
             send({ type: "delta", text: reply });
             done = { type: "done", provider: res.provider, model: res.model, latency_ms: res.latencyMs };

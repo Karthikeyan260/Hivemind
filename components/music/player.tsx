@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { useVoice } from "@/components/voice/provider";
-import { MEDIA_START_EVENT, MUSIC_EVENT } from "@/lib/client-api";
+import { MEDIA_START_EVENT, MUSIC_EVENT, MUSIC_STATE_EVENT } from "@/lib/client-api";
 import { isPublicPage } from "@/lib/public-paths";
 
 /**
@@ -294,8 +294,12 @@ export function MusicPlayer() {
         onPlay={() => {
           setPlaying(true);
           window.dispatchEvent(new CustomEvent(MEDIA_START_EVENT, { detail: { source: "music" } }));
+          window.dispatchEvent(new CustomEvent(MUSIC_STATE_EVENT, { detail: { playing: true } }));
         }}
-        onPause={() => setPlaying(false)}
+        onPause={() => {
+          setPlaying(false);
+          window.dispatchEvent(new CustomEvent(MUSIC_STATE_EVENT, { detail: { playing: false } }));
+        }}
         onEnded={() => void next()}
         onError={() => void onError()}
         onTimeUpdate={(e) => setTime({ at: e.currentTarget.currentTime, of: e.currentTarget.duration || song?.duration || 0 })}

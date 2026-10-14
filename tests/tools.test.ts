@@ -23,12 +23,12 @@ const ORIGINAL_TOOL_NAMES = [
   "play_music", "play_video",
   "web_task", "web_tasks_status", "web_task_answer", "web_task_delete",
   "autopilot_feed", "autopilot_update", "run_autopilot",
-  "find_photos", "night_checkin", "todays_kural", "game_record", "my_wrapped",
+  "find_photos", "night_checkin", "todays_kural", "game_record", "my_wrapped", "my_pet",
 ];
 
 describe("TOOLS", () => {
-  it("has exactly the original 79 tools (+ find_photos, night_checkin, todays_kural, game_record, my_wrapped)", () => {
-    expect(ORIGINAL_TOOL_NAMES).toHaveLength(84);
+  it("has exactly the original 79 tools (+ find_photos, night_checkin, todays_kural, game_record, my_wrapped, my_pet)", () => {
+    expect(ORIGINAL_TOOL_NAMES).toHaveLength(85);
     expect(Object.keys(TOOLS).sort()).toEqual([...ORIGINAL_TOOL_NAMES].sort());
   });
 

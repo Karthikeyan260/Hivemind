@@ -13,6 +13,7 @@ import { VoiceProvider } from "@/components/voice/provider";
 import { WakeListener } from "@/components/wake/listener";
 import { VersionWatcher } from "@/components/version-watcher";
 import { NightCheckin } from "@/components/day/night-checkin";
+import { Nova } from "@/components/pet/nova";
 import { passwordRequired } from "@/lib/session";
 import "./globals.css";
 
@@ -58,6 +59,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <MobileNav canLock={passwordRequired()} />
           <ReminderWatcher />
           <NightCheckin />
+          <Nova />
           <WakeListener />
           <VersionWatcher />
         </VoiceProvider>

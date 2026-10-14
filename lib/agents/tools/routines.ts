@@ -72,6 +72,30 @@ export const routines: Record<string, Tool> = {
   },
 
   /* ───── kitchen / hands-free mode (full-screen voice, screen stays on) ───── */
+  my_pet: {
+    name: "my_pet",
+    description:
+      "Nova, the owner's pocket pet: a little glowing lantern that lives on the HIVEMIND screen and grows as they finish habits, do the night check-in, win games, play music and save memories ('how is Nova', 'how's my pet', 'is my pet hungry', 'when will it evolve'). Returns its stage, mood, what it says, how fed it is today and the growth left to evolve. Answer playfully, in its voice where it fits. Its default name is Nova, but the owner may have renamed it: any pet name they use means it. To rename it ('rename my pet to Pixel', 'call Nova Sparky from now on'), pass new_name.",
+    parameters: obj({ new_name: { type: "string", description: "Only to rename the pet: the new name, as the owner said it." } }),
+    async run(args, ctx) {
+      const { getPet, renamePet, STAGES } = await import("@/lib/pet");
+      const renamed = typeof args.new_name === "string" && args.new_name.trim() ? await renamePet(ctx.supabase, args.new_name).catch((e: Error) => ({ error: e.message })) : null;
+      if (renamed && typeof renamed === "object") return renamed;
+      const p = await getPet(ctx.supabase);
+      return {
+        name: p.name,
+        stage: `${p.stageName} (${p.stage + 1} of ${STAGES.length})`,
+        mood: p.mood,
+        says: p.line,
+        fed_today: `${p.fed.done} of ${p.fed.due} habits done`,
+        got_today: p.today,
+        growth_points: p.xp,
+        to_next_stage: p.toNext ?? "fully grown",
+        age_days: p.days,
+        ...(renamed ? { renamed_to: renamed, note: "Renamed. Its new name shows on screen after the page refreshes or in a few minutes." } : { note: "It wanders around the screen: tap it for its card, drag it anywhere." }),
+      };
+    },
+  },
   my_wrapped: {
     name: "my_wrapped",
     description: "The owner's 'Wrapped' for a month ('my Wrapped', 'how was my month', 'my September wrapped'): moods, habits, top songs, games, photos and places, and brain activity, with a one-line headline. month: YYYY-MM (default this month so far). Opens the story cards.",
