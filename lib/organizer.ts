@@ -79,7 +79,7 @@ Return JSON {"assignments":[{"i":0,"project":"Name" or null}, ...]} with one ent
       json: true,
       temperature: 0,
       maxTokens: 1500,
-      order: ["groq", "openrouter", "gemini", "nvidia"],
+      order: ["groq", "mistral", "openrouter", "gemini", "nvidia"],
     });
     const parsed = parseJson(res.text, Assign);
     if (!parsed) return result;

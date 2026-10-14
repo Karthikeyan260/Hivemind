@@ -316,7 +316,7 @@ export async function decide(supabase: SupabaseClient, task: WebTask, snap: Snap
       json: true,
       temperature: 0.1,
       maxTokens: 500,
-      order: ["gemini", "github", "openrouter", "nvidia", "groq"],
+      order: ["gemini", "github", "openrouter", "nvidia", "mistral", "groq"],
     });
     return parseJson(r.text, Decision);
   } catch (err) {

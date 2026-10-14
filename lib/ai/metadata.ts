@@ -48,7 +48,7 @@ export async function extractMetadata(text: string): Promise<ExtractedMetadata> 
       temperature: 0.1,
       maxTokens: 500,
       // Runs on every save: keep it off Gemini, whose daily quota is for the agents.
-      order: ["groq", "openrouter", "github", "gemini", "nvidia"],
+      order: ["groq", "mistral", "openrouter", "github", "gemini", "nvidia"],
     });
     return parseJson(res.text, MetadataSchema) ?? FALLBACK;
   } catch {

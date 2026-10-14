@@ -51,7 +51,7 @@ export async function rebuildProfile(supabase: SupabaseClient) {
     json: true,
     temperature: 0.2,
     maxTokens: 1200,
-    order: ["gemini", "nvidia", "openrouter", "groq"],
+    order: ["gemini", "nvidia", "openrouter", "mistral", "groq"],
   });
   const facts = parseJson(res.text, ProfileFacts);
   if (!facts) return null;

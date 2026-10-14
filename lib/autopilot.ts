@@ -292,7 +292,7 @@ export async function runAutopilot(supabase: SupabaseClient, opts: { manual?: bo
       console.warn("autopilot: Gemini unavailable, thinking without tools:", plainError(err));
       ctx.sources.length = 0;
       const system = `${persona}\n\n${AUTOPILOT.instructions}\n\nThis run has NO tools: work only from the snapshot. A link may only be an in-app path.\n\n${closing}`;
-      text = (await generateWithFallback([{ role: "user", content: message }], { system, order: ["github", "openrouter", "nvidia", "groq"], temperature: 0.3, json: true, maxTokens: 4000 })).text;
+      text = (await generateWithFallback([{ role: "user", content: message }], { system, order: ["github", "openrouter", "nvidia", "mistral", "groq"], temperature: 0.3, json: true, maxTokens: 4000 })).text;
     }
     const out = parseJson(text, Output) ?? salvage(text);
     if (!out) {

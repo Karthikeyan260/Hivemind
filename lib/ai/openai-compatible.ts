@@ -76,6 +76,17 @@ export const openrouterProvider = makeProvider({
   headers: { "HTTP-Referer": process.env.APP_URL || "https://hivemind.local", "X-Title": "HIVEMIND" },
 });
 
+// Mistral's free tier: only the small "ministral" models (30 requests a minute); the bigger ones
+// are capped at 0. A backup for summaries, JSON and chat, not for naming songs (it invents them).
+export const mistralProvider = makeProvider({
+  name: "mistral",
+  baseURL: "https://api.mistral.ai/v1",
+  keyEnv: "MISTRAL_API_KEY",
+  model: process.env.MISTRAL_MODEL || "ministral-14b-latest",
+  supportsJsonMode: true,
+  timeoutMs: 20_000,
+});
+
 // GitHub Models: free with a GitHub token ("Models: read"). Rate-limited per day, and free
 // requests are capped at about 8k tokens in and 4k out, so long prompts fall through to the next provider.
 export const githubProvider = makeProvider({
