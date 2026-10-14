@@ -91,7 +91,7 @@ const LANGUAGES = ["tamil", "telugu", "hindi", "malayalam", "kannada", "english"
 
 /** Words that describe a mood, theme or genre rather than name a song. */
 const MOOD =
-  /\b(sentiment(al)?|emotional|sad|pain|breakup|love|romantic|melody|melodies|gana|kuthu|folk|devotional|bhakti|amma|appa|mother|father|friend(ship)?|motiv\w*|motiat\w*|inspir\w*|workout|gym|party|danc\w*|vibe\w*|beats?|energetic|peppy|upbeat|fast|celebration|mass|rain|night|sleep|lullaby|wedding|marriage|festival|happy|feel ?good|chill|relax\w*|calm|soothing|old|classic|evergreen|retro|vintage|\d0s|\d{4}s|bgm|instrumental|trending|viral|latest|new releases?|top|hits)\b/i;
+  /\b(sentiment(al)?|emotional|sad|pain|breakup|love|romantic|melody|melodies|gana|kuthu|folk|parai|thappattam|dappankuthu|devotional|bhakti|amma|appa|mother|father|friend(ship)?|motiv\w*|motiat\w*|inspir\w*|workout|gym|party|danc\w*|vibe\w*|beats?|energetic|peppy|upbeat|fast|celebration|mass|rain|night|sleep|lullaby|wedding|marriage|festival|happy|feel ?good|chill|relax\w*|calm|soothing|old|classic|evergreen|retro|vintage|\d0s|\d{4}s|bgm|instrumental|trending|viral|latest|new releases?|top|hits)\b/i;
 const FILLER = new Set(["song", "songs", "music", "track", "tracks", "play", "some", "the", "a", "an", "of", "or", "and", "for", "from", "by", "with", "in", "to", "on", "me", "my", "any", "hear", "listen", "want", "good", "best", "nice", "please", "pls", "list", "playlist", "video", ...["tamil", "telugu", "hindi", "malayalam", "kannada", "english", "punjabi", "bengali", "marathi"]]);
 const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9஀-௿ ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !FILLER.has(w));
 
@@ -107,8 +107,15 @@ export async function smartSongs(query: string): Promise<Pick> {
   const language = LANGUAGES.find((l) => new RegExp(`\\b${l}\\b`, "i").test(query)) ?? (process.env.MUSIC_LANGUAGE || "tamil");
   const direct = await searchSongs(query).catch(() => [] as Song[]);
   // Named a song / artist / film: every topic word shows up in the top results.
-  const hay = (s: Song) => `${s.title} ${s.artists} ${s.album}`.toLowerCase();
-  const named = direct.slice(0, 3).some((s) => topic.length > 0 && topic.every((w) => hay(s).includes(w)));
+  // Tamil names are spelt many ways ("Puthu Paattu" / "Pudhu Paatu"): compare by sound too.
+  const hay = (s: Song) => {
+    const t = `${s.title} ${s.artists} ${s.album}`.toLowerCase();
+    return { t, sounds: new Set(t.split(/[^a-z]+/).map(sound)) };
+  };
+  const named = direct.slice(0, 3).some((s) => {
+    const h = hay(s);
+    return topic.length > 0 && topic.every((w) => h.t.includes(w) || h.sounds.has(sound(w)));
+  });
   if (!MOOD.test(query) && (named || !topic.length) && direct.length) return { songs: direct, how: "search" };
 
   // Only the meaningful words: JioSaavn's playlist search gets lost on "song", "play", "some".
@@ -162,6 +169,11 @@ async function recentlyPlayed(): Promise<Set<string>> {
 
 /** A name's consonants, doubled letters merged: "ilayaraja" and "Ilaiyaraaja" both → "lyrj". */
 const skeleton = (w: string) => w.toLowerCase().replace(/[^a-z]/g, "").replace(/[aeiou]/g, "").replace(/(.)\1+/g, "$1");
+
+/** Looser than skeleton, for Tamil words in English letters: "puthu" = "pudhu", "paattu" = "paatu", "kadhal" = "kaathal". */
+function sound(w: string) {
+  return skeleton(w.toLowerCase().replace(/zh/g, "l").replace(/h/g, "").replace(/d/g, "t").replace(/b/g, "p").replace(/g/g, "k"));
+}
 
 /**
  * The request names an artist ("Ilayaraja motivational", "Vijay dance"): keep the songs that really
@@ -226,7 +238,7 @@ async function aiSongs(query: string, language: string, recent: Set<string> = ne
   const { z } = await import("zod");
   const user = `Request: "${query}"${recent.size ? `
 Played lately (choose mostly others): ${[...recent].slice(0, 15).join("; ")}` : ""}`;
-  const system = `You know Indian film and independent music very well. List 12 real, well-known ${language} songs that best match the request (mood, theme, genre, era, or the actor / composer it names: "Vijay dance songs" = dance numbers from Vijay films). Mix big hits with a few less obvious ones, so it isn't the same list every time. Only songs you are sure exist. JSON only: {"songs":[{"title":"","film":"","artist":""}]}`;
+  const system = `You know Indian film and independent music very well. List 12 real, well-known ${language} songs that best match the request (mood, theme, genre, era, or the actor / composer it names: "<actor> dance songs" = dance numbers from that actor's films). Only songs that fit THIS request. Mix big hits with a few less obvious ones, so it isn't the same list every time. Only songs you are sure exist. JSON only: {"songs":[{"title":"","film":"","artist":""}]}`;
   // Knowing real Tamil film songs takes a well-read model: the small fast one (the chat default)
   // invents titles and films ("Puthu Vellai Mazhai" as an Ilaiyaraaja song). Gemini 2.5 Flash first.
   const text = await (async () => {
