@@ -63,7 +63,7 @@ export function MusicPlayer() {
   const link = useCallback(async (s: Song, fresh = false) => {
     const hit = links.current.get(s.id);
     if (!fresh && hit && Date.now() - hit.at < LINK_MS) return hit.url;
-    const r = await fetch("/api/music/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ media: s.media }) });
+    const r = await fetch("/api/music/stream", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ media: s.media, title: s.title, artists: s.artists, image: s.image || undefined }) });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data.url) throw new Error(data.error ?? "This song can't be played right now.");
     links.current.set(s.id, { url: data.url, at: Date.now() });

@@ -15,6 +15,7 @@ import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { runHabitAlerts } from "@/lib/habits";
 import { listCheckins, nudgeDue } from "@/lib/checkin";
 import { todaysKural } from "@/lib/kural";
+import { monthWrapped } from "@/lib/wrapped";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { notify, pushConfigured } from "@/lib/push";
 import { agenda, dueAlerts, HOME_TZ, releaseAlert } from "@/lib/reminders";
@@ -53,7 +54,7 @@ export async function GET(req: Request) {
     new Intl.DateTimeFormat("en-CA", { timeZone: HOME_TZ }).format(now),
     Number(new Intl.DateTimeFormat("en-GB", { timeZone: HOME_TZ, hour: "2-digit", hourCycle: "h23" }).format(now)),
   ];
-  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; news?: string; rls?: string; checkin?: string }>(supabase, "notify-state", {});
+  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; news?: string; rls?: string; checkin?: string; wrapped?: string }>(supabase, "notify-state", {});
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
   if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
@@ -77,6 +78,17 @@ export async function GET(req: Request) {
   // 3. Birthdays (week / eve / day) and habits (times, snoozes, 8 pm nudge, Sunday summary).
   const [birthdays, habits] = await Promise.all([runBirthdayAlerts(supabase, now).catch(() => 0), runHabitAlerts(supabase, now).catch(() => 0)]);
 
+  // My Wrapped: on the 1st, from 9 am, last month's story cards are ready (made now, so they open at once).
+  let wrapped = false;
+  const lastMonth = (() => {
+    const [y, mo] = date.split("-").map(Number);
+    return mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, "0")}`;
+  })();
+  if (date.endsWith("-01") && hour >= 9 && hour < 21 && state.wrapped !== lastMonth) {
+    const w = await monthWrapped(supabase, lastMonth).catch(() => null);
+    if (w) wrapped = (await notify(supabase, { title: `🎉 Your ${w.label} Wrapped is ready`, body: w.headline, url: `/wrapped?m=${lastMonth}`, tag: "wrapped" }).catch(() => 0)) > 0;
+  }
+
   // Night check-in: one nudge at 9 pm if tonight's isn't done yet.
   let checkin = false;
   if (hour >= 21 && hour < 23 && state.checkin !== date) {
@@ -92,7 +104,7 @@ export async function GET(req: Request) {
   const news = !!briefSet?.enabled && !!briefSet.topics.length && hour >= BRIEF_HOUR && hour < 12 && state.news !== date;
 
   // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
-  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { news: date } : {}), ...(checkin ? { checkin: date } : {}), lastRun: now.toISOString(), lastSent: due.length });
+  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { news: date } : {}), ...(checkin ? { checkin: date } : {}), ...(wrapped ? { wrapped: lastMonth } : {}), lastRun: now.toISOString(), lastSent: due.length });
   // The jobs that run on their own: a failure becomes a push (once a day each), never silence.
   if (dreaming)
     after(() =>

@@ -72,6 +72,31 @@ export const routines: Record<string, Tool> = {
   },
 
   /* ───── kitchen / hands-free mode (full-screen voice, screen stays on) ───── */
+  my_wrapped: {
+    name: "my_wrapped",
+    description: "The owner's 'Wrapped' for a month ('my Wrapped', 'how was my month', 'my September wrapped'): moods, habits, top songs, games, photos and places, and brain activity, with a one-line headline. month: YYYY-MM (default this month so far). Opens the story cards.",
+    parameters: obj({ month: { type: "string", description: "YYYY-MM; empty = this month" } }),
+    async run(args, ctx) {
+      const { monthWrapped } = await import("@/lib/wrapped");
+      const { localParts } = await import("@/lib/reminders");
+      const m = /^\d{4}-\d{2}$/.test(str(args.month)) ? str(args.month) : localParts().date.slice(0, 7);
+      const w = await monthWrapped(ctx.supabase, m);
+      ctx.actions.push({ label: `Open ${w.label} Wrapped`, href: `/wrapped?m=${w.month}`, navigate: true });
+      return {
+        month: w.label,
+        so_far: !w.complete,
+        headline: w.headline,
+        active_days: w.activeDays,
+        mood: w.moods.count ? { check_ins: w.moods.count, average_1_to_5: w.moods.average } : null,
+        top_habit: w.habits[0] ?? null,
+        top_songs: w.music.top.slice(0, 3).map((s) => `${s.title} – ${s.artists} (×${s.count})`),
+        games: w.games.played ? { played: w.games.played, won: w.games.won, lost: w.games.lost, favourite: w.games.favourite } : null,
+        photos: w.photos.count ? { count: w.photos.count, top_place: w.photos.places[0]?.place } : null,
+        brain: w.brain,
+        note: "Say it like a fun recap in 3-4 short sentences: the headline first, then the highlights.",
+      };
+    },
+  },
   game_record: {
     name: "game_record",
     description: "The owner's game record ('how many games did I win', 'what's my chess level', 'my last games'): wins / losses / draws per game (chess, Colour Clash, Ludo, Draw & Guess, Dots & Boxes), chess level vs HIVEMIND, and the latest results.",
