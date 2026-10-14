@@ -123,7 +123,9 @@ export async function runTask(supabase: SupabaseClient, id: string, origin: stri
       return finish(supabase, task, "failed", { error: "The cloud browser has closed (sessions last 15 minutes). Tap Retry to start again." });
     }
 
-    if (!task.steps.length && task.start_url) await doStep(task, "", `open ${task.start_url}`, () => act(page, { type: "goto", url: task!.start_url! }));
+    // The start address gets the same leak check as every later step (it could carry the owner's data).
+    if (!task.steps.length && task.start_url && !leaksOwnerData(task, { type: "goto", url: task.start_url }))
+      await doStep(task, "", `open ${task.start_url}`, () => act(page, { type: "goto", url: task!.start_url! }));
     // The owner approved the paused action: do exactly that, now.
     if (task.pending) {
       const p = task.pending;

@@ -32,8 +32,14 @@ export const web: Record<string, Tool> = {
       }
       if (u.protocol !== "https:" && u.protocol !== "http:") return { error: "Only web links can be opened." };
       const label = (str(args.label) || u.hostname.replace(/^www\./, "")).slice(0, 50);
-      ctx.actions.push({ label: `Open ${label}`, href: u.href, open: true });
-      return { opening: u.href, note: "It opens in a new tab. If the browser blocks it, a button is shown: ask the owner to tap it." };
+      // Opened by itself only when it's a plain link: a long address, or one carrying an email or a
+      // phone number, could be a page's trick to send the owner's data away. Those wait for a tap.
+      const said = decodeURIComponent(u.href.replace(/\+/g, " "));
+      const plain = u.search.length <= 150 && u.href.length <= 400 && !/[\w.+-]+@[\w-]+\.[\w.]+/.test(said) && !/(?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}\b/.test(said);
+      ctx.actions.push({ label: `Open ${label}`, href: u.href, open: plain });
+      return plain
+        ? { opening: u.href, note: "It opens in a new tab. If the browser blocks it, a button is shown: ask the owner to tap it." }
+        : { ready: u.href.slice(0, 120), note: "A button is shown; the owner taps it to open (this link carries a lot of data, so it doesn't open by itself)." };
     },
   },
   find_product: {

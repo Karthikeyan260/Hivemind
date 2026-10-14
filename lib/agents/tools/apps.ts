@@ -1,5 +1,5 @@
 import "server-only";
-import { obj, S, str } from "./shared";
+import { obj, S, str, askedToDelete } from "./shared";
 import type { Tool } from "../types";
 
 /** Self-built apps. */
@@ -68,7 +68,7 @@ export const apps: Record<string, Tool> = {
       const { deleteApp, findApp } = await import("@/lib/apps");
       const app = await findApp(ctx.supabase, str(args.which));
       if (!app) return { error: `No app like "${str(args.which)}".` };
-      if (args.confirm !== true) return { confirm_needed: true, app: app.name, about: app.description, note: "Ask the owner to confirm; nothing is deleted yet." };
+      if (args.confirm !== true || !(await askedToDelete(ctx, "app", app.id, app.name))) return { confirm_needed: true, app: app.name, about: app.description, note: "Ask the owner to confirm; nothing is deleted yet." };
       await deleteApp(ctx.supabase, app.id);
       ctx.changed = true;
       return { deleted: app.name };

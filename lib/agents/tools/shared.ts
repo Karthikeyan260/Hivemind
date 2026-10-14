@@ -54,6 +54,18 @@ export async function lastReply<T>(ctx: RunContext, key: string, onlyPrevious = 
 }
 export const lastJobSearch = (ctx: RunContext) => lastReply<Job[]>(ctx, "jobs");
 
+/**
+ * Two-step deletes: the first call only names the thing and remembers it; the delete happens only
+ * if HIVEMIND's PREVIOUS reply asked about exactly this item and the owner then said yes. The model
+ * passing confirm=true by itself (e.g. talked into it by a document) is not enough.
+ */
+export async function askedToDelete(ctx: RunContext, kind: string, id: string, title: string) {
+  const prev = ctx.carried ? (ctx.carried.pendingDelete ?? null) : await lastReply<{ id: string; kind?: string }>(ctx, "pending_delete", true);
+  if (prev?.id === id && prev.kind === kind) return true;
+  ctx.pendingDelete = { id, title, kind };
+  return false;
+}
+
 export const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
 export const FILLER = new Set(["the", "a", "at", "in", "one", "job", "role", "for", "and", "no", "number", "#", "last", "listing", "option"]);
 

@@ -149,7 +149,7 @@ type AgentToolOut = {
   actions: { label: string; href?: string; navigate?: boolean; open?: boolean }[];
   changed: boolean;
   jobs: Record<string, unknown>[] | null;
-  pending_delete: { id: string; title: string } | null;
+  pending_delete: { id: string; title: string; kind?: string } | null;
 };
 type ClientTool = (args: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>;
 /** While a guest is talking, a web search saves nothing (the refusals themselves are in beforeTool). */

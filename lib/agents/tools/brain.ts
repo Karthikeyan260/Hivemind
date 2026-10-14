@@ -7,7 +7,7 @@ import { embedOne } from "@/lib/ai/embeddings";
 import { extractMetadata } from "@/lib/ai/metadata";
 import { originOf } from "@/lib/origin";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
-import { cite, findNote, findProject, lastReply, obj, S, str } from "./shared";
+import { cite, findNote, findProject, lastReply, obj, S, str, askedToDelete } from "./shared";
 import type { Tool } from "../types";
 
 /** Knowledge, memories, notes, documents and projects. */
@@ -98,6 +98,7 @@ export const brain: Record<string, Tool> = {
     async run(_args, ctx) {
       const pending = ctx.carried ? (ctx.carried.pendingDelete ?? null) : await lastReply<{ id: string; title: string }>(ctx, "pending_delete", true);
       if (!pending) return { error: "Nothing is waiting to be deleted. Ask which memory to delete first (delete_memory)." };
+      if ((pending as { kind?: string }).kind) return { error: "That's not a memory: call the same delete tool again with confirm=true." };
       const row = await deleteMemory(ctx.supabase, pending.id);
       ctx.changed = true;
       return { deleted: true, id: row.id, title: row.title, undo: "It can be restored with Undo in the activity log." };
@@ -201,7 +202,7 @@ export const brain: Record<string, Tool> = {
     async run(args, ctx) {
       const note = await findNote(ctx, str(args.which));
       if (!note) return { error: `No note like "${str(args.which)}".` };
-      if (args.confirm !== true) return { needs_confirmation: true, note: note.title, ask: `Delete the note "${note.title}"?` };
+      if (args.confirm !== true || !(await askedToDelete(ctx, "note", note.id, note.title))) return { needs_confirmation: true, note: note.title, ask: `Delete the note "${note.title}"? (Deletes only after the owner says yes in their next message.)` };
       const { error } = await ctx.supabase.from("notes").delete().eq("id", note.id);
       dbError(error);
       ctx.changed = true;
@@ -226,7 +227,7 @@ export const brain: Record<string, Tool> = {
       const w = str(args.which).replace(/[%,()]/g, " ");
       const { data } = await ctx.supabase.from("documents").select("id, filename").ilike("filename", `%${w}%`).limit(1).maybeSingle();
       if (!data) return { error: `No document like "${str(args.which)}".` };
-      if (args.confirm !== true) return { needs_confirmation: true, document: data.filename, ask: `Delete the document "${data.filename}"?` };
+      if (args.confirm !== true || !(await askedToDelete(ctx, "document", data.id, data.filename))) return { needs_confirmation: true, document: data.filename, ask: `Delete the document "${data.filename}"? (Deletes only after the owner says yes in their next message.)` };
       const { error } = await ctx.supabase.from("documents").delete().eq("id", data.id);
       dbError(error);
       ctx.changed = true;
@@ -258,7 +259,7 @@ export const brain: Record<string, Tool> = {
     async run(args, ctx) {
       const p = await findProject(ctx, str(args.which));
       if (!p) return { error: `No project like "${str(args.which)}".` };
-      if (args.confirm !== true) return { needs_confirmation: true, project: p.name, ask: `Delete the project "${p.name}"? Its memories and notes stay.` };
+      if (args.confirm !== true || !(await askedToDelete(ctx, "project", p.id, p.name))) return { needs_confirmation: true, project: p.name, ask: `Delete the project "${p.name}"? Its memories and notes stay. (Deletes only after the owner says yes in their next message.)` };
       const { error } = await ctx.supabase.from("projects").delete().eq("id", p.id);
       dbError(error);
       ctx.changed = true;

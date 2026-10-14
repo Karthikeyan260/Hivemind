@@ -5,6 +5,22 @@ import { safeFetch } from "@/lib/safe-fetch";
 
 const MAX_BYTES = 3 * 1024 * 1024;
 
+/** The body as text, but stop reading at `max` bytes (a huge page never sits whole in memory). */
+async function readCapped(res: Response, max: number) {
+  if (!res.body) return (await res.text()).slice(0, max);
+  const reader = res.body.getReader();
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  while (size < max) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    size += value.byteLength;
+  }
+  await reader.cancel().catch(() => {});
+  return new TextDecoder().decode(Buffer.concat(parts).subarray(0, max));
+}
+
 const decodeEntities = (s: string) =>
   s
     .replace(/&nbsp;/g, " ")
@@ -36,7 +52,7 @@ export async function fetchPageText(rawUrl: string) {
     throw err instanceof HttpError ? err : new HttpError(502, "Could not reach that page");
   });
   if (!res.ok) throw new HttpError(502, `Page returned HTTP ${res.status}`);
-  const html = (await res.text()).slice(0, MAX_BYTES);
+  const html = await readCapped(res, MAX_BYTES);
 
   const title = decodeEntities(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? url.hostname);
   const text = decodeEntities(

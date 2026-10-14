@@ -18,5 +18,7 @@ describe("a kural on a topic", () => {
     expect(kuralFor("something about anger", () => 0).chapter.n).toBe(31);
     expect(kuralFor("learning", () => 0).chapter.en).toBe("Learning");
     expect(kuralFor("xyz", () => 0).line1.length).toBeGreaterThan(5);
+    // With real randomness, many times (a random pick inside find() once returned nothing).
+    for (let i = 0; i < 300; i++) for (const t of ["anger", "motivation", "friendship", "learning"]) expect(kuralFor(t).line1).toBeTruthy();
   });
 });

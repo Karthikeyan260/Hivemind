@@ -4,6 +4,7 @@ import { handle, parseBody } from "@/lib/api";
 import { claimRing, getRoom } from "@/lib/call-rooms";
 import { getScreenSettings } from "@/lib/call-screen";
 import { db } from "@/lib/db";
+import { addMarker, countMarkers } from "@/lib/private-store";
 import { notify } from "@/lib/push";
 
 /**
@@ -18,6 +19,10 @@ export const POST = handle(async (req: Request) => {
   if (!known) return NextResponse.json({ rang: false, screen: null });
   const settings = await getScreenSettings(supabase).catch(() => null);
   const screen = settings && settings.mode !== "off" ? { mode: settings.mode, wait_s: settings.wait_s } : null;
+  // At most 10 rings an hour per link, counted per request (parallel requests can't all slip past the 30 s check).
+  const cap = `ratelimit/ring-${room}`;
+  if ((await countMarkers(supabase, cap, Date.now() - 3600_000)) >= 10) return NextResponse.json({ rang: false, screen });
+  await addMarker(supabase, cap);
   const r = await claimRing(supabase, room);
   if (!r) return NextResponse.json({ rang: false, screen });
   // The permanent link: the caller types their own name (shown to the owner as given, untrusted).

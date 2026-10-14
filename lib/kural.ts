@@ -69,7 +69,9 @@ export function kuralFor(topic: string, rand: () => number = Math.random) {
   const words = t.split(/[^a-z]+/).filter((w) => w.length > 3);
   const byName = D.chapters.filter((c) => c.part <= 2 && words.some((w) => c.en.toLowerCase().includes(w.slice(0, -1)))).map((c) => c.n);
   const chapters = fromTopic ?? (byName.length ? byName : [62, 60, 63]);
-  const ch = D.chapters.find((c) => c.n === chapters[Math.floor(rand() * chapters.length)])!;
+  // Pick once (inside find() a fresh random number per chapter could match none).
+  const want = chapters[Math.floor(rand() * chapters.length)];
+  const ch = D.chapters.find((c) => c.n === want)!;
   return kuralAt(ch.start + Math.floor(rand() * (ch.end - ch.start + 1)))!;
 }
 

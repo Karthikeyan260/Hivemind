@@ -6,8 +6,9 @@ import { TOOLS } from "@/lib/agents/tools";
 const BROWSER_TOOLS = new Set(["navigate", "page_actions", "read_screen", "scroll", "music", "video", "go_back", "go_forward", "go_to_sleep", "guest_mode"]);
 
 describe("guest mode", () => {
-  it("lets a guest hear the owner's knowledge and look things up", () => {
-    for (const t of ["search_brain", "list_projects", "project_details", "get_weather", "web_search", "play_music", "read_screen"]) expect(guestCheck(t)).toBeNull();
+  it("lets a guest hear about the owner's work and look things up, but not their private brain", () => {
+    for (const t of ["list_projects", "project_details", "get_profile", "get_weather", "web_search", "play_music", "read_screen"]) expect(guestCheck(t)).toBeNull();
+    for (const t of ["search_brain", "recent_memories", "list_notes", "list_documents", "list_reminders", "morning_brief", "find_photos"]) expect(guestCheck(t)).not.toBeNull();
   });
 
   it("never saves, sends, deletes or changes anything while a guest talks", () => {

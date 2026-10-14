@@ -32,12 +32,12 @@ export const POST = handle(async (req: Request) => {
   const room = await getRoom(supabase, body.room);
   if (!room) throw new HttpError(404, "This call link isn't active.");
   // One small file per request: counting them can't lose updates the way a JSON counter would.
+  // Counted before writing: a flood that's already over the limit writes nothing.
   const key = `ratelimit/screen-${room.room}`;
-  await addMarker(supabase, key);
-  if ((await countMarkers(supabase, key, Date.now() - 60_000)) > PER_MINUTE) throw new HttpError(429, "Too many requests. Please wait a minute.");
   const day = `ratelimit/screen-day-${room.room}`;
-  await addMarker(supabase, day);
-  if ((await countMarkers(supabase, day, Date.now() - 24 * 3600_000)) > PER_DAY) throw new HttpError(429, "HIVEMIND can't take more calls on this link today. Please try again tomorrow.");
+  if ((await countMarkers(supabase, key, Date.now() - 60_000)) >= PER_MINUTE) throw new HttpError(429, "Too many requests. Please wait a minute.");
+  if ((await countMarkers(supabase, day, Date.now() - 24 * 3600_000)) >= PER_DAY) throw new HttpError(429, "HIVEMIND can't take more calls on this link today. Please try again tomorrow.");
+  await Promise.all([addMarker(supabase, key), addMarker(supabase, day)]);
   if (body.op === "start") {
     const r = await startScreen(supabase, room, body.name?.replace(/[^\p{L}\p{N} .'-]/gu, "").trim() ?? "");
     if (!r) throw new HttpError(409, "Call screening is off.");

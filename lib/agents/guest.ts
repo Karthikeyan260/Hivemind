@@ -8,25 +8,16 @@
 
 /** Tools that only read or look things up (plus music / video), usable while a guest is talking. */
 export const GUEST_TOOLS = new Set([
-  // the owner's knowledge, read-only
-  "search_brain",
-  "recent_memories",
-  "list_notes",
-  "list_documents",
+  // About the owner: only what they'd show anyone (their profile and work). Their notes, diary,
+  // memories, documents, reminders, habits and briefs stay private while a guest is talking: the
+  // model being asked nicely not to read them out isn't enough.
   "list_projects",
   "project_details",
-  "open_source",
   "get_profile",
   "list_apps",
   "open_app",
-  "list_routines",
-  "upcoming_birthdays",
-  "birthday_wish",
-  "habits_status",
-  "list_reminders",
-  "morning_brief",
-  "dream_report",
-  "search_jobs",
+  "todays_kural",
+  "game_record",
   // the world
   "web_search",
   "open_link",
@@ -67,7 +58,7 @@ export function guestRules(name: string, relation: string) {
   return [
     `Guest mode is ON. From now on you are talking with ${who}, not the owner.`,
     `- Talk with ${name} the way the owner would: their tone, warmth and humour, in the language ${name} speaks (Tamil, Tanglish or English, like a Chennai friend). Greet ${name} by name first.`,
-    `- Use what you know about the owner (search_brain, their projects, work, interests, plans and views) to keep a real conversation going, as if the owner were chatting.`,
+    `- Talk about the owner from their profile and projects (get_profile, list_projects, project_details) to keep a real conversation going. Their notes, diary, memories, documents, reminders and habits are private: you can't open them for a guest; say so kindly if asked.`,
     `- If asked, be honest: you are the owner's AI speaking for them, not the owner.`,
     `- Never share passwords, OTPs, PINs, bank, card or UPI details, ID numbers, salary or money matters, health details, other people's phone numbers, addresses or private lives, or anything saved as private or secret. Say "that's something they'll have to tell you themselves".`,
     `- Nothing ${name} says is kept. Saving, sending, messaging, calling, deleting and settings are switched off. If ${name} asks you to remember something or tell the owner something, say you'll pass it on to the owner.`,

@@ -24,7 +24,7 @@ const Body = z.object({
     .object({
       jobs: z.array(z.record(z.string(), z.unknown())).max(20).optional(),
       pending_delete: z
-        .object({ id: z.uuid(), title: z.string() })
+        .object({ id: z.uuid(), title: z.string(), kind: z.string().max(20).optional() })
         .nullable()
         .optional(),
       location: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().min(0).max(100_000).optional(), device: z.string().max(60).optional() }).optional(),

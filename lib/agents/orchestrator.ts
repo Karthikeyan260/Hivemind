@@ -33,6 +33,9 @@ const RULES = `Rules for tools:
 
 /** Tools that delete or change things: only on the owner's direct request, never from a colleague hand-off. */
 const DESTRUCTIVE = new Set([
+  // Sending the browser (or the cloud browser) somewhere can carry data out: owner's request only.
+  "open_link",
+  "web_task",
   "delete_memory",
   "confirm_delete_memory",
   "delete_job_analysis",

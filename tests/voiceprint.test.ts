@@ -9,10 +9,14 @@ describe("which actions need the owner's voice", () => {
     for (const t of ["guest_mode:end", "delete_memory", "message_contact", "call_contact", "web_task_answer"]) expect(needsOwnerVoice(t, { guestSeen: false }), t).toBe(true);
   });
   it("never: reading and looking things up", () => {
-    for (const t of ["search_brain", "get_weather", "list_projects", "web_search"]) {
+    for (const t of ["get_weather", "list_projects", "web_search"]) {
       expect(needsOwnerVoice(t, { guestSeen: false }), t).toBe(false);
       expect(needsOwnerVoice(t, { guestSeen: true }), t).toBe(false);
     }
+  });
+  it("the private brain needs the owner's voice once a guest has talked", () => {
+    expect(needsOwnerVoice("search_brain", { guestSeen: false })).toBe(false);
+    expect(needsOwnerVoice("search_brain", { guestSeen: true })).toBe(true);
   });
   it("saving only after a guest has talked (they may still be in the room)", () => {
     expect(needsOwnerVoice("remember", { guestSeen: false })).toBe(false);

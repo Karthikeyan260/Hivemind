@@ -1,5 +1,5 @@
 // Single-owner access gate. Runs in proxy.ts (Node runtime) and route handlers.
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "@/lib/db";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { getSecret } from "@/lib/secrets";
@@ -21,11 +21,11 @@ async function hmac(key: string, msg: string) {
   return Buffer.from(sig).toString("hex");
 }
 
+/** Constant-time compare: hashing first means even the length (of a password guess) can't be timed. */
 export function safeEqual(a: string, b: string) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+  const ha = createHash("sha256").update(a).digest();
+  const hb = createHash("sha256").update(b).digest();
+  return timingSafeEqual(ha, hb) && a.length === b.length;
 }
 
 /**
@@ -97,9 +97,10 @@ export async function isUnlocked(cookieValue: string | undefined) {
     }
     return !!s && +new Date(s.expires) > Date.now() && s.pw === (await pwPrint());
   } catch {
-    // Storage blipped: the signature already proves this cookie was issued here, so let the owner
-    // in rather than bounce them to the unlock page (a logout elsewhere applies once storage is back).
-    return true;
+    // Storage blipped: let the owner in only if this server saw this exact session alive moments ago
+    // (a logged-out or old session, or one from before a password change, stays out).
+    const s = cached?.list.find((x) => x.id === hashId(sid));
+    return !!s && +new Date(s.expires) > Date.now();
   }
 }
 

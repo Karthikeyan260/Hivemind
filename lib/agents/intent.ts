@@ -6,17 +6,18 @@
  */
 const INTENT: Record<string, RegExp> = {
   // Deleting / forgetting
-  delete_memory: /\b(delete|remove|forget|erase|clear)\b|மற|அழி/i,
+  // Not "clear": "give me a clear summary" must never unlock a delete.
+  delete_memory: /\b(delete|remove|forget|erase)\b|மற|அழி/i,
   confirm_delete_memory: /\b(yes|yeah|yep|ok(ay)?|sure|confirm|do it|delete|go ahead)\b|ஆமா|சரி|seri|sari|haan/i,
-  delete_job_analysis: /\b(delete|remove|clear|erase)\b/i,
-  delete_note: /\b(delete|remove|erase|clear|yes|confirm)\b/i,
+  delete_job_analysis: /\b(delete|remove|erase)\b/i,
+  delete_note: /\b(delete|remove|erase|yes|confirm)\b/i,
   delete_document: /\b(delete|remove|erase|yes|confirm)\b/i,
   delete_project: /\b(delete|remove|yes|confirm)\b/i,
   delete_app: /\b(delete|remove|yes|confirm)\b/i,
   delete_routine: /\b(delete|remove|yes|confirm)\b/i,
   remove_habit: /\b(delete|remove|stop|drop)\b/i,
   remove_birthday: /\b(delete|remove|forget)\b/i,
-  web_task_delete: /\b(delete|remove|clear)\b/i,
+  web_task_delete: /\b(delete|remove)\b/i,
   // Talking to people
   message_contact: /\b(message|text|whatsapp|send|tell|msg)\b/i,
   call_contact: /\b(call|ring|phone|dial)\b/i,

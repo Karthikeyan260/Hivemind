@@ -1,6 +1,6 @@
 import "server-only";
 import { getProfile } from "@/lib/profile";
-import { obj, S, str } from "./shared";
+import { obj, S, str, askedToDelete } from "./shared";
 import type { Tool } from "../types";
 
 /** Morning brief, Dream mode, day comic, kitchen mode and routines. */
@@ -190,7 +190,7 @@ export const routines: Record<string, Tool> = {
       const { deleteRoutine, listRoutines, matchRoutine } = await import("@/lib/routines");
       const r = matchRoutine(await listRoutines(ctx.supabase), str(args.which));
       if (!r) return { error: `No routine like "${str(args.which)}".` };
-      if (args.confirm !== true) return { confirm_needed: true, routine: r.name, steps: r.steps, note: "Ask the owner to confirm; nothing is deleted yet." };
+      if (args.confirm !== true || !(await askedToDelete(ctx, "routine", r.id, r.name))) return { confirm_needed: true, routine: r.name, steps: r.steps, note: "Ask the owner to confirm; nothing is deleted yet." };
       await deleteRoutine(ctx.supabase, r.id);
       return { deleted: r.name };
     },

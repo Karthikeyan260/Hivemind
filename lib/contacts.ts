@@ -30,7 +30,10 @@ export async function findContacts(supabase: SupabaseClient, who: string): Promi
   const hits = await searchKnowledge(supabase, `${name} phone number contact`, { limit: 12, minSimilarity: 0.25 });
   const out: Contact[] = [];
   const seen = new Set<string>();
-  for (const h of hits) {
+  // Memories naming the whole person ("Arif Khan") win over ones sharing one word ("Arif", "contact").
+  const full = (h: (typeof hits)[number]) => words.every((w) => `${h.title}\n${h.content}`.toLowerCase().includes(w));
+  const pool = words.length > 1 && hits.some(full) ? hits.filter(full) : hits;
+  for (const h of pool) {
     const text = `${h.title}\n${h.content}`;
     const lower = text.toLowerCase();
     if (words.length && !words.some((w) => lower.includes(w))) continue;

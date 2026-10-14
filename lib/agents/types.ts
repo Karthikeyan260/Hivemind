@@ -28,9 +28,10 @@ export type RunContext = {
   /** Listings from a job search in this request: shown as cards and kept so "check #2" works next turn. */
   jobs: Job[] | null;
   /** A memory the owner was asked to confirm deleting; only confirm_delete_memory on the next turn can remove it. */
-  pendingDelete: { id: string; title: string } | null;
+  /** kind: what it is (memory when absent; note, document, project, app, routine). */
+  pendingDelete: { id: string; title: string; kind?: string } | null;
   /** State from earlier turns kept by the caller instead of chat history (live voice keeps it in the browser). */
-  carried?: { jobs?: Job[]; pendingDelete?: { id: string; title: string } };
+  carried?: { jobs?: Job[]; pendingDelete?: { id: string; title: string; kind?: string } };
   /** Where the device asking is (sent by the browser when the owner allowed location), for maps and directions. */
   location?: { lat: number; lng: number; accuracy?: number; device?: string };
   emit: (e: AgentEvent) => void;
