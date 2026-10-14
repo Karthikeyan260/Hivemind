@@ -5,6 +5,7 @@ import { useVoiceActions } from "@/components/voice/provider";
 import { MUSIC_STATE_EVENT } from "@/lib/client-api";
 import type { Pet } from "@/lib/pet";
 import { judgeGuess } from "@/lib/pet-seek";
+import { sfx } from "@/lib/sfx";
 
 /**
  * Nova (a little glowing lantern) lives on the screen and grows with the owner. The server
@@ -18,6 +19,11 @@ type Look = "happy" | "hungry" | "sulking" | "missed" | "sleepy" | "dancing";
 type Pos = { x: number; y: number };
 type Spot = Pos & { name: string; row: "top" | "middle" | "bottom"; col: "left" | "center" | "right"; peek: "top" | "left" | "right" };
 type Seek = { phase: "counting" | "hidden"; spot?: Spot; guesses: number };
+/** Lantern walk: the screen goes dark, the pet follows the pointer and its light finds hidden sparks. */
+type Walk = { sparks: (Pos & { got: boolean })[]; ends: number };
+const SPARKS = 7;
+const WALK_MS = 75_000;
+const LIGHT = 130;
 
 const GLOW: Record<Look, string> = {
   happy: "#ffd166",
@@ -89,7 +95,13 @@ function hidingSpot(self: Element | null): Spot | null {
 
 /** Inside something that floats over the page (a toast, the voice dock): it can come and go. */
 function floating(hit: Element) {
-  for (let el: Element | null = hit; el; el = el.parentElement) if (getComputedStyle(el).position === "fixed") return true;
+  const screen = window.innerWidth * window.innerHeight;
+  for (let el: Element | null = hit; el; el = el.parentElement) {
+    if (getComputedStyle(el).position !== "fixed") continue;
+    // A full-screen fixed layout (the home page is one) is the page itself, not something floating over it.
+    const r = el.getBoundingClientRect();
+    if (r.width * r.height < screen * 0.5) return true;
+  }
   return false;
 }
 
@@ -97,6 +109,7 @@ function floating(hit: Element) {
 function inTheOpen(s: Spot, self: Element | null) {
   const vx = s.peek === "left" ? s.x + SIZE * 0.25 : s.peek === "right" ? s.x + SIZE * 0.75 : s.x + SIZE / 2;
   const vy = s.peek === "top" ? s.y + SIZE * 0.3 : s.y + SIZE / 2;
+  if (vx < 0 || vy < 0 || vx > window.innerWidth || vy > window.innerHeight) return false;
   return document.elementsFromPoint(vx, vy).filter((el) => !self?.contains(el) && !el.closest("[data-pet]")).slice(0, 1).every((hit) => !floating(hit));
 }
 
@@ -110,7 +123,8 @@ function spotBy({ r, name }: { r: DOMRect; name: string }): Spot | null {
       : peek === "left"
         ? { x: r.left - SIZE * 0.5, y: between(r.top, Math.max(r.top, r.bottom - SIZE)) }
         : { x: r.right - SIZE * 0.5, y: between(r.top, Math.max(r.top, r.bottom - SIZE)) };
-  const p = { x: Math.min(W - SIZE * 0.5, Math.max(-SIZE * 0.4, at.x)), y: Math.min(H - SIZE * 0.5, Math.max(4, at.y)) };
+  // Keep the part that peeks out on screen (on a phone a right-edge peek would otherwise end up off it).
+  const p = { x: Math.min(W - SIZE - 4, Math.max(4, at.x)), y: Math.min(H - SIZE, Math.max(4, at.y)) };
   const cx = (p.x + SIZE / 2) / W;
   const cy = (p.y + SIZE / 2) / H;
   return { ...p, name, peek, col: cx < 0.36 ? "left" : cx > 0.64 ? "right" : "center", row: cy < 0.36 ? "top" : cy > 0.64 ? "bottom" : "middle" };
@@ -131,6 +145,8 @@ export function Nova() {
   const [roam, setRoam] = useState(true);
   const [seek, setSeek] = useState<Seek | null>(null);
   const [say, setSay] = useState<string | null>(null);
+  const [walk, setWalk] = useState<Walk | null>(null);
+  const [clock, setClock] = useState(0);
   const [look, setLookAt] = useState({ x: 0, y: 0 });
   const self = useRef<HTMLDivElement>(null);
   const lastFed = useRef<number | null>(null);
@@ -244,7 +260,7 @@ export function Nova() {
   // Wanders: every half a minute or so it glides somewhere new (not while its card is open, during
   // a game, while asleep, or when told to stay).
   const sleepy = hour < 5;
-  const busy = open || !!seek || hidden || !roam || sleepy || !pet;
+  const busy = open || !!seek || !!walk || hidden || !roam || sleepy || !pet;
   useEffect(() => {
     if (busy) return;
     const t = setTimeout(
@@ -269,6 +285,87 @@ export function Nova() {
     }, 25_000);
     return () => clearInterval(t);
   }, [seek?.phase, hop, speak]);
+
+  // ---------- lantern walk ----------
+  const walkRef = useRef<Walk | null>(null);
+  const startWalk = useCallback(() => {
+    setOpen(false);
+    setSeek(null);
+    setHidden(false);
+    clearTimeout(flyTimer.current);
+    setFlying(null);
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const here = posRef.current;
+    const sparks: Walk["sparks"] = [];
+    // Spread out, not on top of each other and not where the pet already stands.
+    for (let tries = 0; sparks.length < SPARKS && tries < 400; tries++) {
+      const p = { x: between(40, W - 40), y: between(70, H - 60), got: false };
+      if (here && Math.hypot(p.x - (here.x + SIZE / 2), p.y - (here.y + SIZE / 2)) < LIGHT * 1.5) continue;
+      if (sparks.some((q) => Math.hypot(p.x - q.x, p.y - q.y) < 120)) continue;
+      sparks.push(p);
+    }
+    setClock(Date.now());
+    walkRef.current = { sparks, ends: Date.now() + WALK_MS };
+    setWalk(walkRef.current);
+    speak(`Lights off! 🏮 ${sparks.length} sparks olinjirukku, kandupidi!`, 3500);
+  }, [speak]);
+
+  const endWalk = useCallback(
+    async (all: boolean, found: number, total: number) => {
+      // Once: the timer and the last spark can both end it in the same moment.
+      if (!walkRef.current) return;
+      walkRef.current = null;
+      setWalk(null);
+      hop();
+      if (!all) return speak(found ? `Time up! ${found}/${total} sparks 🌟 Innoru try?` : "Lights on! 💡", 3500);
+      sfx.done();
+      const r = await fetch("/api/pet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ walk: true }) }).catch(() => null);
+      const data = r?.ok ? await r.json().catch(() => null) : null;
+      if (data?.pet) setPet(data.pet);
+      speak(data?.counted ? `Ellam kandupidichitom! ✨ +${data.xp} growth` : "Ellam kandupidichitom! ✨ (today's walk points are full)", 4500);
+    },
+    [hop, speak],
+  );
+
+  // During the walk the pet follows the pointer (or a tap / drag on a phone); its light collects sparks.
+  useEffect(() => {
+    walkRef.current = walk;
+  }, [walk]);
+  const walking = !!walk;
+  useEffect(() => {
+    if (!walking) return;
+    const follow = (e: PointerEvent) => {
+      const to = clamp({ x: e.clientX - SIZE / 2, y: e.clientY - SIZE / 2 });
+      setPos(to);
+      const w = walkRef.current;
+      if (!w) return;
+      const found = w.sparks.filter((s) => !s.got && Math.hypot(s.x - (to.x + SIZE / 2), s.y - (to.y + SIZE / 2)) < 60);
+      if (!found.length) return;
+      sfx.hover();
+      const sparks = w.sparks.map((s) => (found.includes(s) ? { ...s, got: true } : s));
+      walkRef.current = { ...w, sparks };
+      if (sparks.every((s) => s.got)) void endWalk(true, sparks.length, sparks.length);
+      else setWalk(walkRef.current);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") void endWalk(false, 0, 0);
+    };
+    const t = setInterval(() => {
+      const w = walkRef.current;
+      setClock(Date.now());
+      if (w && Date.now() > w.ends) void endWalk(false, w.sparks.filter((s) => s.got).length, w.sparks.length);
+    }, 500);
+    window.addEventListener("pointermove", follow);
+    window.addEventListener("pointerdown", follow);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("pointermove", follow);
+      window.removeEventListener("pointerdown", follow);
+      window.removeEventListener("keydown", key);
+      clearInterval(t);
+    };
+  }, [walking, endWalk]);
 
   const startSeek = useCallback(() => {
     setOpen(false);
@@ -384,6 +481,18 @@ export function Nova() {
         return { renamed_to: data.name };
       },
     },
+    nova_lantern_walk: {
+      description: "Lantern walk with the pet: the screen goes dark, the pet follows the owner's pointer / finger like a lantern and they hunt for hidden sparks in its light (all found = growth points). input: 'start' ('lights off', 'lantern walk') or 'stop' ('lights on').",
+      run: ({ input }) => {
+        if (/stop|end|quit|lights on/i.test(String(input ?? ""))) {
+          if (walk) void endWalk(false, walk.sparks.filter((s) => s.got).length, walk.sparks.length);
+          return { stopped: true };
+        }
+        if (!pet) return { error: "The pet is still waking up." };
+        startWalk();
+        return { started: true, sparks: SPARKS, seconds: WALK_MS / 1000, note: "Tell them to move the pointer (or drag a finger) to guide the lantern and find the sparks in the dark." };
+      },
+    },
     nova_hide: {
       description: "Put Nova away (it shrinks to a small glowing dot) or bring it back. input: 'hide' or 'show'.",
       run: ({ input }) => {
@@ -457,7 +566,35 @@ export function Nova() {
     );
   }
 
+  const left = walk ? Math.max(0, Math.ceil((walk.ends - clock) / 1000)) : 0;
+  const light = walk ? { x: pos.x + SIZE / 2, y: pos.y + SIZE / 2 } : null;
+
   return (
+    <>
+      {walk && light && (
+        <>
+          {/* The sparks sit under the dark: only the lantern's light shows them. */}
+          <div className="pointer-events-none fixed inset-0 z-[28]">
+            {walk.sparks.map((s, i) => (
+              <span
+                key={i}
+                className={s.got ? "pet-burst absolute h-6 w-6 rounded-full" : "pet-glow absolute text-xl leading-none"}
+                style={{ left: s.x - 12, top: s.y - 12, ...(s.got ? { border: "2px solid #ffe066" } : { color: "#ffe066", textShadow: "0 0 12px #ffd166" }) }}
+              >
+                {s.got ? "" : "✦"}
+              </span>
+            ))}
+          </div>
+          {/* The dark, with a warm circle of light around the lantern. It catches taps so nothing behind gets clicked. */}
+          <div
+            className="fixed inset-0 z-[29] touch-none"
+            style={{ background: `radial-gradient(circle at ${light.x}px ${light.y}px, rgba(255,209,102,0.12) 0, rgba(255,209,102,0.04) ${LIGHT * 0.7}px, rgba(3,5,9,0.97) ${LIGHT}px)` }}
+          />
+          <div className="pointer-events-none fixed left-1/2 top-4 z-[31] -translate-x-1/2 rounded-full border border-line bg-[#0b1016]/90 px-4 py-1.5 font-mono text-xs text-fg">
+            🏮 {walk.sparks.filter((s) => s.got).length}/{walk.sparks.length} sparks · {left}s · <span className="text-faint">Esc to stop</span>
+          </div>
+        </>
+      )}
     <div
       data-pet
       className="fixed z-30 select-none"
@@ -481,6 +618,7 @@ export function Nova() {
             if (!next) store.set(POS_KEY, JSON.stringify(pos));
           }}
           onSeek={startSeek}
+          onWalk={startWalk}
           onClose={() => setOpen(false)}
           onHide={() => {
             setHidden(true);
@@ -513,10 +651,11 @@ export function Nova() {
         <Creature stage={pet.stage} mood={mood} look={facing} eating={eating !== null} evolving={evolving} poked={poked} quiet={!!peeking} />
       </div>
     </div>
+    </>
   );
 }
 
-function PetCard({ pet, line, mood, place, roam, onRoam, onSeek, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; roam: boolean; onRoam: () => void; onSeek: () => void; onClose: () => void; onHide: () => void }) {
+function PetCard({ pet, line, mood, place, roam, onRoam, onSeek, onWalk, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; onClose: () => void; onHide: () => void }) {
   const fedPct = pet.fed.due ? Math.round((pet.fed.done / pet.fed.due) * 100) : 0;
   return (
     <div className={`pet-pop absolute ${place} w-72 rounded-2xl border border-line bg-[#0b1016]/95 p-4 text-sm text-fg shadow-2xl backdrop-blur-md`}>
@@ -550,6 +689,9 @@ function PetCard({ pet, line, mood, place, roam, onRoam, onSeek, onClose, onHide
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button type="button" onClick={onSeek} className="rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
           🙈 Hide and seek
+        </button>
+        <button type="button" onClick={onWalk} className="col-span-2 rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
+          🏮 Lantern walk: find sparks in the dark
         </button>
         <button type="button" onClick={onRoam} className="rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
           {roam ? "📍 Stay here" : "✨ Wander around"}

@@ -12,7 +12,8 @@ import { addDays, localParts } from "@/lib/reminders";
  * Nothing extra to log: it feeds on finished habits, check-ins, game wins, saved memories and music,
  * all counted from the day it was born, so it starts as a seed and grows over weeks.
  */
-type Saved = { born: string; lastSeen: string; name?: string };
+/** walks: the local date of each finished lantern walk (all sparks found). */
+type Saved = { born: string; lastSeen: string; name?: string; walks?: string[] };
 export const DEFAULT_NAME = "Nova";
 const KEY = "pet";
 
@@ -42,13 +43,14 @@ export type Pet = {
 };
 
 /** Growth points per thing done (music is capped so leaving a playlist on doesn't count much). */
-const XP = { habit: 10, checkin: 8, win: 6, game: 2, memory: 2, play: 1, playsPerDay: 10 } as const;
+const XP = { habit: 10, checkin: 8, win: 6, game: 2, memory: 2, play: 1, playsPerDay: 10, walk: 5, walksPerDay: 3 } as const;
 
 export async function getPet(supabase: SupabaseClient, now = new Date()): Promise<Pet> {
   const today = localParts(now).date;
   const saved = await readJSON<Saved | null>(supabase, KEY, null);
   const born = saved?.born ?? today;
   const name = saved?.name || DEFAULT_NAME;
+  const walks = saved?.walks ?? [];
   const away = saved ? Math.round((+new Date(`${today}T00:00:00Z`) - +new Date(`${saved.lastSeen}T00:00:00Z`)) / 86_400_000) : 0;
   if (!saved || saved.lastSeen !== today) await writeJSON(supabase, KEY, { ...saved, born, lastSeen: today } satisfies Saved).catch(() => {});
 
@@ -75,7 +77,7 @@ export async function getPet(supabase: SupabaseClient, now = new Date()): Promis
   }
   const playXp = [...playsByDay.values()].reduce((a, n) => a + Math.min(n, XP.playsPerDay) * XP.play, 0);
   const wins = myGames.filter((g) => g.outcome === "win").length;
-  const xp = habitDays.length * XP.habit + myCheckins.length * XP.checkin + wins * XP.win + myGames.length * XP.game + memories * XP.memory + playXp;
+  const xp = habitDays.length * XP.habit + myCheckins.length * XP.checkin + wins * XP.win + myGames.length * XP.game + memories * XP.memory + playXp + walks.length * XP.walk;
 
   const stage = STAGES.reduce((s, x, i) => (xp >= x.at ? i : s), 0);
   const next = STAGES[stage + 1];
@@ -89,6 +91,7 @@ export async function getPet(supabase: SupabaseClient, now = new Date()): Promis
     ...doneToday.map((h) => `${h.emoji || "✅"} ${h.name} (+${XP.habit})`),
     ...(myCheckins.some((c) => c.date === today) ? [`🌙 Night check-in (+${XP.checkin})`] : []),
     ...myGames.filter((g) => localParts(new Date(g.at)).date === today && g.outcome === "win").map((g) => `🏆 Won ${g.game} (+${XP.win + XP.game})`),
+    ...(walks.filter((d) => d === today).length ? [`🏮 ${walks.filter((d) => d === today).length} lantern walk${walks.filter((d) => d === today).length === 1 ? "" : "s"} (+${walks.filter((d) => d === today).length * XP.walk})`] : []),
     ...(playsByDay.get(today) ? [`🎵 ${playsByDay.get(today)} songs (+${Math.min(playsByDay.get(today)!, XP.playsPerDay)})`] : []),
   ];
 
@@ -143,6 +146,17 @@ export async function renamePet(supabase: SupabaseClient, raw: string) {
   if (!name) throw new Error("Give it a name with letters, up to 20 characters.");
   const today = localParts().date;
   const saved = await readJSON<Saved | null>(supabase, KEY, null);
-  await writeJSON(supabase, KEY, { born: saved?.born ?? today, lastSeen: saved?.lastSeen ?? today, name } satisfies Saved);
+  await writeJSON(supabase, KEY, { ...saved, born: saved?.born ?? today, lastSeen: saved?.lastSeen ?? today, name } satisfies Saved);
   return name;
+}
+
+/** A lantern walk where every spark was found: growth points, up to 3 walks a day. */
+export async function logWalk(supabase: SupabaseClient) {
+  const today = localParts().date;
+  const saved = await readJSON<Saved | null>(supabase, KEY, null);
+  const walks = saved?.walks ?? [];
+  const todays = walks.filter((d) => d === today).length;
+  if (todays >= XP.walksPerDay) return { counted: false, xp: 0 };
+  await writeJSON(supabase, KEY, { ...saved, born: saved?.born ?? today, lastSeen: today, walks: [...walks, today].slice(-500) } satisfies Saved);
+  return { counted: true, xp: XP.walk };
 }
