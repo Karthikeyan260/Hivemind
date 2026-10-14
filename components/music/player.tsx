@@ -103,6 +103,8 @@ export function MusicPlayer() {
 
   // How the last request was understood: a plain search, an editors' playlist, or AI-picked songs.
   const picked = useRef<{ how?: string; label?: string }>({});
+  // Songs the owner queued with "play X next", so several queue up in the order asked.
+  const queued = useRef(new Set<string>());
   const search = useCallback(async (q: string, n = 20, raw = false) => {
     const r = await fetch(`/api/music/search?q=${encodeURIComponent(q)}&n=${n}${raw ? "&raw=1" : ""}`);
     const data = await r.json().catch(() => ({}));
@@ -158,12 +160,16 @@ export function MusicPlayer() {
               const ok = await playAt(songs, 0);
               return { playing: about(songs[0]), ...(ok ? {} : { note: "Ask the owner to tap Play on the music bar (the browser needs a tap)." }) };
             }
-            // "Play X next": right after the current song.
-            const merged = [...list.slice(0, i + 1), songs[0], ...list.slice(i + 1)];
+            // "Play X next": after the current song and after anything queued before it, in the order asked.
+            let at = i + 1;
+            while (list[at] && queued.current.has(list[at].id)) at++;
+            queued.current.add(songs[0].id);
+            const merged = [...list.slice(0, at), songs[0], ...list.slice(at).filter((s) => s.id !== songs[0].id)];
             st.current = { ...st.current, queue: merged };
             setQueue(merged);
-            return { added_next: about(songs[0]) };
+            return { queued: about(songs[0]), plays_after: about(merged[at - 1]), position: at + 1, note: "It plays when the songs before it finish." };
           }
+          queued.current.clear();
           const ok = await playAt(songs, 0);
           return {
             playing: about(songs[0]),
