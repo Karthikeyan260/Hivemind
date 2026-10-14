@@ -27,7 +27,7 @@ export const GROUPS: Record<string, Group> = {
     tools: [
       "recent_memories", "update_memory", "delete_memory", "confirm_delete_memory", "open_source", "list_notes", "update_note", "delete_note",
       "list_projects", "project_details", "find_product", "open_link", "where_am_i", "places_nearby", "directions", "call_contact", "message_contact",
-      "save_contact", "run_routine", "set_language", "get_profile", "log_habit", "habits_status", "find_photos", "night_checkin", "todays_kural",
+      "save_contact", "run_routine", "set_language", "get_profile", "log_habit", "habits_status", "find_photos", "night_checkin", "todays_kural", "game_record",
     ],
     guide: [
       "Call search_brain before answering anything about the owner, their work, projects or saved knowledge. Answer only from what it returns; if it has nothing, say so briefly.",
@@ -188,6 +188,7 @@ export const GROUPS: Record<string, Group> = {
     tools: [],
     guide: [
       `Games: "let's play paattu quiz" → navigate /games/paattu, then do_page_action paattu_start with the theme (mix, anirudh, arr, ilaiyaraaja, vijay, melody, kuthu, latest). While a clip plays stay silent; when the owner names a film or an option number, do_page_action paattu_answer, say right or wrong in a few words, and paattu_next when they say next. "Draw and guess" → navigate /games/draw; "ludo" → navigate /games/ludo; "chess" → navigate /games/chess (vs HIVEMIND's bot or a friend with a clock); "cards / colour clash / uno" → navigate /games/cards; "dots and boxes" → navigate /games/dots (Ludo, Colour Clash and Dots and Boxes: against HIVEMIND on this device, or a friend with the link on screen).`,
+      `Playing by voice (do_page_action on the game page): Ludo → ludo_start ('bots', 'quick'), ludo_roll, ludo_move (token number shown on the glowing token). Colour Clash → cards_deal, cards_hand (read their cards / what fits), cards_play ('blue 7', 'red skip', 'yellow +2', 'wild green'), cards_draw, cards_keep, cards_last. Chess vs HIVEMIND → chess_start ('medium as black with 5 minutes'), chess_move ('knight to f3', 'e4', 'castle kingside'; if it asks which one, ask them), chess_status (say HIVEMIND's reply move after each of theirs), chess_hint, chess_undo, chess_resign (only when they clearly say resign). Dots & Boxes → dots_start ('4', 'bots'), dots_line ('a1 to b1': columns a.. left to right, rows 1.. top to bottom, labelled on the board), dots_suggest, dots_status. "How many games did I win / my chess level" → game_record. Photos page → photos_open (number), photos_browse ('next', 'previous', 'close'), photos_edit ('place Ooty', 'date 2025-12-21'), photos_delete (ask, then 'yes').`,
     ],
   },
   palace: {

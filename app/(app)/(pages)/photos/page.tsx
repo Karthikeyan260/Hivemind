@@ -11,7 +11,10 @@ import type { Photo } from "@/lib/photos";
 
 type Feed = { photos: Photo[]; total: number };
 const IDEAS = ["birthday", "beach", "food", "selfie", "temple", "last December"];
-const when = (p: Photo) => new Date(p.taken).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+const TZ = "Asia/Kolkata";
+const when = (p: Photo) => new Date(p.taken).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: TZ });
+/** The photo date as YYYY-MM-DD in Chennai (an ISO string sliced is the UTC date). */
+const dayOf = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
 
 export default function PhotosPage() {
   return (
@@ -28,7 +31,8 @@ function Photos() {
   const q = params.get("q") ?? "";
   const [text, setText] = useState(q);
   const feed = useFetch<Feed>(`/api/photos${q ? `?q=${encodeURIComponent(q)}` : ""}`);
-  const [open, setOpen] = useState<number | null>(null);
+  // The open photo by id: uploads add photos at the top, so a position would point at another photo.
+  const [openId, setOpenId] = useState<string | null>(null);
   const [priv, setPriv] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,8 +60,8 @@ function Photos() {
     setTimeout(() => setProgress(null), 2500);
   }
 
-  async function remove(p: Photo) {
-    if (!confirm(`Delete "${p.title}" from HIVEMIND? (The original stays in your gallery.)`)) return;
+  async function remove(p: Photo, asked = false) {
+    if (!asked && !confirm(`Delete "${p.title}" from HIVEMIND? (The original stays in your gallery.)`)) return;
     await fetch(`/api/photos?id=${p.id}`, { method: "DELETE" });
     setOpen(null);
     await feed.reload();
@@ -82,8 +86,48 @@ function Photos() {
         return { opened: photos[n].title };
       },
     },
+    photos_browse: {
+      description: "Photos page: in the open photo, go to the 'next' or 'previous' one, or 'close' it. Also says what the photo shows.",
+      run: ({ input }) => {
+        const t = String(input ?? "").toLowerCase();
+        if (/close|back|exit/.test(t)) return setOpen(null), { closed: true };
+        if (open === null) return { error: "No photo is open: open one first (photos_open)." };
+        const n = /prev|before|back/.test(t) ? open - 1 : open + 1;
+        if (n < 0 || n >= photos.length) return { error: "That was the last one." };
+        setOpen(n);
+        const p = photos[n];
+        return { now_showing: p.title, about: p.description, taken: p.hasTakenDate ? when(p) : "unknown", place: p.place };
+      },
+    },
+    photos_edit: {
+      description: "Photos page: fix the open photo's title, date or place (e.g. a WhatsApp photo with no date). input: what to set, e.g. 'place Ooty', 'date 2025-12-21', 'title Family at the lake'.",
+      run: async ({ input }) => {
+        if (!cur) return { error: "Open the photo first (photos_open)." };
+        const t = String(input ?? "");
+        const date = t.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+        const place = t.match(/place\s+(?:is\s+|to\s+)?(.+?)(?:,|$| date| title)/i)?.[1]?.trim();
+        const title = t.match(/title\s+(?:is\s+|to\s+)?(.+?)(?:,|$| date| place)/i)?.[1]?.trim();
+        if (!date && !place && !title) return { error: "Say what to set: 'place Ooty', 'date 2025-12-21' or 'title …'." };
+        await api("/api/photos", { method: "PATCH", json: { id: cur.id, ...(date ? { taken: date } : {}), ...(place ? { place } : {}), ...(title ? { title } : {}) } });
+        await feed.reload();
+        return { saved: { date, place, title } };
+      },
+    },
+    photos_delete: {
+      description: "Photos page: delete the open photo from HIVEMIND (the original stays in the gallery). First call without input to get its title and ASK the owner; call again with input 'yes' only after they clearly confirm.",
+      run: async ({ input }) => {
+        if (!cur) return { error: "Open the photo first (photos_open)." };
+        if (progress && progress.done < progress.total) return { error: "Wait for the upload to finish." };
+        if (!/^\s*yes\b/i.test(String(input ?? ""))) return { confirm: `Delete "${cur.title}"? Ask the owner, then call again with 'yes'.` };
+        await remove(cur, true);
+        return { deleted: cur.title };
+      },
+    },
   });
 
+  const found = openId ? photos.findIndex((p) => p.id === openId) : -1;
+  const open = found >= 0 ? found : null;
+  const setOpen = (i: number | null) => setOpenId(i === null ? null : (photos[i]?.id ?? null));
   const cur = open !== null ? photos[open] : null;
 
   // Fix a photo's title, date or place (photos from WhatsApp arrive without them).
@@ -92,12 +136,13 @@ function Photos() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- a different photo closes the form
     setDraft(null);
-  }, [open]);
+  }, [openId]);
   async function saveEdit(p: Photo) {
     if (!draft) return;
     setSaving(true);
     try {
-      await api("/api/photos", { method: "PATCH", json: { id: p.id, title: draft.title, taken: draft.taken, place: draft.place } });
+      // The date only when it was changed: re-sending it would mark an unknown date as known.
+      await api("/api/photos", { method: "PATCH", json: { id: p.id, title: draft.title, place: draft.place, ...(draft.taken !== (p.hasTakenDate ? dayOf(p.taken) : "") ? { taken: draft.taken } : {}) } });
       setDraft(null);
       await feed.reload();
     } catch (e) {
@@ -192,8 +237,10 @@ function Photos() {
           {photos.map((p, i) => (
             <li key={p.id}>
               <button type="button" onClick={() => setOpen(i)} className="group relative block aspect-square w-full overflow-hidden rounded-md bg-raised" title={p.title}>
+                {/* Shimmer until the thumbnail arrives (it covers this when loaded). */}
+                <span aria-hidden className="absolute inset-0 animate-pulse bg-raised" />
                 {/* eslint-disable-next-line @next/next/no-img-element -- private photo served by the app */}
-                <img src={`/api/photos/${p.id}?t=1`} alt={p.title} loading="lazy" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                <img src={`/api/photos/${p.id}?t=1`} alt={p.title} loading="lazy" className="relative h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                 {p.private && <Lock size={12} className="absolute right-1.5 top-1.5 text-white drop-shadow" />}
               </button>
             </li>
@@ -205,7 +252,7 @@ function Photos() {
         <div className="fixed inset-0 z-[70] flex flex-col bg-black/95" role="dialog" aria-modal="true" aria-label={cur.title}>
           <div className="flex items-center gap-2 p-3 text-white">
             <span className="min-w-0 flex-1 truncate text-sm font-medium">{cur.title}</span>
-            <button type="button" onClick={() => void remove(cur)} aria-label="Delete photo" className="p-2 text-white/70 hover:text-alert">
+            <button type="button" onClick={() => void remove(cur)} disabled={!!progress && progress.done < progress.total} title={progress && progress.done < progress.total ? "Wait for the upload to finish" : "Delete"} aria-label="Delete photo" className="p-2 text-white/70 hover:text-alert disabled:opacity-30">
               <Trash2 size={18} />
             </button>
             <button type="button" onClick={() => setOpen(null)} aria-label="Close" className="p-2 text-white/80 hover:text-white">
@@ -261,7 +308,7 @@ function Photos() {
                 )}
                 <button
                   type="button"
-                  onClick={() => setDraft({ title: cur.title, taken: cur.taken.slice(0, 10), place: cur.place ?? "" })}
+                  onClick={() => setDraft({ title: cur.title, taken: cur.hasTakenDate ? dayOf(cur.taken) : "", place: cur.place ?? "" })}
                   className="ml-auto flex items-center gap-1 rounded-full border border-white/25 px-2.5 py-0.5 text-white/80 hover:border-white/60"
                 >
                   <Pencil size={11} /> {cur.hasTakenDate && cur.place ? "Edit" : "Add date / place"}

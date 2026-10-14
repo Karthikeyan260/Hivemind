@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { geminiClient } from "@/lib/ai/gemini";
 import { whereIs } from "@/lib/places";
 import { readJSON, writeJSON } from "@/lib/private-store";
+import { HOME_TZ, localDayStart, localParts } from "@/lib/reminders";
 
 /**
  * Photo memories: the owner adds photos (from the Photos page or the phone's Share menu), HIVEMIND
@@ -109,7 +110,7 @@ export async function addPhoto(
   const gps = okLat(input.lat) && okLng(input.lng) && !(input.lat === 0 && input.lng === 0) ? { lat: input.lat!, lng: input.lng! } : null;
   const where = gps ? await whereIs(gps).catch(() => null) : null;
   const place = where ? nickname([where.area, where.city].filter(Boolean).join(", ") || where.address) : undefined;
-  const when = new Date(taken ?? now).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+  const when = new Date(taken ?? now).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: HOME_TZ });
   const d = input.private ? null : await describe(input.full, when, place);
 
   const photo: Photo = {
@@ -141,7 +142,7 @@ export async function updatePhoto(supabase: SupabaseClient, id: string, patch: {
   if (!p) return null;
   if (patch.title !== undefined) p.title = clip(patch.title, 80) || p.title;
   if (patch.taken !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(patch.taken)) {
-    p.taken = new Date(`${patch.taken}T12:00:00`).toISOString();
+    p.taken = new Date(`${patch.taken}T12:00:00+05:30`).toISOString(); // noon in Chennai: the same day everywhere it matters
     p.hasTakenDate = true;
   }
   if (patch.place !== undefined) {
@@ -206,25 +207,31 @@ const words = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^\p{L}\
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 /** "last December", "2024", "this year", "yesterday" → a date range (local). */
+/**
+ * "last December", "2024", "this year", "yesterday" → a date range, in the owner's own time zone (the
+ * server runs in UTC: "today" at 2 am in Chennai is still yesterday there).
+ */
 export function dateRange(q: string, now = new Date()): { from: Date; to: Date } | null {
   const s = q.toLowerCase();
-  const y = now.getFullYear();
-  const day = (d: Date, n = 0) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-  if (/\btoday\b/.test(s)) return { from: day(now), to: day(now, 1) };
-  if (/\byesterday\b/.test(s)) return { from: day(now, -1), to: day(now) };
-  if (/\blast week\b/.test(s)) return { from: day(now, -7), to: day(now, 1) };
-  if (/\blast month\b/.test(s)) return { from: new Date(y, now.getMonth() - 1, 1), to: new Date(y, now.getMonth(), 1) };
-  if (/\bthis month\b/.test(s)) return { from: new Date(y, now.getMonth(), 1), to: new Date(y, now.getMonth() + 1, 1) };
-  if (/\blast year\b/.test(s)) return { from: new Date(y - 1, 0, 1), to: new Date(y, 0, 1) };
-  if (/\bthis year\b/.test(s)) return { from: new Date(y, 0, 1), to: new Date(y + 1, 0, 1) };
+  const { year: y, month, day: d } = localParts(now);
+  const mo = month - 1;
+  /** Midnight (home time) at the start of that calendar day; month/day overflow like Date.UTC. */
+  const at = (yy: number, mm: number, dd: number) => localDayStart(new Date(Date.UTC(yy, mm, dd, 12)));
+  if (/\btoday\b/.test(s)) return { from: at(y, mo, d), to: at(y, mo, d + 1) };
+  if (/\byesterday\b/.test(s)) return { from: at(y, mo, d - 1), to: at(y, mo, d) };
+  if (/\blast week\b/.test(s)) return { from: at(y, mo, d - 7), to: at(y, mo, d + 1) };
+  if (/\blast month\b/.test(s)) return { from: at(y, mo - 1, 1), to: at(y, mo, 1) };
+  if (/\bthis month\b/.test(s)) return { from: at(y, mo, 1), to: at(y, mo + 1, 1) };
+  if (/\blast year\b/.test(s)) return { from: at(y - 1, 0, 1), to: at(y, 0, 1) };
+  if (/\bthis year\b/.test(s)) return { from: at(y, 0, 1), to: at(y + 1, 0, 1) };
   const m = MONTHS.findIndex((name) => new RegExp(`\\b${name}\\b|\\b${name.slice(0, 3)}\\b`).test(s));
   const yr = s.match(/\b(19|20)\d{2}\b/)?.[0];
   if (m >= 0) {
     // "December" without a year: the most recent December (this year's if it has started, else last year's).
-    const year = yr ? Number(yr) : m <= now.getMonth() ? y : y - 1;
-    return { from: new Date(year, m, 1), to: new Date(year, m + 1, 1) };
+    const year = yr ? Number(yr) : m <= mo ? y : y - 1;
+    return { from: at(year, m, 1), to: at(year, m + 1, 1) };
   }
-  if (yr) return { from: new Date(Number(yr), 0, 1), to: new Date(Number(yr) + 1, 0, 1) };
+  if (yr) return { from: at(Number(yr), 0, 1), to: at(Number(yr) + 1, 0, 1) };
   return null;
 }
 

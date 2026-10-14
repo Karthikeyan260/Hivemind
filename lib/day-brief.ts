@@ -36,7 +36,7 @@ export async function dayBrief(supabase: SupabaseClient, name?: string): Promise
     upcomingBirthdays(supabase, 7).catch(() => []),
     getBrief(supabase, date).catch(() => null),
   ]);
-  const greeting = `${h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"}${name ? `, ${name}` : ""}`;
+  const greeting = `${h < 4 ? "Hello" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"}${name ? `, ${name}` : ""}`;
   const day: Omit<DayBrief, "speech"> = {
     greeting,
     date,

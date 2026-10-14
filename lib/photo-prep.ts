@@ -90,7 +90,7 @@ export async function preparePhoto(file: File) {
   try {
     const full = await jpeg(bmp, 1600, 0.82);
     const thumb = await jpeg(bmp, 420, 0.72);
-    return { full: full.blob, thumb: thumb.blob, w: full.w, h: full.h, exif, taken: exif.taken ?? (file.lastModified ? new Date(file.lastModified).toISOString() : undefined) };
+    return { full: full.blob, thumb: thumb.blob, w: full.w, h: full.h, exif, taken: exif.taken };
   } finally {
     bmp.close();
   }

@@ -61,6 +61,8 @@ export function ReminderWatcher() {
 
   // Morning brief: the first time HIVEMIND is opened each day.
   const brief = useCallback(async () => {
+    // Not before 4 am: opening the app at 12:30 at night shouldn't use up the morning card (or fix the kural early).
+    if (new Date().getHours() < 4) return;
     const today = new Date().toDateString();
     // Claim today's brief before fetching so a second call (StrictMode, fast remount) can't show it twice.
     if (briefed.current === today) return;
@@ -121,7 +123,7 @@ export function ReminderWatcher() {
           key={t.key}
           role="alert"
           className={cx(
-            "rise-in pointer-events-auto border bg-[#0b1016]/95 p-3.5 shadow-[0_0_40px_-10px_rgba(240,180,90,0.5)] backdrop-blur-md",
+            "rise-in pointer-events-auto max-h-[calc(100dvh-var(--tabbar-h)-2rem)] overflow-y-auto overscroll-contain border bg-[#0b1016]/95 p-3.5 shadow-[0_0_40px_-10px_rgba(240,180,90,0.5)] backdrop-blur-md",
             t.kind === "alert" ? "border-core/60" : "border-data/40",
           )}
         >
@@ -162,8 +164,8 @@ export function ReminderWatcher() {
               </div>
               <YourDay day={t.day} compact />
               {/* Mornings only: the day's kural, chosen from last night. */}
-              {new Date().getHours() < 12 && (
-                <div className="mt-2.5 max-h-[38dvh] overflow-y-auto">
+              {new Date().getHours() >= 4 && new Date().getHours() < 12 && (
+                <div className="mt-2.5">
                   <TodaysKural compact />
                 </div>
               )}

@@ -3,6 +3,7 @@
 import { Bot, Crown, Mic, MicOff, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { useVoiceActions } from "@/components/voice/provider";
 import { gameKey, recordResult } from "@/lib/games/record";
 import { cellOf, HOME_CELLS, TRACK_CELLS, type Cell } from "@/lib/games/ludo-board";
 import { botChoice, move, movable, newGame, roll, SAFE, type Color, type LudoState } from "@/lib/games/ludo";
@@ -71,15 +72,16 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
   const [quick, setQuick] = useState(false);
   const live = connected;
 
-  function start() {
+  function start(opt?: { bots?: boolean; quick?: boolean }) {
+    const withBots = opt?.bots ?? bots;
     const players = solo
-      ? bots
+      ? withBots
         ? [{ id: "host", name: myName }, { id: "bot1", name: "HIVEMIND", bot: true }, { id: "bot2", name: "HIVEMIND 2", bot: true }, { id: "bot3", name: "HIVEMIND 3", bot: true }]
         : [{ id: "host", name: myName }, { id: "bot1", name: "HIVEMIND", bot: true }]
-      : bots
+      : withBots
       ? [{ id: "host", name: myName }, { id: "bot1", name: "HIVEMIND", bot: true }, { id: "guest", name: other || "Friend" }, { id: "bot2", name: "HIVEMIND 2", bot: true }]
       : [{ id: "host", name: myName }, { id: "guest", name: other || "Friend" }];
-    const g = newGame(players, quick ? 2 : 4);
+    const g = newGame(players, (opt?.quick ?? quick) ? 2 : 4);
     sRef.current = g;
     publish(g);
   }
@@ -119,6 +121,37 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
     if (role === "host") apply((cur) => move(cur, "host", token));
     else act({ type: "move", token });
   }
+  // Voice: start, roll and move by saying so ("roll", "move token two").
+  useVoiceActions({
+    ludo_start: {
+      description: "Ludo page: start (or restart) a game. input: optional 'bots' for a full 4-player board with HIVEMIND bots, 'quick' for 2 tokens each (e.g. 'bots quick').",
+      run: ({ input }) => {
+        if (role !== "host" || !live) return { error: "Only the host can start, once everyone's here." };
+        const t = String(input ?? "").toLowerCase();
+        start({ bots: /bot|four|4/.test(t) || undefined, quick: /quick|two|2 token/.test(t) || undefined });
+        return { started: true };
+      },
+    },
+    ludo_roll: {
+      description: "Ludo page: roll the dice on the owner's turn.",
+      run: () => {
+        if (!canRoll) return { error: myTurn ? "Already rolled: pick a token to move." : `It's ${turnSeat?.name ?? "someone else"}'s turn.` };
+        doRoll();
+        return { rolled: true, note: "Say what they rolled once the dice settles (it's on screen)." };
+      },
+    },
+    ludo_move: {
+      description: "Ludo page: move one of the owner's tokens after rolling. input: token number 1-4 (as numbered on screen).",
+      run: ({ input }) => {
+        const t = Number(String(input ?? "").match(/\d/)?.[0]) - 1;
+        if (!canMove.length) return { error: myTurn ? "Roll first." : "Not your turn." };
+        if (!canMove.includes(t)) return { error: `Token ${t + 1} can't move. Movable: ${canMove.map((x) => x + 1).join(", ")}.` };
+        doMove(t);
+        return { moved: t + 1 };
+      },
+    },
+  });
+
   // One movable token: moving it is the only choice, so do it (after a beat, so you see the dice).
   useEffect(() => {
     if (canMove.length !== 1 || !s) return;
@@ -206,7 +239,7 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
               2 each (quick)
             </Choice>
           </div>
-          <button type="button" onClick={start} className="inline-flex items-center gap-1.5 self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink">
+          <button type="button" onClick={() => start()} className="inline-flex items-center gap-1.5 self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink">
             {s?.over ? <RotateCcw size={14} /> : null} {s?.over ? (solo ? "Play again" : `Play again with ${other}`) : "Start Ludo"}
           </button>
         </div>
@@ -428,7 +461,10 @@ function Board({ s, me, canMove, onMove }: { s: LudoState; me: string; canMove: 
           transition: isMover ? `left ${STEP_MS - 20}ms ease-out, top ${STEP_MS - 20}ms ease-out` : "left 450ms ease-in-out, top 450ms ease-in-out, width 200ms, height 200ms",
           animation,
         }}
-      />
+      >
+        {/* The number to say by voice ("move token 2"), on the tokens that can move. */}
+        {mine && <span className="flex h-full w-full items-center justify-center text-[10px] font-black leading-none text-white [text-shadow:0_1px_2px_#000] sm:text-xs">{t.i + 1}</span>}
+      </button>
     );
   };
 

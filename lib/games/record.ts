@@ -9,17 +9,26 @@ export type Outcome = "win" | "loss" | "draw";
 type Result = { game: "chess" | "cards" | "ludo" | "draw" | "dots"; mode: "bot" | "friend"; outcome: Outcome; vs: string; level?: string; detail?: string };
 
 const SEEN = "hm-games-recorded";
+const sending = new Set<string>();
 
 export function recordResult(key: string, r: Result) {
   let seen: string[] = [];
   try {
     seen = JSON.parse(localStorage.getItem(SEEN) ?? "[]") as string[];
   } catch {}
-  if (seen.includes(key)) return;
-  try {
-    localStorage.setItem(SEEN, JSON.stringify([...seen, key].slice(-100)));
-  } catch {}
-  void fetch("/api/games/stats", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...r, vs: r.vs.slice(0, 40), key: key.slice(0, 120) }) }).catch(() => {});
+  if (seen.includes(key) || sending.has(key)) return;
+  sending.add(key);
+  // Marked as saved only once the server has it (offline or a lapsed session: the next render retries).
+  void fetch("/api/games/stats", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...r, vs: r.vs.slice(0, 40), key: key.slice(0, 120) }) })
+    .then((res) => {
+      if (!res.ok) return;
+      try {
+        const now = JSON.parse(localStorage.getItem(SEEN) ?? "[]") as string[];
+        localStorage.setItem(SEEN, JSON.stringify([...now, key].slice(-100)));
+      } catch {}
+    })
+    .catch(() => {})
+    .finally(() => sending.delete(key));
 }
 
 /** A short, stable id for a game from things both sides agree on (e.g. its moves). */

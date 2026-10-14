@@ -51,6 +51,12 @@ export function NightCheckin() {
   useEffect(() => {
     if (locked) return;
     const asked = new URLSearchParams(location.search).get("checkin") === "1";
+    // Read once: a reload (or reopening the app on this address) mustn't ask again after it's done.
+    if (asked) {
+      const u = new URL(location.href);
+      u.searchParams.delete("checkin");
+      history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+    }
     let skipped = false;
     try {
       skipped = localStorage.getItem(SKIP_KEY) === new Date().toDateString();

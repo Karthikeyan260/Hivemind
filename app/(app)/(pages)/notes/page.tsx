@@ -103,7 +103,7 @@ function Notes() {
                     className={`w-full rounded-md border p-3 text-left ${draft?.id === n.id ? "border-core bg-core/5" : "border-line bg-raised hover:border-line-strong"}`}
                   >
                     <div className="truncate text-sm font-medium">{n.title}</div>
-                    <div className="mt-1 line-clamp-2 text-xs text-soft">{plain(n.summary || n.content)}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-soft">{plain(n.tags.includes("diary") ? n.content : n.summary || n.content)}</div>
                     <div className="mt-2 flex flex-wrap gap-1">
                       {n.category && <Badge tone="accent">{n.category}</Badge>}
                       {n.tags.slice(0, 3).map((t) => <Badge key={t}>{t}</Badge>)}

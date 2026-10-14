@@ -72,6 +72,27 @@ export const routines: Record<string, Tool> = {
   },
 
   /* ───── kitchen / hands-free mode (full-screen voice, screen stays on) ───── */
+  game_record: {
+    name: "game_record",
+    description: "The owner's game record ('how many games did I win', 'what's my chess level', 'my last games'): wins / losses / draws per game (chess, Colour Clash, Ludo, Draw & Guess, Dots & Boxes), chess level vs HIVEMIND, and the latest results.",
+    parameters: obj({ game: { type: "string", enum: ["chess", "cards", "ludo", "draw", "dots"] } }),
+    async run(args, ctx) {
+      const { listResults } = await import("@/lib/games/stats");
+      const all = (await listResults(ctx.supabase)).reverse();
+      const rows = args.game ? all.filter((r) => r.game === args.game) : all;
+      if (!rows.length) return { note: "No games recorded yet." };
+      const tally = (xs: typeof rows) => ({ won: xs.filter((r) => r.outcome === "win").length, lost: xs.filter((r) => r.outcome === "loss").length, drawn: xs.filter((r) => r.outcome === "draw").length });
+      const per = Object.fromEntries([...new Set(rows.map((r) => r.game))].map((g) => [g, tally(rows.filter((r) => r.game === g))]));
+      // Chess level: the hardest bot level they've beaten at least half of their last 5 games at.
+      const bot = all.filter((r) => r.game === "chess" && r.mode === "bot");
+      const level = ["beginner", "easy", "medium", "hard"].filter((lv) => {
+        const last = bot.filter((r) => r.level === lv).slice(0, 5);
+        return last.length && last.filter((r) => r.outcome === "win").length * 2 >= last.length;
+      }).pop();
+      ctx.actions.push({ label: "Open Games", href: "/games" });
+      return { per_game: per, chess_level_vs_hivemind: level ?? (bot.length ? "getting started" : undefined), latest: rows.slice(0, 5).map((r) => `${r.game} vs ${r.vs}: ${r.outcome}${r.detail ? ` (${r.detail})` : ""}, ${r.at.slice(0, 10)}`) };
+    },
+  },
   todays_kural: {
     name: "todays_kural",
     description:

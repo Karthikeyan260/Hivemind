@@ -14,9 +14,9 @@ export function ListenButton({ day, className }: { day: DayBrief; className?: st
   const [on, setOn] = useState(false);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- pick up a reading started elsewhere
-    setOn(isReading());
-    return onReading(setOn);
-  }, []);
+    setOn(isReading(day.speech));
+    return onReading((t) => setOn(t === day.speech));
+  }, [day.speech]);
   return (
     <button
       type="button"

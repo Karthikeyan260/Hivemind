@@ -7,7 +7,9 @@ const ALL = [
   photo("cake", { title: "Birthday party", description: "Friends cutting a chocolate birthday cake with candles.", tags: ["cake", "birthday", "party"], taken: "2026-03-02T19:00:00Z" }),
   photo("beach", { title: "Sunset at Marina", place: "Marina Beach, Chennai", tags: ["beach", "sunset"], taken: "2025-12-05T12:00:00Z" }),
 ];
-const NOW = new Date("2026-10-13T10:00:00");
+const NOW = new Date("2026-10-13T10:00:00+05:30");
+/** A range edge as the date in Chennai. */
+const ist = (d?: Date) => d?.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
 describe("photo search", () => {
   it("finds by place, by what's in it, and by month", () => {
@@ -23,9 +25,13 @@ describe("photo search", () => {
   });
 
   it("understands everyday date words", () => {
-    expect(dateRange("last december", NOW)?.from.getMonth()).toBe(11);
-    expect(dateRange("photos from 2024", NOW)?.from.getFullYear()).toBe(2024);
-    expect(dateRange("march", NOW)?.from.getFullYear()).toBe(2026); // March has passed this year
+    expect(ist(dateRange("last december", NOW)?.from)).toBe("2025-12-01");
+    expect(ist(dateRange("last december", NOW)?.to)).toBe("2026-01-01");
+    expect(ist(dateRange("photos from 2024", NOW)?.from)).toBe("2024-01-01");
+    expect(ist(dateRange("march", NOW)?.from)).toBe("2026-03-01"); // March has passed this year
+    // Just after midnight in Chennai (still the previous day in UTC): today is the Chennai day.
+    expect(ist(dateRange("today", new Date("2026-10-14T00:30:00+05:30"))?.from)).toBe("2026-10-14");
+    expect(dateRange("today", new Date("2026-10-14T00:30:00+05:30"))?.from.toISOString()).toBe("2026-10-13T18:30:00.000Z");
     expect(dateRange("the cake", NOW)).toBeNull();
   });
 });

@@ -3,6 +3,7 @@
 import { Bot, Crown, Mic, MicOff, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { useVoiceActions } from "@/components/voice/provider";
 import { botLine, drawLine, leaders, lineAt, newDots, scores, type DotsState, type GridSize } from "@/lib/games/dots";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { gameKey, recordResult } from "@/lib/games/record";
@@ -95,9 +96,10 @@ export function DotsGame({
   const [bots, setBots] = useState(false);
   const [size, setSize] = useState<GridSize>(4);
 
-  function start() {
+  function start(opt?: { bots?: boolean; size?: GridSize }) {
+    const withBots = opt?.bots ?? bots;
     const players = solo
-      ? bots
+      ? withBots
         ? [
             { id: "host", name: myName },
             { id: "bot1", name: "HIVEMIND", bot: true },
@@ -107,7 +109,7 @@ export function DotsGame({
             { id: "host", name: myName },
             { id: "bot1", name: "HIVEMIND", bot: true },
           ]
-      : bots
+      : withBots
         ? [
             { id: "host", name: myName },
             { id: "guest", name: other || "Friend" },
@@ -117,7 +119,7 @@ export function DotsGame({
             { id: "host", name: myName },
             { id: "guest", name: other || "Friend" },
           ];
-    const g = newDots(players, size);
+    const g = newDots(players, opt?.size ?? size);
     sRef.current = g;
     publish(g);
     sfx.boot();
@@ -152,7 +154,7 @@ export function DotsGame({
     const sc = scores(s);
     const mine = sc[0];
     const theirs = Math.max(...sc.filter((_, i) => i !== 0));
-    recordResult(`dots-${solo ? "solo" : room}-${gameKey(s.seq, ...s.boxes)}`, {
+    recordResult(`dots-${solo ? "solo" : room}-${s.id ?? gameKey(s.seq, ...s.boxes)}`, {
       game: "dots",
       mode: solo ? "bot" : "friend",
       outcome: top.length > 1 && top.includes(0) ? "draw" : top[0] === 0 ? "win" : "loss",
@@ -168,6 +170,57 @@ export function DotsGame({
     if (role === "host") apply((cur) => drawLine(cur, "host", i));
     else act({ type: "line", line: i });
   }
+
+  // Voice: dots are named like a chessboard (columns a, b, c… left to right; rows 1, 2, 3… top to
+  // bottom, as labelled on the board), so "a1 to b1" draws that line.
+  useVoiceActions({
+    dots_start: {
+      description: "Dots & Boxes page: start a game. input: in words, a board size (3, 4, 5 or 6) and 'bots' for extra HIVEMIND players.",
+      run: ({ input }) => {
+        if (role !== "host" || !connected) return { error: "Only the host can start, once everyone's here." };
+        const t = String(input ?? "");
+        const n = Number(t.match(/[3-6]/)?.[0]);
+        start({ size: (n >= 3 && n <= 6 ? n : undefined) as GridSize | undefined, bots: /bot/i.test(t) || undefined });
+        return { started: true };
+      },
+    },
+    dots_line: {
+      description: "Dots & Boxes page: draw a line between two neighbouring dots on the owner's turn. input: the two dots, e.g. 'a1 to b1' or 'c2 c3' (columns a.. left to right, rows 1.. top to bottom, as labelled).",
+      run: ({ input }) => {
+        if (!s) return { error: "No game yet." };
+        if (!myTurn) return { error: s.over ? "The game is over." : `It's ${turnSeat?.name ?? "someone else"}'s turn.` };
+        const dots = String(input ?? "").toLowerCase().match(/[a-h]\s?[1-8]/g)?.map((d) => ({ c: d.charCodeAt(0) - 97, r: Number(d.replace(/\D/g, "")) - 1 }));
+        if (!dots || dots.length < 2) return { error: "Say two dots, like 'a1 to b1'." };
+        const [p, q] = dots;
+        const H = (s.rows + 1) * s.cols;
+        const i =
+          p.r === q.r && Math.abs(p.c - q.c) === 1 && p.r <= s.rows && Math.max(p.c, q.c) <= s.cols
+            ? p.r * s.cols + Math.min(p.c, q.c)
+            : p.c === q.c && Math.abs(p.r - q.r) === 1 && p.c <= s.cols && Math.max(p.r, q.r) <= s.rows
+              ? H + Math.min(p.r, q.r) * (s.cols + 1) + p.c
+              : -1;
+        if (i < 0) return { error: "Those dots aren't next to each other." };
+        if (s.lines[i] >= 0) return { error: "That line is already drawn." };
+        doLine(i);
+        return { drawn: true };
+      },
+    },
+    dots_suggest: {
+      description: "Dots & Boxes page: a good next line for the owner (takes a box if one is open, else one that gives nothing away), in dot names.",
+      run: () => {
+        if (!s || !myTurn) return { error: "Not your turn." };
+        const i = botLine(s);
+        if (i === null) return { error: "No lines left." };
+        const { dir, r, c } = lineAt(s, i);
+        const name = (cc: number, rr: number) => `${String.fromCharCode(97 + cc)}${rr + 1}`;
+        return { suggest: dir === "h" ? `${name(c, r)} to ${name(c + 1, r)}` : `${name(c, r)} to ${name(c, r + 1)}` };
+      },
+    },
+    dots_status: {
+      description: "Dots & Boxes page: the score and whose turn it is.",
+      run: () => (s ? { scores: s.seats.map((x, k) => `${x.name}: ${scores(s)[k]}`), turn: s.over ? "game over" : s.seats[s.turn]?.name, boxes_left: s.boxes.filter((b) => b < 0).length } : { error: "No game yet." }),
+    },
+  });
 
   const turnSeat = s && !s.over ? s.seats[s.turn] : null;
   const status =
@@ -246,7 +299,7 @@ export function DotsGame({
               </Choice>
             ))}
           </div>
-          <button type="button" onClick={start} className="inline-flex items-center gap-1.5 self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink">
+          <button type="button" onClick={() => start()} className="inline-flex items-center gap-1.5 self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink">
             {s?.over ? <RotateCcw size={14} /> : null} {s?.over ? (solo ? "Play again" : `Play again with ${other}`) : "Start"}
           </button>
         </div>
@@ -335,6 +388,17 @@ function Board({ s, canPlay, onLine }: { s: DotsState; canPlay: boolean; onLine:
       {/* Dots. */}
       {Array.from({ length: (s.rows + 1) * (s.cols + 1) }, (_, k) => (
         <circle key={`d${k}`} cx={M + (k % (s.cols + 1))} cy={M + Math.floor(k / (s.cols + 1))} r={0.085} className="fill-fg" />
+      ))}
+      {/* Dot names for voice ("a1 to b1"): letters along the top, numbers down the left. */}
+      {Array.from({ length: s.cols + 1 }, (_, c) => (
+        <text key={`cl${c}`} x={M + c} y={M - 0.3} textAnchor="middle" dominantBaseline="central" fontSize={0.17} className="fill-faint font-mono">
+          {String.fromCharCode(97 + c)}
+        </text>
+      ))}
+      {Array.from({ length: s.rows + 1 }, (_, r) => (
+        <text key={`rl${r}`} x={M - 0.3} y={M + r} textAnchor="middle" dominantBaseline="central" fontSize={0.17} className="fill-faint font-mono">
+          {r + 1}
+        </text>
       ))}
       {/* Tap areas on top. */}
       {canPlay &&

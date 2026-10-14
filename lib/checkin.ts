@@ -25,6 +25,15 @@ const KEY = "checkins/index";
 export const listCheckins = (supabase: SupabaseClient) => readJSON<CheckIn[]>(supabase, KEY, []);
 
 /**
+ * The day a night belongs to: before 4 am it is still last night (a check-in saved at 12:10 is
+ * yesterday's; the kural asked for at 1 am is yesterday's too).
+ */
+export function nightDay(now = new Date()) {
+  const { date, hour } = localParts(now);
+  return hour < 4 ? addDays(date, -1) : date;
+}
+
+/**
  * The 9 pm nudge: once a night, between 9 and 11 pm (home time), only if tonight's check-in isn't done
  * and tonight's nudge hasn't already reached a device.
  */
@@ -34,7 +43,7 @@ export function nudgeDue(hour: number, today: string, lastNudged: string | undef
 
 /** What the evening card needs: done today?, unfinished reminders, habits still open, recent moods. */
 export async function checkinContext(supabase: SupabaseClient) {
-  const today = localParts().date;
+  const today = nightDay();
   const [all, a, habits] = await Promise.all([listCheckins(supabase), agenda(supabase, 1), habitsWithStats(supabase).catch(() => [])]);
   // Only what was due and didn't happen: a reminder later tonight (10 pm) is still to come.
   const now = Date.now();
@@ -105,6 +114,9 @@ export async function saveCheckin(supabase: SupabaseClient, input: { mood: Mood;
   }
 
   const pretty = new Date(`${ctx.date}T12:00:00`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
+  // Checked in again tonight: the new words replace the old diary note (never two for one night).
+  const before = (await listCheckins(supabase)).find((c) => c.date === ctx.date);
+  if (before?.noteId) await supabase.from("notes").delete().eq("id", before.noteId).contains("tags", JSON.stringify(["diary"]));
   const note = await createNote(supabase, {
     title: `Diary · ${pretty} ${m.emoji}`,
     content: [

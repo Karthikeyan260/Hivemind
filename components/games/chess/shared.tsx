@@ -91,3 +91,33 @@ export function resultText(r: NonNullable<Result>, me: Color, names: Record<Colo
 
 /** Remaining time on a clock that may be running since `since` (paused clocks pass `now = since`). */
 export const left = (ms: number, running: boolean, since: number, now: number) => (running ? ms - (now - since) : ms);
+
+const PIECE: Record<string, string> = { knight: "n", horse: "n", bishop: "b", rook: "r", castle: "r", queen: "q", king: "k", pawn: "p" };
+
+/**
+ * A move said out loud → a legal move in this position: "e4", "Nf3", "knight to f3", "e2 to e4",
+ * "bishop takes c6", "castle kingside", "queen side castle". Ambiguous or illegal: why, and the options.
+ */
+export function spokenMove(game: Chess, said: string): { san: string } | { error: string; options?: string[] } {
+  const t = said.toLowerCase().replace(/[.,!]/g, " ").trim();
+  const legal = game.moves({ verbose: true });
+  if (!legal.length) return { error: "The game is over." };
+  if (/castl|o-o/.test(t)) {
+    const long = /queen|long|o-o-o/.test(t);
+    const m = legal.find((x) => x.san.startsWith(long ? "O-O-O" : "O-O") && (long || !x.san.startsWith("O-O-O")));
+    return m ? { san: m.san } : { error: `Castling ${long ? "queenside" : "kingside"} isn't allowed now.` };
+  }
+  // Written notation as said: "Nf3", "exd5", "e8=Q".
+  const asSan = legal.find((x) => x.san.toLowerCase().replace(/[+#]/g, "") === t.replace(/\s+/g, "").replace(/[+#]/g, ""));
+  if (asSan) return { san: asSan.san };
+  const squares = t.match(/[a-h]\s?[1-8]/g)?.map((s) => s.replace(/\s/g, "")) ?? [];
+  const piece = Object.entries(PIECE).find(([w]) => new RegExp(`\\b${w}s?\\b`).test(t))?.[1];
+  const promo = /promot|=|queen\b.*\bpromot/.test(t) ? (Object.entries(PIECE).find(([w]) => new RegExp(`(promot\\w*|to|=)\\s*(a\\s+)?${w}`).test(t))?.[1] ?? "q") : undefined;
+  let found = legal.filter((x) => (squares.length >= 2 ? x.from === squares[0] && x.to === squares[1] : squares.length === 1 ? x.to === squares[0] : false));
+  if (piece && squares.length < 2) found = found.filter((x) => x.piece === piece);
+  if (promo) found = found.filter((x) => !x.promotion || x.promotion === promo);
+  else if (found.some((x) => x.promotion)) found = found.filter((x) => !x.promotion || x.promotion === "q");
+  if (found.length === 1) return { san: found[0].san };
+  if (found.length > 1) return { error: "Which one?", options: found.map((x) => x.san) };
+  return { error: `"${said}" isn't a legal move here.`, options: legal.slice(0, 12).map((x) => x.san) };
+}

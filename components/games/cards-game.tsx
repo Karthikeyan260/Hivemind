@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { useVoiceActions } from "@/components/voice/provider";
 import { gameKey, recordResult } from "@/lib/games/record";
 import {
   botMove,
@@ -59,6 +60,10 @@ const okState = (s: unknown): s is CardsState => {
     Number.isInteger(x.turn)
   );
 };
+
+/** A card in words, for the voice: "blue 7", "red skip", "wild +4". */
+const cardName = (c: Card) =>
+  c.kind === "num" ? `${c.color} ${c.n}` : c.kind === "wild" ? "wild" : c.kind === "wild4" ? "wild +4" : `${c.color} ${c.kind === "draw2" ? "+2" : c.kind}`;
 
 export function CardsGame({
   role,
@@ -144,9 +149,9 @@ export function CardsGame({
 
   const [bots, setBots] = useState(false);
   const [picking, setPicking] = useState<number | null>(null);
-  function start() {
+  function start(withBots = bots) {
     const players = solo
-      ? bots
+      ? withBots
         ? [
             { id: "host", name: myName },
             { id: "bot1", name: "HIVEMIND", bot: true },
@@ -157,7 +162,7 @@ export function CardsGame({
             { id: "host", name: myName },
             { id: "bot1", name: "HIVEMIND", bot: true },
           ]
-      : bots
+      : withBots
       ? [
           { id: "host", name: myName },
           { id: "bot1", name: "HIVEMIND", bot: true },
@@ -261,6 +266,63 @@ export function CardsGame({
                   : `${turnSeat?.name}'s turn…`;
   const others = s ? s.seats.filter((x) => x.id !== me) : [];
   const top = s?.discard[s.discard.length - 1];
+
+  // Voice: everything a tap does ("play blue seven", "wild green", "draw", "last card").
+  useVoiceActions({
+    cards_deal: {
+      description: "Colour Clash page: deal a new game. input: 'bots' for a 4-player table with HIVEMIND bots, else just the two players.",
+      run: ({ input }) => {
+        if (role !== "host" || !connected) return { error: "Only the host can deal, once everyone's here." };
+        start(/bot|four|4/i.test(String(input ?? "")));
+        return { dealt: true };
+      },
+    },
+    cards_hand: {
+      description: "Colour Clash page: the owner's cards, which they can play now, and the card on the pile (to read out or decide).",
+      run: () =>
+        s
+          ? {
+              your_turn: myTurn,
+              on_pile: top ? cardName(top) : null,
+              colour_to_match: s.color,
+              cards: mine.map(cardName),
+              playable: mine.filter((c) => canPlayIds.has(c.id)).map(cardName),
+              others: others.map((o) => `${o.name}: ${s.counts[o.id] ?? "?"} cards`),
+            }
+          : { error: "No game yet." },
+    },
+    cards_play: {
+      description: "Colour Clash page: play a card from the owner's hand. input: the card in words, e.g. 'blue 7', 'red skip', 'green reverse', 'yellow +2', 'wild blue', '+4 red' (for wild cards, the colour to choose).",
+      run: ({ input }) => {
+        if (!myTurn) return { error: s?.winner ? "The game is over." : `It's ${turnSeat?.name ?? "someone else"}'s turn.` };
+        const t = String(input ?? "").toLowerCase();
+        const colour = CARD_COLORS.find((c) => t.includes(c)) ?? null;
+        const kind: Card["kind"] = /\+ ?4|plus four|wild ?4|draw ?4|draw four/.test(t)
+          ? "wild4"
+          : /wild/.test(t)
+            ? "wild"
+            : /\+ ?2|plus two|draw ?2|draw two/.test(t)
+              ? "draw2"
+              : /skip/.test(t)
+                ? "skip"
+                : /reverse/.test(t)
+                  ? "reverse"
+                  : "num";
+        const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+        const digit = t.match(/\d/)?.[0];
+        const n = kind === "num" ? (digit ? Number(digit) : words.findIndex((w) => new RegExp(`\\b${w}\\b`).test(t))) : undefined;
+        const c = mine.find((x) => x.kind === kind && (kind !== "num" || x.n === n) && (x.color === null || x.color === colour));
+        if (!c) return { error: `You don't have ${t || "that card"}.`, cards: mine.map(cardName) };
+        if (!canPlayIds.has(c.id)) return { error: `${cardName(c)} doesn't fit on ${top ? cardName(top) : "the pile"}.`, playable: mine.filter((x) => canPlayIds.has(x.id)).map(cardName) };
+        if (!c.color && !colour) return { error: "Which colour? Say e.g. 'wild blue'." };
+        doAct({ type: "play", card: c.id, color: c.color ? null : colour });
+        return { played: cardName(c) + (c.color ? "" : ` (${colour})`) };
+      },
+    },
+    cards_draw: { description: "Colour Clash page: draw a card.", run: () => (myTurn ? (doAct({ type: "draw" }), { drew: true }) : { error: "Not your turn." }) },
+    cards_keep: { description: "Colour Clash page: keep the card just drawn (pass) instead of playing it.", run: () => (myTurn ? (doAct({ type: "pass" }), { kept: true }) : { error: "Not your turn." }) },
+    cards_last: { description: "Colour Clash page: call 'Last card!' (before playing the second-last card).", run: () => (myTurn ? (doAct({ type: "last" }), { called: true }) : { error: "Not your turn." }) },
+  });
   const lastCall = mine.length === 2 && myTurn && !s?.called[me];
 
   // Room for the fanned hand: the table's width on a phone, more on bigger screens.
@@ -361,7 +423,7 @@ export function CardsGame({
           </div>
           <button
             type="button"
-            onClick={start}
+            onClick={() => start()}
             className="inline-flex items-center gap-2 self-start rounded-full bg-gradient-to-r from-[#e5484d] via-[#f5b400] to-[#2fa34a] px-6 py-2.5 text-base font-black uppercase tracking-wide text-black shadow-lg transition-transform hover:scale-105"
           >
             {s?.winner ? <RotateCcw size={16} /> : <Layers size={16} />}{" "}

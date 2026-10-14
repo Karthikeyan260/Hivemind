@@ -31,9 +31,9 @@ export function KuralCard({ k, compact }: { k: KuralView; compact?: boolean }) {
   const [on, setOn] = useState(false);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- pick up a reading started elsewhere
-    setOn(isReading());
-    return onReading(setOn);
-  }, []);
+    setOn(isReading(k.speech));
+    return onReading((t) => setOn(t === k.speech));
+  }, [k.speech]);
   return (
     <div className={cx("rounded-xl border border-core/30 bg-gradient-to-br from-core/10 to-transparent", compact ? "p-3" : "p-4")}>
       <div className="flex items-center gap-2">

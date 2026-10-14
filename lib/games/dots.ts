@@ -19,6 +19,8 @@ export type DotsState = {
   last?: { line: number; seat: number; closed: number; seq: number };
   log: string[];
   seq: number;
+  /** This game's own id (two games can end with the same boxes and the same number of moves). */
+  id?: string;
 };
 export type GridSize = 3 | 4 | 5 | 6;
 
@@ -36,6 +38,7 @@ export function newDots(players: { id: string; name: string; bot?: boolean }[], 
     over: false,
     log: [`${players[0].name} starts.`],
     seq: 0,
+    id: Math.random().toString(36).slice(2, 10),
   };
 }
 

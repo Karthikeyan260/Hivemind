@@ -3,17 +3,23 @@
 import { Speaker } from "@/lib/voice";
 
 /**
- * One shared reader for "hear your day" (the morning card and the brief page), so starting one
- * stops the other. HIVEMIND's voice, falling back to the phone's own when out of quota.
+ * One shared reader for "hear your day", today's kural and the brief, so starting one stops the
+ * other. HIVEMIND's voice, falling back to the phone's own when out of quota. Listeners hear WHICH
+ * text is being read, so only that button shows "Stop".
  */
 let speaker: Speaker | null = null;
-const listeners = new Set<(on: boolean) => void>();
+let current: string | null = null;
+const listeners = new Set<(text: string | null) => void>();
+const tell = () => listeners.forEach((f) => f(speaker?.speaking ? current : null));
 
 function get() {
   if (!speaker) {
     speaker = new Speaker();
     speaker.rate = 1.05;
-    speaker.onSpeakingChange = (on) => listeners.forEach((f) => f(on));
+    speaker.onSpeakingChange = (on) => {
+      if (!on) current = null;
+      tell();
+    };
   }
   return speaker;
 }
@@ -22,14 +28,18 @@ function get() {
 export function readAloud(text: string) {
   const s = get();
   s.stop();
+  current = text;
   s.unlock();
-  return s.say(text);
+  const done = s.say(text);
+  tell();
+  return done;
 }
 
 export const stopReading = () => speaker?.stop();
-export const isReading = () => !!speaker?.speaking;
+/** Is this text (or, without one, anything) being read right now? */
+export const isReading = (text?: string) => !!speaker?.speaking && (text === undefined || current === text);
 
-export function onReading(f: (on: boolean) => void) {
+export function onReading(f: (text: string | null) => void) {
   listeners.add(f);
   return () => void listeners.delete(f);
 }
