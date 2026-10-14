@@ -90,8 +90,8 @@ const LANGUAGES = ["tamil", "telugu", "hindi", "malayalam", "kannada", "english"
 
 /** Words that describe a mood, theme or genre rather than name a song. */
 const MOOD =
-  /\b(sentiment(al)?|emotional|sad|pain|breakup|love|romantic|melody|melodies|gana|kuthu|folk|devotional|bhakti|amma|appa|mother|father|friend(ship)?|motivational|inspir\w*|workout|gym|party|dance|mass|rain|night|sleep|lullaby|wedding|marriage|festival|happy|feel ?good|chill|relax\w*|calm|soothing|old|classic|evergreen|retro|vintage|\d0s|\d{4}s|bgm|instrumental|trending|viral|latest|new releases?|top|hits)\b/i;
-const FILLER = new Set(["song", "songs", "music", "track", "tracks", "play", "some", "the", "a", "an", "of", "for", "me", "my", "any", "good", "best", "nice", "please", "pls", "list", "playlist", "video", ...["tamil", "telugu", "hindi", "malayalam", "kannada", "english", "punjabi", "bengali", "marathi"]]);
+  /\b(sentiment(al)?|emotional|sad|pain|breakup|love|romantic|melody|melodies|gana|kuthu|folk|devotional|bhakti|amma|appa|mother|father|friend(ship)?|motivational|inspir\w*|workout|gym|party|danc\w*|vibe\w*|beats?|energetic|peppy|upbeat|fast|celebration|mass|rain|night|sleep|lullaby|wedding|marriage|festival|happy|feel ?good|chill|relax\w*|calm|soothing|old|classic|evergreen|retro|vintage|\d0s|\d{4}s|bgm|instrumental|trending|viral|latest|new releases?|top|hits)\b/i;
+const FILLER = new Set(["song", "songs", "music", "track", "tracks", "play", "some", "the", "a", "an", "of", "or", "and", "for", "me", "my", "any", "good", "best", "nice", "please", "pls", "list", "playlist", "video", ...["tamil", "telugu", "hindi", "malayalam", "kannada", "english", "punjabi", "bengali", "marathi"]]);
 const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9஀-௿ ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !FILLER.has(w));
 
 type Pick = { songs: Song[]; how: "search" | "playlist" | "ai"; label?: string };
@@ -111,13 +111,38 @@ export async function smartSongs(query: string): Promise<Pick> {
   if (!MOOD.test(query) && (named || !topic.length) && direct.length) return { songs: direct, how: "search" };
 
   // Only the meaningful words: JioSaavn's playlist search gets lost on "song", "play", "some".
+  const recent = await recentlyPlayed();
   const list = await moodPlaylist(`${topic.join(" ")} ${language}`.trim(), topic, language).catch(() => null);
-  if (list && list.songs.length >= 5) return list;
+  if (list && list.songs.length >= 5) return { ...list, songs: freshFirst(list.songs, recent) };
 
-  const ai = await aiSongs(query, language).catch(() => [] as Song[]);
-  if (ai.length >= 3) return { songs: ai, how: "ai" };
+  const ai = await aiSongs(query, language, recent).catch(() => [] as Song[]);
+  if (ai.length >= 3) return { songs: freshFirst(shuffle(ai), recent), how: "ai" };
   return { songs: list?.songs.length ? list.songs : direct, how: list?.songs.length ? "playlist" : "search", label: list?.label };
 }
+
+function shuffle<T>(xs: T[]) {
+  const a = [...xs];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** Song titles played in the last few days (lower case), so a mood doesn't start with the same song. */
+async function recentlyPlayed(): Promise<Set<string>> {
+  try {
+    const [{ db }, { listPlays }, { localParts }] = await Promise.all([import("@/lib/db"), import("@/lib/plays"), import("@/lib/reminders")]);
+    const plays = await listPlays(db(), localParts().date.slice(0, 7));
+    const since = Date.now() - 4 * 86_400_000;
+    return new Set(plays.filter((p) => +new Date(p.at) > since).map((p) => p.title.toLowerCase()));
+  } catch {
+    return new Set();
+  }
+}
+
+/** Songs not heard lately first, the recent ones after (still there, just not always first). */
+const freshFirst = (songs: Song[], recent: Set<string>) => [...songs.filter((s) => !recent.has(s.title.toLowerCase())), ...songs.filter((s) => recent.has(s.title.toLowerCase()))];
 
 /** The best JioSaavn editors' playlist whose name shares a word with the request. */
 async function moodPlaylist(query: string, topic: string[], language: string): Promise<Pick | null> {
@@ -129,9 +154,11 @@ async function moodPlaylist(query: string, topic: string[], language: string): P
       const exact = topic.filter((w) => name.includes(w)).length;
       const close = topic.filter((w) => !name.includes(w) && name.some((n) => n.startsWith(w.slice(0, 5)) || w.startsWith(n.slice(0, 5)))).length;
       const lang = (p.more_info?.language ?? "").toLowerCase();
-      return { p, score: exact * 10 + close * 6 + (lang === language ? 3 : 0) + (p.more_info?.firstname === "JioSaavn" ? 2 : 0) };
+      return { p, exact, score: exact * 10 + close * 6 + (lang === language ? 3 : 0) + (p.more_info?.firstname === "JioSaavn" ? 2 : 0) };
     })
-    .filter((x) => x.score >= 6) // at least one word of the request (or a close form) in the playlist's name
+    // The playlist's name must really be about the request: two of its words (or its only word).
+    // One shared word let "dancing or vibe Vijay" pick an unrelated list of old songs.
+    .filter((x) => x.exact >= Math.min(2, topic.length))
     .sort((a, b) => b.score - a.score);
   const best = scored[0]?.p;
   if (!best) return null;
@@ -146,15 +173,16 @@ async function moodPlaylist(query: string, topic: string[], language: string): P
 }
 
 /** Songs the AI knows fit the mood, kept only if JioSaavn really has them. */
-async function aiSongs(query: string, language: string): Promise<Song[]> {
+async function aiSongs(query: string, language: string, recent: Set<string> = new Set()): Promise<Song[]> {
   const { generateWithFallback, parseJson } = await import("@/lib/ai/providers");
   const { z } = await import("zod");
   const r = await generateWithFallback(
-    [{ role: "user", content: `Request: "${query}"` }],
+    [{ role: "user", content: `Request: "${query}"${recent.size ? `
+Played lately (choose mostly others): ${[...recent].slice(0, 15).join("; ")}` : ""}` }],
     {
-      system: `You know Indian film and independent music very well. List 12 real, well-known ${language} songs that best match the request (mood, theme, genre or era). Only songs you are sure exist; prefer popular ones. JSON only: {"songs":[{"title":"","film":"","artist":""}]}`,
+      system: `You know Indian film and independent music very well. List 12 real, well-known ${language} songs that best match the request (mood, theme, genre, era, or the actor / composer it names: "Vijay dance songs" = dance numbers from Vijay films). Mix big hits with a few less obvious ones, so it isn't the same list every time. Only songs you are sure exist. JSON only: {"songs":[{"title":"","film":"","artist":""}]}`,
       json: true,
-      temperature: 0.4,
+      temperature: 0.8,
       maxTokens: 900,
       // Knowing real Tamil film songs takes a well-read model: the small fast ones invent titles.
       order: ["gemini", "github", "openrouter", "nvidia"],
