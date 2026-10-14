@@ -76,7 +76,8 @@ export async function searchSongs(query: string, count = 20): Promise<Song[]> {
   const r = await call<{ results?: Raw[] }>({ __call: "search.getResults", ctx: "web6dot0", q: query, n: String(Math.min(50, count)), p: "1" });
   // Same song uploaded twice (single + film release): keep one.
   const seen = new Set<string>();
-  const key = (s: Song) => `${s.title.toLowerCase().replace(/\s*\(.*?\)\s*/g, "")}|${s.artists.split(",")[0].toLowerCase()}`;
+  // The title without "(From …)" and the film: the same song listed with its singers in another order is one song.
+  const key = (s: Song) => `${s.title.toLowerCase().replace(/\s*\(.*?\)\s*/g, "").trim()}|${s.album.toLowerCase().replace(/\s*\(.*?\)\s*/g, "").trim()}`;
   const songs = (r.results ?? []).map(toSong).filter((s): s is Song => !!s && !seen.has(key(s)) && !!seen.add(key(s)));
   // The owner listens in Tamil: Tamil first unless the request names another language.
   const named = LANGUAGES.find((l) => new RegExp(`\\b${l}\\b`, "i").test(query));
@@ -90,8 +91,8 @@ const LANGUAGES = ["tamil", "telugu", "hindi", "malayalam", "kannada", "english"
 
 /** Words that describe a mood, theme or genre rather than name a song. */
 const MOOD =
-  /\b(sentiment(al)?|emotional|sad|pain|breakup|love|romantic|melody|melodies|gana|kuthu|folk|devotional|bhakti|amma|appa|mother|father|friend(ship)?|motivational|inspir\w*|workout|gym|party|danc\w*|vibe\w*|beats?|energetic|peppy|upbeat|fast|celebration|mass|rain|night|sleep|lullaby|wedding|marriage|festival|happy|feel ?good|chill|relax\w*|calm|soothing|old|classic|evergreen|retro|vintage|\d0s|\d{4}s|bgm|instrumental|trending|viral|latest|new releases?|top|hits)\b/i;
-const FILLER = new Set(["song", "songs", "music", "track", "tracks", "play", "some", "the", "a", "an", "of", "or", "and", "for", "me", "my", "any", "good", "best", "nice", "please", "pls", "list", "playlist", "video", ...["tamil", "telugu", "hindi", "malayalam", "kannada", "english", "punjabi", "bengali", "marathi"]]);
+  /\b(sentiment(al)?|emotional|sad|pain|breakup|love|romantic|melody|melodies|gana|kuthu|folk|devotional|bhakti|amma|appa|mother|father|friend(ship)?|motiv\w*|motiat\w*|inspir\w*|workout|gym|party|danc\w*|vibe\w*|beats?|energetic|peppy|upbeat|fast|celebration|mass|rain|night|sleep|lullaby|wedding|marriage|festival|happy|feel ?good|chill|relax\w*|calm|soothing|old|classic|evergreen|retro|vintage|\d0s|\d{4}s|bgm|instrumental|trending|viral|latest|new releases?|top|hits)\b/i;
+const FILLER = new Set(["song", "songs", "music", "track", "tracks", "play", "some", "the", "a", "an", "of", "or", "and", "for", "from", "by", "with", "in", "to", "on", "me", "my", "any", "hear", "listen", "want", "good", "best", "nice", "please", "pls", "list", "playlist", "video", ...["tamil", "telugu", "hindi", "malayalam", "kannada", "english", "punjabi", "bengali", "marathi"]]);
 const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9஀-௿ ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !FILLER.has(w));
 
 type Pick = { songs: Song[]; how: "search" | "playlist" | "ai"; label?: string };
@@ -113,10 +114,28 @@ export async function smartSongs(query: string): Promise<Pick> {
   // Only the meaningful words: JioSaavn's playlist search gets lost on "song", "play", "some".
   const recent = await recentlyPlayed();
   const list = await moodPlaylist(`${topic.join(" ")} ${language}`.trim(), topic, language).catch(() => null);
-  if (list && list.songs.length >= 5) return { ...list, songs: freshFirst(list.songs, recent) };
+  if (list && list.songs.length >= 5) return { ...list, songs: byArtist(freshFirst(oncePerTitle(list.songs), recent), query) };
 
   const ai = await aiSongs(query, language, recent).catch(() => [] as Song[]);
-  if (ai.length >= 3) return { songs: freshFirst(shuffle(ai), recent), how: "ai" };
+  if (ai.length >= 3) return { songs: byArtist(freshFirst(shuffle(oncePerTitle(ai)), recent), query), how: "ai" };
+  // The AI couldn't help, but the request names someone ("motivational ilayaraja"): their hits,
+  // their songs first, rather than whatever the raw words find.
+  const who = topic.filter((w) => !MOOD.test(w));
+  if (who.length) {
+    // First the music service's own lists for them ("Best of Ilaiyaraaja", "Ilaiyaraaja Tamil Hits"):
+    // real songs in the right language, unlike free AI models that invent Tamil titles.
+    const theirs = await moodPlaylist(`${who.join(" ")} ${language}`, who, language).catch(() => null);
+    const listed = theirs ? oncePerTitle(byArtist(theirs.songs, query)) : [];
+    if (listed.length >= 5) return { songs: freshFirst(listed, recent), how: "playlist", label: theirs?.label };
+    const found = oncePerTitle(await searchSongs(`${who.join(" ")} hits`, 40).catch(() => [] as Song[]));
+    // Only their songs when there are enough ("ilayaraja" also finds a Vijay Antony song called "Ilayaraja").
+    const mine = artistSongs(found, query);
+    const all = mine.length ? mine : found;
+    // Their songs in the owner's language (an Ilaiyaraaja search also finds his Telugu and Kannada ones).
+    const same = all.filter((s) => s.language === language);
+    const hits = same.length >= 3 ? same : all;
+    if (hits.length >= 3) return { songs: freshFirst(shuffle(hits.slice(0, 15)), recent), how: "search" };
+  }
   return { songs: list?.songs.length ? list.songs : direct, how: list?.songs.length ? "playlist" : "search", label: list?.label };
 }
 
@@ -140,6 +159,35 @@ async function recentlyPlayed(): Promise<Set<string>> {
     return new Set();
   }
 }
+
+/** A name's consonants, doubled letters merged: "ilayaraja" and "Ilaiyaraaja" both → "lyrj". */
+const skeleton = (w: string) => w.toLowerCase().replace(/[^a-z]/g, "").replace(/[aeiou]/g, "").replace(/(.)\1+/g, "$1");
+
+/**
+ * The request names an artist ("Ilayaraja motivational", "Vijay dance"): keep the songs that really
+ * have them, whatever the spelling, when there are enough of those; otherwise leave the list as it is.
+ */
+export function byArtist(songs: Song[], query: string) {
+  const has = artistSongs(songs, query);
+  return has.length >= 3 ? [...has, ...songs.filter((s) => !has.includes(s))] : songs;
+}
+
+/** Only the songs by the artist the request names (any spelling); empty if it names nobody found. */
+export function artistSongs(songs: Song[], query: string) {
+  const names = words(query).filter((w) => w.length >= 4 && !MOOD.test(w)).map(skeleton).filter((s) => s.length >= 3);
+  for (const name of names) {
+    const has = songs.filter((s) => s.artists.split(/,\s*/).some((a) => a.split(/\s+/).some((part) => skeleton(part) === name)));
+    if (has.length >= 3) return has;
+  }
+  return [];
+}
+
+/** One of each song: the same title from another film or release counts once. */
+const oncePerTitle = (songs: Song[]) => {
+  const seen = new Set<string>();
+  const key = (s: Song) => s.title.toLowerCase().replace(/\(.*?\)|\[.*?\]/g, "").replace(/[^a-z0-9஀-௿]+/g, "");
+  return songs.filter((s) => !seen.has(key(s)) && !!seen.add(key(s)));
+};
 
 /** Songs not heard lately first, the recent ones after (still there, just not always first). */
 const freshFirst = (songs: Song[], recent: Set<string>) => [...songs.filter((s) => !recent.has(s.title.toLowerCase())), ...songs.filter((s) => recent.has(s.title.toLowerCase()))];
@@ -176,19 +224,20 @@ async function moodPlaylist(query: string, topic: string[], language: string): P
 async function aiSongs(query: string, language: string, recent: Set<string> = new Set()): Promise<Song[]> {
   const { generateWithFallback, parseJson } = await import("@/lib/ai/providers");
   const { z } = await import("zod");
-  const r = await generateWithFallback(
-    [{ role: "user", content: `Request: "${query}"${recent.size ? `
-Played lately (choose mostly others): ${[...recent].slice(0, 15).join("; ")}` : ""}` }],
-    {
-      system: `You know Indian film and independent music very well. List 12 real, well-known ${language} songs that best match the request (mood, theme, genre, era, or the actor / composer it names: "Vijay dance songs" = dance numbers from Vijay films). Mix big hits with a few less obvious ones, so it isn't the same list every time. Only songs you are sure exist. JSON only: {"songs":[{"title":"","film":"","artist":""}]}`,
-      json: true,
-      temperature: 0.8,
-      maxTokens: 900,
-      // Knowing real Tamil film songs takes a well-read model: the small fast ones invent titles.
-      order: ["gemini", "github", "openrouter", "nvidia"],
-    },
-  );
-  const out = parseJson(r.text, z.object({ songs: z.array(z.object({ title: z.string(), film: z.string().optional().default(""), artist: z.string().optional().default("") })).max(15) }));
+  const user = `Request: "${query}"${recent.size ? `
+Played lately (choose mostly others): ${[...recent].slice(0, 15).join("; ")}` : ""}`;
+  const system = `You know Indian film and independent music very well. List 12 real, well-known ${language} songs that best match the request (mood, theme, genre, era, or the actor / composer it names: "Vijay dance songs" = dance numbers from Vijay films). Mix big hits with a few less obvious ones, so it isn't the same list every time. Only songs you are sure exist. JSON only: {"songs":[{"title":"","film":"","artist":""}]}`;
+  // Knowing real Tamil film songs takes a well-read model: the small fast one (the chat default)
+  // invents titles and films ("Puthu Vellai Mazhai" as an Ilaiyaraaja song). Gemini 2.5 Flash first.
+  const text = await (async () => {
+    try {
+      const { geminiClient } = await import("@/lib/ai/gemini");
+      const res = await geminiClient().models.generateContent({ model: "gemini-2.5-flash", contents: [{ role: "user", parts: [{ text: user }] }], config: { systemInstruction: system, temperature: 0.8, responseMimeType: "application/json" } });
+      if (res.text?.trim()) return res.text;
+    } catch {}
+    return (await generateWithFallback([{ role: "user", content: user }], { system, json: true, temperature: 0.8, maxTokens: 900, order: ["github", "openrouter", "gemini", "nvidia"] })).text; // after 2.5 Flash, the next best-read (the small Gemini last)
+  })();
+  const out = parseJson(text, z.object({ songs: z.array(z.object({ title: z.string(), film: z.string().optional().default(""), artist: z.string().optional().default("") })).max(15) }));
   if (!out) return [];
   const norm = (s: string) => s.toLowerCase().replace(/\(.*?\)|[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
   const found = await Promise.all(
@@ -209,7 +258,9 @@ Played lately (choose mostly others): ${[...recent].slice(0, 15).join("; ")}` : 
     }),
   );
   const seen = new Set<string>();
-  return found.filter((s): s is Song => !!s && !seen.has(s.id) && !!seen.add(s.id));
+  // One copy of each song (the AI can name the same song twice; uploads repeat it under other titles).
+  const once = (x: Song) => x.title.toLowerCase().replace(/\s*\(.*?\)\s*/g, "").trim();
+  return found.filter((s): s is Song => !!s && !seen.has(once(s)) && !!seen.add(once(s)));
 }
 
 /**

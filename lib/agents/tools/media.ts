@@ -8,7 +8,7 @@ export const media: Record<string, Tool> = {
   play_music: {
     name: "play_music",
     description:
-      "Play music in HIVEMIND's own player on the owner's device (full songs, no ads, every Indian language). Use for ANY request to play / hear a song, artist, film's songs or mood, and for next / previous / pause / resume / stop. NEVER use web_task, YouTube or Spotify links for music. action: play (with query), add (play query next), next, previous, pause, resume, stop.",
+      "Play music in HIVEMIND's own player on the owner's device (full songs, no ads, every Indian language). Use for ANY request to play / hear a song, artist, film's songs or mood, and for next / previous / pause / resume / stop. NEVER use web_task, YouTube or Spotify links for music. action: play (with query), add (play query next), next, previous, pause, resume, stop. When the owner complains about what played ('it's not an Ilaiyaraaja song', 'that's not Vijay'), they STILL WANT that artist: play again with the artist kept and spelled properly ('Ilaiyaraaja motivational songs'). 'no song playing' / 'play' after a request = play the same request again.",
     parameters: obj({ action: { type: "string", enum: ["play", "add", "next", "previous", "pause", "resume", "stop"] }, query: S }, ["action"]),
     async run(args, ctx) {
       const action = str(args.action) || "play";
