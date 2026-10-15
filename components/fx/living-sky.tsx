@@ -79,7 +79,8 @@ export function LivingSky() {
   useEffect(() => {
     const fx = (e: Event) => {
       const d = (e as CustomEvent<{ effect: string; on: boolean }>).detail;
-      if (d?.effect !== "weather" && d?.effect !== "lights") return;
+      // Only its own switch: "lights off" is the music lights, the weather stays as it is.
+      if (d?.effect !== "weather") return;
       setOff(!d.on);
       try {
         if (d.on) localStorage.removeItem(OFF_KEY);

@@ -22,15 +22,17 @@ export const media: Record<string, Tool> = {
   screen_effects: {
     name: "screen_effects",
     description:
-      "Turn HIVEMIND's screen effects on or off: music_lights (the app glowing and pulsing with the beat of the song playing), weather (rain / lightning / sunshine / night stars drawn over the app, from the real weather), pet_voice (the pocket pet Nova speaking out loud), or lights (music lights and weather together). 'lights off', 'turn off the effects', 'stop the rain on screen', 'nova be quiet' all mean this, NOT a routine and NOT stopping the music. The music lights can be any colour: 'make the music lights blue / pink / rainbow / #ff00aa', 'use the song's colour' (= auto): pass color (with effect music_lights, on true).",
-    parameters: obj({ effect: { type: "string", enum: ["music_lights", "weather", "pet_voice", "lights"] }, on: { type: "boolean" }, color: { type: "string", description: "Only for music_lights: a colour name (gold, orange, red, pink, purple, blue, cyan, green, yellow, white), a #hex colour, 'rainbow', or 'auto' (the song's cover)." } }, ["effect", "on"]),
+      "Turn one of HIVEMIND's screen effects on or off. Each is separate, change only the one asked for: music_lights (the app glowing with the beat of the song playing; 'lights off', 'music lights off'), weather (rain / lightning / sunshine / night stars over the app; 'weather effects off', 'stop the rain on screen'), pet_voice (the pet Nova speaking out loud; 'Nova be quiet', 'Nova you can talk'), lantern_walk (the pet's game: the screen goes dark and you find sparks with its light; 'Nova, lights off' / 'lantern walk' = on, 'Nova, lights on' / 'stop the walk' = off). Never a routine, and never stops the music. The music lights can be any colour: 'make the music lights blue / pink / rainbow / #ff00aa', 'use the song's colour' (= auto): pass color (with effect music_lights, on true).",
+    parameters: obj({ effect: { type: "string", enum: ["music_lights", "weather", "pet_voice", "lantern_walk"] }, on: { type: "boolean" }, color: { type: "string", description: "Only for music_lights: a colour name (gold, orange, red, pink, purple, blue, cyan, green, yellow, white), a #hex colour, 'rainbow', or 'auto' (the song's cover)." } }, ["effect", "on"]),
     async run(args, ctx) {
-      const effect = ["music_lights", "weather", "pet_voice", "lights"].includes(String(args.effect)) ? String(args.effect) : "lights";
+      // "lights" (older wording) = the music lights only.
+      const asked = String(args.effect) === "lights" ? "music_lights" : String(args.effect);
+      const effect = ["music_lights", "weather", "pet_voice", "lantern_walk"].includes(asked) ? asked : "music_lights";
       const on = args.on === true || args.on === "true";
       const { colorFromWords } = await import("@/lib/beat-color");
       const color = typeof args.color === "string" && args.color.trim() ? colorFromWords(args.color) : null;
       if (typeof args.color === "string" && args.color.trim() && !color) return { error: `I don't know the colour "${args.color}". Try a name like blue or pink, a #hex colour, rainbow or auto.` };
-      const label = { music_lights: "Music lights", weather: "Weather effects", pet_voice: "Nova's voice", lights: "Screen lights" }[effect];
+      const label = { music_lights: "Music lights", weather: "Weather effects", pet_voice: "Nova's voice", lantern_walk: "Lantern walk" }[effect];
       ctx.actions.push({ label: `${on ? "✨" : "🌙"} ${label} ${color ? color : on ? "on" : "off"}`, href: `fx:${encodeURIComponent(JSON.stringify({ effect, on: color ? true : on, ...(color ? { color } : {}) }))}` });
       return { done: color ? `Music lights are now ${color}` : `${label} turned ${on ? "on" : "off"} on this screen`, note: "It's a setting of this device's screen; the music (if any) keeps playing." };
     },

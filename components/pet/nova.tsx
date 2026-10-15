@@ -428,6 +428,18 @@ export function Nova() {
     [hop, speak],
   );
 
+  // "Nova, lights off" typed in chat (screen_effects tool, lantern_walk): start or stop the walk.
+  useEffect(() => {
+    const fx = (e: Event) => {
+      const d = (e as CustomEvent<{ effect: string; on: boolean }>).detail;
+      if (d?.effect !== "lantern_walk") return;
+      if (d.on) startWalk();
+      else if (walkRef.current) void endWalk(false, walkRef.current.sparks.filter((s) => s.got).length, walkRef.current.sparks.length);
+    };
+    window.addEventListener(FX_EVENT, fx);
+    return () => window.removeEventListener(FX_EVENT, fx);
+  }, [startWalk, endWalk]);
+
   // During the walk the pet follows the pointer (or a tap / drag on a phone); its light collects sparks.
   useEffect(() => {
     walkRef.current = walk;
@@ -618,7 +630,7 @@ export function Nova() {
       },
     },
     nova_lantern_walk: {
-      description: "Lantern walk with the pet: the screen goes dark, the pet follows the owner's pointer / finger like a lantern and they hunt for hidden sparks in its light (all found = growth points). input: 'start' ('Nova, lights off', 'lantern walk', 'spark hunt') or 'stop' ('Nova, lights on', 'stop the walk'). A plain 'lights off' is the screen effects (music_lights / living_weather), not this.",
+      description: "Lantern walk with the pet: the screen goes dark, the pet follows the owner's pointer / finger like a lantern and they hunt for hidden sparks in its light (all found = growth points). input: 'start' ('Nova, lights off', 'lantern walk', 'spark hunt') or 'stop' ('Nova, lights on', 'stop the walk'). A plain 'lights off' is the music lights (music_lights), not this.",
       run: ({ input }) => {
         touched();
         if (/stop|end|quit|lights on/i.test(String(input ?? ""))) {

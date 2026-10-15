@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { runAgent } from "@/lib/agents/orchestrator";
+import { quickEffect } from "@/lib/agents/quick";
+import { TOOLS } from "@/lib/agents/tools";
 import { routeAgent } from "@/lib/agents/router";
 import type { Action, AgentEvent, AgentId, RunContext, Source } from "@/lib/agents/types";
 import { generateWithFallback } from "@/lib/ai/providers";
@@ -135,20 +137,31 @@ export const POST = handle(async (req: Request) => {
         const tamil = prefs.language !== "en" && /[஀-௿]/.test(message);
         const closing = [languageRule(prefs.language), tamil ? "The owner just wrote in Tamil script: write your whole answer in Tamil script (technical terms may stay in English)." : ""].filter(Boolean).join("\n");
         const started = Date.now();
+        // A simple screen switch ("lights off", "Nova be quiet"): done at once, no AI needed.
+        const quick = quickEffect(message);
         try {
-          const r = await runAgent({
-            agentId: route.agent,
-            message: "routine" in route ? `${message}\n\n(This is the owner's "${route.routine}" routine: call run_routine.)` : message,
-            history,
-            persona: system,
-            closing,
-            ctx,
-            onText: (t) => {
-              reply += t;
-              send({ type: "delta", text: t });
-            },
-          });
-          done = { type: "done", provider: "gemini agents", model: r.model, latency_ms: Date.now() - started };
+          if (quick) {
+            ctx.emit({ type: "tool", agent: "core", tool: "screen_effects", status: "run" });
+            await TOOLS.screen_effects.run(quick.args, ctx);
+            ctx.emit({ type: "tool", agent: "core", tool: "screen_effects", status: "ok" });
+            reply = quick.reply;
+            send({ type: "delta", text: reply });
+            done = { type: "done", provider: "rules", model: "instant", latency_ms: Date.now() - started };
+          } else {
+            const r = await runAgent({
+              agentId: route.agent,
+              message: "routine" in route ? `${message}\n\n(This is the owner's "${route.routine}" routine: call run_routine.)` : message,
+              history,
+              persona: system,
+              closing,
+              ctx,
+              onText: (t) => {
+                reply += t;
+                send({ type: "delta", text: t });
+              },
+            });
+            done = { type: "done", provider: "gemini agents", model: r.model, latency_ms: Date.now() - started };
+          }
         } catch (err) {
           if (reply) throw err;
           console.warn("agents unavailable, plain answer:", err instanceof Error ? err.message : err);
