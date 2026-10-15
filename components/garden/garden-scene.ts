@@ -120,7 +120,7 @@ const LOOK: Record<Phase, { sun: [number, number, number]; sunCol: string; sunI:
   day: { sun: [0.45, 0.82, 0.35], sunCol: "#fff4e2", sunI: 3.1, sky: "#b8dcff", ground: "#4f6a3c", hemiI: 0.85, fog: "#8fbfe6", turb: 1.6, ray: 2.2, exp: 0.48, cloud: "#ffffff" },
   golden: { sun: [0.82, 0.2, -0.53], sunCol: "#ffc27a", sunI: 2.9, sky: "#ffd9a8", ground: "#5a4a2e", hemiI: 0.7, fog: "#f0c896", turb: 4.5, ray: 2.0, exp: 0.55, cloud: "#ffe0b8" },
   dusk: { sun: [-0.72, 0.05, -0.69], sunCol: "#ff8f5e", sunI: 1.7, sky: "#b48fb6", ground: "#3a2c3a", hemiI: 0.65, fog: "#c58c8c", turb: 7, ray: 3, exp: 0.6, cloud: "#f0b0a8" },
-  night: { sun: [0.4, 0.75, -0.5], sunCol: "#9fb6ff", sunI: 0.55, sky: "#2b3c6e", ground: "#0b1020", hemiI: 0.55, fog: "#0b1430", turb: 1, ray: 0.1, exp: 0.5, cloud: "#2c3962" },
+  night: { sun: [0.4, 0.75, -0.5], sunCol: "#9fb6ff", sunI: 0.7, sky: "#33467c", ground: "#0d1326", hemiI: 0.7, fog: "#0b1430", turb: 1, ray: 0.1, exp: 0.5, cloud: "#2c3962" },
 };
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -437,9 +437,9 @@ void main() {`);
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
-      uniforms: { uTime: this.uTime },
-      vertexShader: `attribute float seed; attribute vec3 tint; uniform float uTime; varying float vA; varying vec3 vT;
-        void main(){ vT = tint; vA = 0.4 + 0.6 * pow(0.5 + 0.5 * sin(uTime * (0.6 + seed * 3.0) + seed * 40.0), 2.0); vec4 mv = modelViewMatrix * vec4(position,1.); gl_PointSize = 1.1 + pow(seed, 6.0) * 5.5; gl_Position = projectionMatrix * mv; }`,
+      uniforms: { uTime: this.uTime, uDpr: { value: Math.min(devicePixelRatio, 2) } },
+      vertexShader: `attribute float seed; attribute vec3 tint; uniform float uTime; uniform float uDpr; varying float vA; varying vec3 vT;
+        void main(){ vT = tint; vA = 0.4 + 0.6 * pow(0.5 + 0.5 * sin(uTime * (0.6 + seed * 3.0) + seed * 40.0), 2.0); vec4 mv = modelViewMatrix * vec4(position,1.); gl_PointSize = (1.1 + pow(seed, 6.0) * 5.5) * uDpr; gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `varying float vA; varying vec3 vT; void main(){ float d = length(gl_PointCoord - 0.5); float core = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(vT * (1.2 + core * 1.4), vA * core); }`,
     });
     this.animatedMats.push(starMat);
@@ -1240,9 +1240,9 @@ void main() {`);
     fm.rotation.y = -a + Math.PI / 2;
     this.island.add(fm);
     // Mist at the lip and far below.
-    const glow = puffTexture("cloud");
+    const glow = puffTexture("glow");
     for (let i = 0; i < 9; i++) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: "#ffffff", transparent: true, opacity: 0.3, depthWrite: false }));
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, color: "#ffffff", transparent: true, opacity: i < 3 ? 0.35 : 0.12, depthWrite: false }));
       const v = i < 3 ? 0.02 : 0.25 + (i / 9) * 0.6;
       s.position.copy(lip).add(new THREE.Vector3(ca * (0.2 + v * 1.4), -v * fallH, sa * (0.2 + v * 1.4)));
       s.scale.setScalar(i < 3 ? 0.5 : 1.2 + v * 3);
@@ -1254,6 +1254,7 @@ void main() {`);
   }
   private waterMats: THREE.ShaderMaterial[] = [];
   private leafTex: THREE.Texture | null = null;
+  private glowTex: THREE.Texture | null = null;
   private shoot: THREE.Line | null = null;
   private shootAt = { t0: -99, next: 4, from: new THREE.Vector3(), dir: new THREE.Vector3() };
   private mist: THREE.Sprite[] = [];
@@ -1481,6 +1482,14 @@ void main() {`);
     this.lampMats.push(glow);
     const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.15, 0.11), glow);
     lantern.position.y = 0.93;
+    // A soft halo, so lamps glow at night even where the bloom pass is off (phones).
+    this.glowTex ??= puffTexture("glow");
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: "#ffb860", transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.position.y = 0.93;
+    halo.scale.setScalar(0.9);
+    halo.raycast = () => {};
+    this.nightOnly.push(halo);
+    g.add(halo);
     const cap = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.08, 4), iron);
     cap.position.y = 1.04;
     cap.rotation.y = Math.PI / 4;
@@ -1733,21 +1742,24 @@ void main() {`);
       let o: THREE.Object3D | null = h.object;
       while (o && !o.userData.id) o = o.parent;
       if (o?.userData.id) return o.userData.id as string;
-      if (h.object === this.ground) {
-        let best: string | null = null;
-        let bd = 0.45;
-        for (const it of this.itemsById.values()) {
-          const p = this.toWorld(it.x, it.y);
-          const d = Math.hypot(p.x - h.point.x, p.z - h.point.z);
-          if (d < bd) {
-            bd = d;
-            best = it.id;
-          }
-        }
-        return best;
+      if (h.object === this.ground) break;
+    }
+    // Nothing hit dead-on (flowers are tiny on a phone): the nearest thing on screen, within reach of a finger.
+    const reach = this.mobile ? 34 : 20;
+    let best: string | null = null;
+    let bd = reach;
+    const sx = cx - r.left;
+    const sy = cy - r.top;
+    for (const it of this.itemsById.values()) {
+      const q = this.toWorld(it.x, it.y).add(new THREE.Vector3(0, it.kind === "tree" ? 1.2 : 0.3, 0)).project(this.camera);
+      if (q.z > 1) continue;
+      const d = Math.hypot((q.x * 0.5 + 0.5) * r.width - sx, (-q.y * 0.5 + 0.5) * r.height - sy);
+      if (d < bd) {
+        bd = d;
+        best = it.id;
       }
     }
-    return null;
+    return best;
   }
 
   /* ── public API ── */
@@ -1951,7 +1963,7 @@ void main() {`);
     }
     const tip = this.tip ? proj(this.tip) : null;
     this.cb.onFrame({
-      pet: { x: foot.x, y: foot.y, size: Math.max(24, (foot.y - head.y) * 1.25), facing: Math.sign(p.to.x - p.from.x), hidden: this.petHidden || foot.z > 1 },
+      pet: { x: foot.x, y: foot.y, size: Math.max(this.mobile ? 44 : 30, (foot.y - head.y) * (this.mobile ? 1.6 : 1.25)), facing: Math.sign(p.to.x - p.from.x), hidden: this.petHidden || foot.z > 1 },
       tip: tip && tip.z < 1 ? { x: tip.x, y: tip.y } : null,
     });
   }
