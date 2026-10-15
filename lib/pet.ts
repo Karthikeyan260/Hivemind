@@ -4,6 +4,7 @@ import { listCheckins } from "@/lib/checkin";
 import { listResults } from "@/lib/games/stats";
 import { listHabits } from "@/lib/habits";
 import { listPlays } from "@/lib/plays";
+import { type AccessoryId, unlocked } from "@/lib/pet-looks";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { addDays, localParts } from "@/lib/reminders";
 
@@ -14,7 +15,7 @@ import { addDays, localParts } from "@/lib/reminders";
  */
 /** walks: the local date of each finished lantern walk (all sparks found). */
 /** missedFor / stageNotified: which absence and which stage already got a push (so each one goes once). */
-type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; missedFor?: string; stageNotified?: number };
+type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; missedFor?: string; stageNotified?: number; wear?: AccessoryId };
 export const DEFAULT_NAME = "Nova";
 const KEY = "pet";
 
@@ -41,6 +42,9 @@ export type Pet = {
   fed: { done: number; due: number };
   today: string[];
   line: string;
+  /** The accessory it wears (only one it has unlocked) and the ones it can. */
+  wear: AccessoryId | null;
+  unlocked: AccessoryId[];
 };
 
 /** Growth points per thing done (music is capped so leaving a playlist on doesn't count much). */
@@ -119,6 +123,8 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
     mood,
     fed: { done: doneToday.length, due: dueToday.length },
     today: todayList,
+    wear: saved?.wear && unlocked(stage).includes(saved.wear) ? saved.wear : null,
+    unlocked: unlocked(stage),
     line: petLine(mood, dueToday.length - doneToday.length, away),
   };
 }
@@ -200,3 +206,12 @@ export async function runPetNudges(supabase: SupabaseClient, now = new Date()) {
 
 /** The pet's current name (the default until renamed). */
 export const petName = async (supabase: SupabaseClient) => (await readJSON<Saved | null>(supabase, KEY, null).catch(() => null))?.name || DEFAULT_NAME;
+
+/** Puts on an unlocked accessory (or none). */
+export async function wearAccessory(supabase: SupabaseClient, wear: AccessoryId | "none") {
+  const pet = await getPet(supabase);
+  if (wear !== "none" && !pet.unlocked.includes(wear)) throw new Error(`Not unlocked yet: it comes at a later growth stage.`);
+  const saved = await readJSON<Saved | null>(supabase, KEY, null);
+  const today = localParts().date;
+  await writeJSON(supabase, KEY, { ...saved, born: saved?.born ?? today, lastSeen: saved?.lastSeen ?? today, wear: wear === "none" ? undefined : wear } satisfies Saved);
+}

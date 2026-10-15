@@ -2,14 +2,22 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handle, HttpError } from "@/lib/api";
 import { db } from "@/lib/db";
-import { getPet, logWalk, renamePet } from "@/lib/pet";
+import { getPet, logWalk, renamePet, wearAccessory } from "@/lib/pet";
 
 /** The pet's state: name, stage, growth, mood and what fed it today. */
 export const GET = handle(async () => NextResponse.json({ pet: await getPet(db()) }));
 
-/** Rename the pet: { name }. */
+/** Rename the pet: { name }, or put on an accessory: { wear }. */
 export const PATCH = handle(async (req: Request) => {
-  const body = z.object({ name: z.string().max(60) }).safeParse(await req.json().catch(() => null));
+  const raw = await req.json().catch(() => null);
+  const wear = z.object({ wear: z.enum(["bow", "garland", "shades", "none"]) }).safeParse(raw);
+  if (wear.success) {
+    await wearAccessory(db(), wear.data.wear).catch((e) => {
+      throw new HttpError(400, e instanceof Error ? e.message : "Couldn't put it on.");
+    });
+    return NextResponse.json({ pet: await getPet(db()) });
+  }
+  const body = z.object({ name: z.string().max(60) }).safeParse(raw);
   if (!body.success) throw new HttpError(400, "Send a name.");
   const name = await renamePet(db(), body.data.name).catch((e) => {
     throw new HttpError(400, e instanceof Error ? e.message : "Couldn't rename it.");

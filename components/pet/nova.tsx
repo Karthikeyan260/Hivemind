@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useVoiceActions } from "@/components/voice/provider";
 import { MUSIC_STATE_EVENT } from "@/lib/client-api";
 import type { Pet } from "@/lib/pet";
+import { ACCESSORIES, type AccessoryId, accessoryFor, type Festival, festivalById, festivalOn } from "@/lib/pet-looks";
 import { judgeGuess } from "@/lib/pet-seek";
+import { Looks } from "./looks";
 import { sfx } from "@/lib/sfx";
 
 /**
@@ -61,6 +63,19 @@ const store = {
 };
 
 const hourNow = () => new Date().getHours();
+/** Today's local date ("2026-11-07"). */
+const dayNow = () => new Date().toLocaleDateString("en-CA");
+const FEST_KEY = "hm-pet-festival";
+/** What a spoken festival name means ("show your Diwali look"). */
+const FEST_WORDS: [RegExp, Festival["id"]][] = [
+  [/deepavali|diwali|deewali/i, "deepavali"],
+  [/karthigai|karthikai|deepam/i, "karthigai"],
+  [/pongal|sankranti/i, "pongal"],
+  [/puthandu|tamil new year|chithirai/i, "puthandu"],
+  [/christmas|xmas|santa/i, "christmas"],
+  [/new year/i, "newyear"],
+  [/independence|republic|india|flag/i, "india"],
+];
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
 const between = (a: number, b: number) => a + Math.random() * (b - a);
 /** Room left at the bottom for the tab bar and the music bar. */
@@ -151,6 +166,9 @@ export function Nova() {
   // Asked to dance (by voice or tap) with no music on: a short dance on its own.
   const [party, setParty] = useState(false);
   const [hour, setHour] = useState(12);
+  const [today, setToday] = useState("");
+  // "Show me your Diwali look": that festival's outfit for a little while, whatever the date.
+  const [preview, setPreview] = useState<Festival | null>(null);
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   // Short-lived reactions: chomping after a habit, the evolution burst, a happy hop when poked.
@@ -201,7 +219,11 @@ export function Nova() {
     setPos(stays && saved ? clamp(JSON.parse(saved)) : home());
     setHidden(store.get(HIDE_KEY) === "1");
     setHour(hourNow());
-    const t = setInterval(() => setHour(hourNow()), 60_000);
+    setToday(dayNow());
+    const t = setInterval(() => {
+      setHour(hourNow());
+      setToday(dayNow());
+    }, 60_000);
     const fit = () => setPos((p) => (p ? clamp(p) : p));
     window.addEventListener("resize", fit);
     return () => {
@@ -420,6 +442,7 @@ export function Nova() {
   );
 
   const mood: Look = music || party ? "dancing" : sleepy ? "sleepy" : (pet?.mood ?? "happy");
+  const festival = preview ?? (today ? festivalOn(today) : null);
   const line = evolving
     ? `Naan ippo ${pet?.stageName}! ✨`
     : eating !== null
@@ -428,7 +451,26 @@ export function Nova() {
         ? "Indha paattu semma! 🎶"
         : sleepy
           ? "Zzz… romba late aachu, poi thoongu da 😴"
-          : (pet?.line ?? "");
+          : festival && mood === "happy"
+            ? festival.line
+            : (pet?.line ?? "");
+
+  // On a festival day it greets the owner once, the first time they open the app.
+  const festId = festival && !preview ? festival.id : null;
+  useEffect(() => {
+    if (!festId || !pet || store.get(FEST_KEY) === `${today}:${festId}`) return;
+    store.set(FEST_KEY, `${today}:${festId}`);
+    const f = festivalById(festId);
+    if (f) setTimeout(() => speak(f.line, 6000), 1500);
+  }, [festId, today, pet, speak]);
+
+  const wearIt = useCallback(async (w: AccessoryId | "none") => {
+    const r = await fetch("/api/pet", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wear: w }) }).catch(() => null);
+    const data = r ? await r.json().catch(() => ({})) : {};
+    if (!r?.ok) return { error: (data as { error?: string }).error ?? "Couldn't put it on." };
+    if ((data as { pet?: Pet }).pet) setPet((data as { pet: Pet }).pet);
+    return { ok: true };
+  }, []);
 
   useVoiceActions({
     nova_status: {
@@ -550,6 +592,29 @@ export function Nova() {
         }
         speak("Hehe 🥰 innum pannu!", 3000);
         return { reaction: "loved it" };
+      },
+    },
+    nova_wear: {
+      description: "Dress the pet: input an accessory it has unlocked ('bow', 'malli garland', 'shades', or 'none' to take it off), or a festival to preview that look for a while ('Diwali', 'Karthigai Deepam', 'Pongal', 'Tamil New Year', 'Christmas', 'New Year', 'Independence Day'). Festival looks also appear on their own on those days.",
+      run: async ({ input }) => {
+        if (!pet) return { error: "The pet is still waking up." };
+        const said = String(input ?? "");
+        const fest = FEST_WORDS.find(([re]) => re.test(said));
+        if (fest) {
+          const f = festivalById(fest[1]);
+          setPreview(f);
+          setTimeout(() => setPreview(null), 20_000);
+          hop();
+          if (f) speak(f.line, 4000);
+          return { previewing: f?.name, seconds: 20 };
+        }
+        const w = accessoryFor(said);
+        if (!w) return { error: "Say bow, garland, shades or none (or a festival to preview its look).", unlocked: pet.unlocked };
+        const r = await wearIt(w);
+        if ("error" in r) return { ...r, unlocked: pet.unlocked, note: "Accessories unlock as it grows: bow at Baby, garland at Glowing, shades at Crowned." };
+        hop();
+        speak(w === "none" ? "Simple-ah irukken 🙂" : "Eppadi irukku? 😎", 3000);
+        return { wearing: w };
       },
     },
     nova_hide: {
@@ -680,6 +745,8 @@ export function Nova() {
           }}
           onSeek={startSeek}
           onWalk={startWalk}
+          festival={festival}
+          onWear={(w) => void wearIt(w)}
           onClose={() => setOpen(false)}
           onHide={() => {
             setHidden(true);
@@ -713,14 +780,14 @@ export function Nova() {
         }}
       >
         {eating !== null && <span className="pet-plus pointer-events-none absolute -top-2 left-1/2 text-sm font-bold text-amber-300">+{eating}</span>}
-        <Creature stage={pet.stage} mood={mood} look={facing} eating={eating !== null} evolving={evolving} poked={poked} quiet={!!peeking} />
+        <Creature stage={pet.stage} mood={mood} look={facing} eating={eating !== null} evolving={evolving} poked={poked} quiet={!!peeking} festival={festival} wear={pet.wear} />
       </div>
     </div>
     </>
   );
 }
 
-function PetCard({ pet, line, mood, place, at, roam, onRoam, onSeek, onWalk, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: { left: number }; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; onClose: () => void; onHide: () => void }) {
+function PetCard({ pet, line, mood, place, at, roam, onRoam, onSeek, onWalk, festival, onWear, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: { left: number }; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; festival: Festival | null; onWear: (w: AccessoryId | "none") => void; onClose: () => void; onHide: () => void }) {
   const fedPct = pet.fed.due ? Math.round((pet.fed.done / pet.fed.due) * 100) : 0;
   return (
     <div style={at} className={`pet-pop absolute ${place} max-h-[min(70vh,30rem)] w-72 overflow-y-auto rounded-2xl border border-line bg-[#0b1016]/95 p-4 text-sm text-fg shadow-2xl backdrop-blur-md`}>
@@ -751,15 +818,40 @@ function PetCard({ pet, line, mood, place, at, roam, onRoam, onSeek, onWalk, onC
       ) : (
         <p className="mt-1 text-xs text-soft">Nothing yet. Habits, check-ins, game wins, songs and memories feed it.</p>
       )}
+      {festival && (
+        <p className="mt-3 rounded-lg px-3 py-1.5 text-xs" style={{ background: `${festival.glow}22`, color: festival.glow }}>
+          ✨ Today&apos;s look: {festival.name}
+        </p>
+      )}
+      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-faint">Wear</p>
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        {ACCESSORIES.map((a) => {
+          const has = pet.unlocked.includes(a.id);
+          const on = pet.wear === a.id;
+          return (
+            <button
+              key={a.id}
+              type="button"
+              disabled={!has}
+              onClick={() => onWear(on ? "none" : a.id)}
+              title={has ? (on ? "Take it off" : `Wear the ${a.name.toLowerCase()}`) : `Unlocks at stage ${a.stage + 1}`}
+              className={`rounded-full border px-2.5 py-1 text-xs ${on ? "border-amber-300 bg-amber-300/15 text-amber-200" : "border-line"} ${has ? "hover:border-line-strong" : "cursor-not-allowed opacity-40"}`}
+            >
+              {a.emoji} {a.name}
+              {!has && " 🔒"}
+            </button>
+          );
+        })}
+      </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button type="button" onClick={onSeek} className="rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
           🙈 Hide and seek
         </button>
-        <button type="button" onClick={onWalk} className="col-span-2 rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
-          🏮 Lantern walk: find sparks in the dark
-        </button>
         <button type="button" onClick={onRoam} className="rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
           {roam ? "📍 Stay here" : "✨ Wander around"}
+        </button>
+        <button type="button" onClick={onWalk} className="col-span-2 rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
+          🏮 Lantern walk: find sparks in the dark
         </button>
       </div>
       <div className="mt-3 flex justify-between text-[11px] text-faint">
@@ -798,8 +890,9 @@ type Reaction = keyof typeof REACTION;
 const CLOCKWISE = ["right", "down-right", "down", "down-left", "left", "up-left", "up", "up-right"] as const;
 const cell = (i: number) => ({ backgroundPosition: `${(i % 3) * 50}% ${Math.floor(i / 3) * 50}%`, backgroundSize: "300% 300%", backgroundRepeat: "no-repeat" as const });
 
-function Creature({ stage, mood, look, eating, evolving, poked, quiet = false }: { stage: number; mood: Look; look: { x: number; y: number }; eating: boolean; evolving: boolean; poked: boolean; quiet?: boolean }) {
-  const glow = GLOW[mood];
+function Creature({ stage, mood, look, eating, evolving, poked, quiet = false, festival = null, wear = null }: { stage: number; mood: Look; look: { x: number; y: number }; eating: boolean; evolving: boolean; poked: boolean; quiet?: boolean; festival?: Festival | null; wear?: AccessoryId | null }) {
+  // A festival tints its glow when it's simply happy.
+  const glow = festival && mood === "happy" ? festival.glow : GLOW[mood];
   // A blink every few seconds, and a beat for dancing (star eyes / big grin).
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -869,6 +962,7 @@ function Creature({ stage, mood, look, eating, evolving, poked, quiet = false }:
         <div className="absolute inset-0" style={{ transform: `scale(${scale})`, transformOrigin: "50% 85%", filter: quiet ? lit : `${lit} drop-shadow(0 0 ${4 + stage * 3}px ${glow}aa)`, transition: "filter 0.6s" }}>
           <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.directions})`, ...cell(DIRECTIONS.indexOf(dir)), opacity: reaction ? 0 : 1 }} />
           <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.reactions})`, ...cell(REACTION[reaction ?? "blink"]), opacity: reaction ? 1 : 0 }} />
+          {!quiet && <Looks festival={festival} wear={wear} />}
         </div>
         {/* Crown of sparks (last stage). */}
         {stage >= 3 && <span className="pet-glow absolute left-1/2 top-[-6%] -translate-x-1/2 text-sm leading-none text-amber-300">✦✧✦</span>}
