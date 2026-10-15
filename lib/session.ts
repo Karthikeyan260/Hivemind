@@ -51,13 +51,13 @@ async function sessions(fresh = false): Promise<Session[]> {
 }
 async function save(list: Session[]) {
   const now = Date.now();
-  // At most 30 kept. Sessions opened with another password (a local test server sharing this store)
-  // go first, so they never push out a real device.
-  const print = await pwPrint().catch(() => "");
+  // At most 30 kept per password. A local test server shares this store under its own password:
+  // its logins only ever push out its own old ones, never a real device's (and the other way round).
+  // (One shared cap of 30 let a pile of test logins log the owner's phone out.)
   const alive = list.filter((s) => +new Date(s.expires) > now);
-  const other = alive.filter((s) => s.pw !== print);
-  const mine = alive.filter((s) => s.pw === print);
-  const live = [...other.slice(Math.max(0, other.length - Math.max(0, 30 - mine.length))), ...mine.slice(-30)];
+  const byPw = new Map<string, Session[]>();
+  for (const s of alive) byPw.set(s.pw, [...(byPw.get(s.pw) ?? []), s]);
+  const live = [...byPw.values()].flatMap((group) => group.slice(-30));
   await writeJSON(db(), KEY, live);
   cached = { at: Date.now(), list: live };
 }
