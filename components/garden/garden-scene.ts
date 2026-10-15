@@ -2151,8 +2151,17 @@ void main() {`);
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
     this.composer?.setSize(w, h, false);
+    const before = this.camera.aspect;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    // The frame changed shape (a phone turned, a window resized): pull the camera to the distance
+    // that fits the island again, keeping the direction it looks from.
+    if (this.intro.t0 === -2 && Math.abs(before - this.camera.aspect) / before > 0.15) {
+      const r0 = this.restRadius();
+      this.controls.maxDistance = Math.max(this.R * 5, r0 * 1.35);
+      const off = this.camera.position.clone().sub(this.controls.target);
+      this.camera.position.copy(this.controls.target).add(off.setLength(r0));
+    }
   }
 
   /** Walk the pet to a spot (layout units); returns how long it takes, in ms. */
