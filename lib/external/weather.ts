@@ -53,6 +53,27 @@ async function loadWeather(place: string): Promise<Weather> {
     if (!p) throw new HttpError(404, `I couldn't find a place called “${place}”.`);
     places.set(key, p);
   }
+  return forecastFor(p);
+}
+
+/**
+ * Weather where the device is (its GPS fix): for the living sky, so it rains on screen where it's
+ * raining on you. Rounded to ~1 km, which is plenty for weather and keeps the cache useful.
+ */
+export async function getWeatherAt(lat: number, lng: number): Promise<Weather> {
+  const la = Math.round(lat * 100) / 100;
+  const lo = Math.round(lng * 100) / 100;
+  if (!Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) throw new HttpError(400, "That isn't a place on Earth.");
+  const key = `@${la},${lo}`;
+  const hit = recent.get(key);
+  if (hit && Date.now() - hit.at < FRESH_MS) return hit.w;
+  const w = await forecastFor({ name: "Your location", latitude: la, longitude: lo });
+  recent.set(key, { at: Date.now(), w });
+  if (recent.size > 50) recent.delete(recent.keys().next().value!);
+  return w;
+}
+
+async function forecastFor(p: Place): Promise<Weather> {
 
   type Forecast = {
     current: { time: string; temperature_2m: number; apparent_temperature: number; relative_humidity_2m: number; weather_code: number; wind_speed_10m: number; precipitation: number; is_day: number };

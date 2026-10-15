@@ -2,17 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useVoiceActions } from "@/components/voice/provider";
+import { getFix } from "@/lib/location";
 import { type Sky, SKY_EVENT, skyFor, skyFromWords, THUNDER_EVENT } from "@/lib/sky";
 
 /**
  * The living sky: the weather outside, across the whole app. Rain falls over the screen when it rains
- * in the home city, a storm adds lightning flashes, a clear day gets a warm shimmer, and a clear night
+ * where the device is (or in the home city when its location isn't allowed), a storm adds lightning flashes, a clear day gets a warm shimmer, and a clear night
  * gets twinkling stars and fireflies. Faint and click-through, paused when the tab is hidden, and off
  * for reduced motion. The pet listens (umbrella, shades, a jump at thunder).
  */
 const OFF_KEY = "hm-sky-off";
 const REFRESH_MS = 10 * 60_000;
 const PREVIEW_MS = 30_000;
+
+/**
+ * Where this device is, if the owner already allowed location (the Map asks for it); never pops up a
+ * permission prompt on its own. A fix up to 15 minutes old is fine for weather.
+ */
+async function here(ask = false) {
+  try {
+    if (!ask) {
+      const p = await navigator.permissions?.query({ name: "geolocation" as PermissionName });
+      if (p?.state !== "granted") return null;
+    }
+    return await getFix(15 * 60_000);
+  } catch {
+    return null;
+  }
+}
 
 declare global {
   interface Window {
@@ -25,6 +42,9 @@ export function LivingSky() {
   const [preview, setPreview] = useState<Sky | null>(null);
   const [off, setOff] = useState(false);
   const [flash, setFlash] = useState(0);
+  // Where the weather is from ("Your location" or the home city), and a nudge to look again.
+  const [where, setWhere] = useState("");
+  const [askHere, setAskHere] = useState(0);
   const canvas = useRef<HTMLCanvasElement>(null);
   const sky = preview ?? real;
 
@@ -39,9 +59,12 @@ export function LivingSky() {
     const asked = new URLSearchParams(location.search).get("sky");
     if (asked) setPreview(skyFromWords(asked));
     const load = async () => {
-      const r = await fetch("/api/tools/weather").catch(() => null);
+      const fix = await here(askHere > 0);
+      const r = await fetch(fix ? `/api/tools/weather?lat=${fix.lat.toFixed(3)}&lng=${fix.lng.toFixed(3)}` : "/api/tools/weather").catch(() => null);
       const w = r?.ok ? await r.json().catch(() => null) : null;
-      if (alive && w?.current) setReal(skyFor(Number(w.current.code ?? 3), w.current.is_day !== false, Number(w.current.rain_mm ?? 0)));
+      if (!alive || !w?.current) return;
+      setReal(skyFor(Number(w.current.code ?? 3), w.current.is_day !== false, Number(w.current.rain_mm ?? 0)));
+      setWhere(fix ? "your location" : (w.place ?? "home"));
     };
     void load();
     const t = setInterval(load, REFRESH_MS);
@@ -49,7 +72,7 @@ export function LivingSky() {
       alive = false;
       clearInterval(t);
     };
-  }, []);
+  }, [askHere]);
 
   // Tell the pet (and anything else) what the sky is doing.
   useEffect(() => {
@@ -183,9 +206,13 @@ export function LivingSky() {
 
   useVoiceActions({
     living_weather: {
-      description: "The living weather effects on the app screen (rain falling, lightning, sunny shimmer, night stars and fireflies, matching the weather outside). input: 'off', 'on', or a sky to preview for 30 seconds: 'rain', 'thunderstorm', 'sunny', 'night'.",
+      description: "The living weather effects on the app screen (rain falling, lightning, sunny shimmer, night stars and fireflies, matching the weather where the device is). input: 'off', 'on', 'use my location' (asks for location permission if needed), or a sky to preview for 30 seconds: 'rain', 'thunderstorm', 'sunny', 'night'.",
       run: ({ input }) => {
         const t = String(input ?? "").toLowerCase();
+        if (/location|where i am|gps|here/.test(t)) {
+          setAskHere((n) => n + 1);
+          return { using: "this device's location (it may ask for permission)", was: where };
+        }
         if (/\boff\b|stop|disable|hide/.test(t)) {
           setOff(true);
           try {
@@ -201,9 +228,9 @@ export function LivingSky() {
         if (want) {
           setPreview(want);
           setTimeout(() => setPreview(null), PREVIEW_MS);
-          return { previewing: want, seconds: PREVIEW_MS / 1000, outside_now: real };
+          return { previewing: want, seconds: PREVIEW_MS / 1000, outside_now: real, weather_from: where };
         }
-        return { weather_effects: "on", outside_now: real };
+        return { weather_effects: "on", outside_now: real, weather_from: where };
       },
     },
   });
