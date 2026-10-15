@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { geminiClient } from "@/lib/ai/gemini";
+import { GEMINI_CHAIN, geminiClient } from "@/lib/ai/gemini";
 import { checkHabit, habitsWithStats } from "@/lib/habits";
 import { createNote } from "@/lib/knowledge";
 import { readJSON, writeJSON } from "@/lib/private-store";
@@ -60,7 +60,7 @@ export async function checkinContext(supabase: SupabaseClient) {
 /** Which of the open habits the owner says they did ("went to the gym" → Exercise). */
 async function habitsMentioned(text: string, open: string[]): Promise<string[]> {
   if (!open.length || !text.trim()) return [];
-  for (const model of [process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite", "gemini-2.5-flash"]) {
+  for (const model of GEMINI_CHAIN) {
     try {
       const res = await geminiClient().models.generateContent({
         model,

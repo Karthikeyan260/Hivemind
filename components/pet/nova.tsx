@@ -7,9 +7,12 @@ import { type Sky, SKY_EVENT, THUNDER_EVENT } from "@/lib/sky";
 import { petSay, petVoiceOn, setPetVoice } from "./talk";
 import { ASKED_EVENT, MUSIC_STATE_EVENT } from "@/lib/client-api";
 import type { Pet } from "@/lib/pet";
-import { ACCESSORIES, type AccessoryId, accessoryFor, type Festival, festivalById, festivalOn } from "@/lib/pet-looks";
+import { type AccessoryId, accessoryFor, type Festival, festivalById, festivalOn } from "@/lib/pet-looks";
 import { judgeGuess } from "@/lib/pet-seek";
-import { Looks } from "./looks";
+import { PetCard } from "./card";
+import { Creature } from "./creature";
+import { between, clamp, dayNow, GLOW, home, hourNow, type Look, pick, type Pos, reserve, SIZE, type Spot, store } from "./shared";
+import { coversControl, hidingSpot, PEEK_CLIP } from "./space";
 import { sfx } from "@/lib/sfx";
 
 /**
@@ -20,25 +23,12 @@ import { sfx } from "@/lib/sfx";
  * own (or stays put when asked), and plays hide and seek: it hides behind something on the page,
  * peeking out, and the owner finds it by voice ("is it near the weather?", "top left?") or a tap.
  */
-type Look = "happy" | "hungry" | "sulking" | "missed" | "sleepy" | "dancing";
-type Pos = { x: number; y: number };
-type Spot = Pos & { name: string; row: "top" | "middle" | "bottom"; col: "left" | "center" | "right"; peek: "top" | "left" | "right" };
 type Seek = { phase: "counting" | "hidden"; spot?: Spot; guesses: number };
 /** Lantern walk: the screen goes dark, the pet follows the pointer and its light finds hidden sparks. */
 type Walk = { sparks: (Pos & { got: boolean })[]; ends: number };
 const SPARKS = 7;
 const WALK_MS = 75_000;
 const LIGHT = 130;
-
-const GLOW: Record<Look, string> = {
-  happy: "#ffd166",
-  hungry: "#ffa94d",
-  sulking: "#8a96a3",
-  missed: "#ff8fab",
-  sleepy: "#74c0fc",
-  dancing: "#c3fae8",
-};
-const SIZE = 88;
 const POLL_MS = 5 * 60_000;
 const FLY_MS = 3200;
 const POS_KEY = "hm-pet-xy";
@@ -46,28 +36,6 @@ const MODE_KEY = "hm-pet-mode";
 const HIDE_KEY = "hm-pet-hidden";
 const STAGE_KEY = "hm-pet-stage";
 const ROAM_LINES = ["Enna panreenga? 👀", "Inga konjam suthi paakaren ✨", "Bore adikudhu… vilayadalama? 🙈", "Naan inga irukken!", "Hmm hmm 🎵"];
-// How a peek is clipped: only the part sticking out from behind the thing it hides behind shows.
-const PEEK_CLIP: Record<Spot["peek"], string> = { top: "inset(0 0 40% 0)", left: "inset(0 50% 0 0)", right: "inset(0 0 0 50%)" };
-
-const store = {
-  get(k: string) {
-    try {
-      return localStorage.getItem(k);
-    } catch {
-      return null;
-    }
-  },
-  set(k: string, v: string | null) {
-    try {
-      if (v === null) localStorage.removeItem(k);
-      else localStorage.setItem(k, v);
-    } catch {}
-  },
-};
-
-const hourNow = () => new Date().getHours();
-/** Today's local date ("2026-11-07"). */
-const dayNow = () => new Date().toLocaleDateString("en-CA");
 const FEST_KEY = "hm-pet-festival";
 const SAID_KEY = "hm-pet-said";
 /** What the pet already said today (so it doesn't repeat itself). */
@@ -94,89 +62,6 @@ const FEST_WORDS: [RegExp, Festival["id"]][] = [
   [/new year/i, "newyear"],
   [/independence|republic|india|flag/i, "india"],
 ];
-const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
-const between = (a: number, b: number) => a + Math.random() * (b - a);
-/** Room left at the bottom for the tab bar and the music bar. */
-const reserve = () => (window.innerWidth < 768 ? 150 : 90);
-const clamp = (p: Pos): Pos => ({
-  x: Math.min(window.innerWidth - SIZE - 8, Math.max(8, p.x)),
-  y: Math.min(window.innerHeight - SIZE - reserve(), Math.max(8, p.y)),
-});
-const home = (): Pos => clamp({ x: window.innerWidth - SIZE - 16, y: window.innerHeight - SIZE - reserve() - 60 });
-
-/** What a page element is called, for guesses like "near the weather card". */
-function labelOf(el: Element) {
-  const own = el.getAttribute("aria-label") || el.getAttribute("title") || el.querySelector("h1, h2, h3, h4, [class*='uppercase']")?.textContent || (el as HTMLElement).innerText || "";
-  return own.replace(/\s+/g, " ").trim().slice(0, 40);
-}
-
-/** Somewhere on screen to hide: next to a real card, button or heading, peeking out from its edge. */
-function hidingSpot(self: Element | null): Spot | null {
-  const W = window.innerWidth;
-  const H = window.innerHeight - reserve();
-  const options = [...document.querySelectorAll("section, aside, header, nav, article, form, button, img, h1, h2, h3, [role=region]")]
-    .filter((el) => !self?.contains(el) && !el.closest("[data-pet]") && !floating(el))
-    .map((el) => ({ el, r: el.getBoundingClientRect(), name: labelOf(el) }))
-    .filter(({ r, name }) => name.length >= 3 && r.width >= 70 && r.height >= 28 && r.top > 40 && r.bottom < H && r.left >= 0 && r.right <= W);
-  // Try a few: a spot under a floating panel (a toast, the voice dock) could never be found.
-  for (let attempt = 0; attempt < 12 && options.length; attempt++) {
-    const spot = spotBy(pick(options));
-    if (spot && inTheOpen(spot, self)) return spot;
-  }
-  return null;
-}
-
-/** Would the pet, standing here, cover something clickable or typeable? (Checks its middle and corners.) */
-function coversControl(p: Pos, self: Element | null) {
-  const points = [
-    [0.5, 0.5],
-    [0.2, 0.25],
-    [0.8, 0.25],
-    [0.2, 0.85],
-    [0.8, 0.85],
-  ];
-  return points.some(([fx, fy]) => {
-    const hit = document.elementsFromPoint(p.x + SIZE * fx, p.y + SIZE * fy).find((el) => !self?.contains(el) && !el.closest("[data-pet]"));
-    return !!hit?.closest("button, a, input, textarea, select, [role=button], [contenteditable=true]");
-  });
-}
-
-/** Inside something that floats over the page (a toast, the voice dock): it can come and go. */
-function floating(hit: Element) {
-  const screen = window.innerWidth * window.innerHeight;
-  for (let el: Element | null = hit; el; el = el.parentElement) {
-    if (getComputedStyle(el).position !== "fixed") continue;
-    // A full-screen fixed layout (the home page is one) is the page itself, not something floating over it.
-    const r = el.getBoundingClientRect();
-    if (r.width * r.height < screen * 0.5) return true;
-  }
-  return false;
-}
-
-/** The part of it that peeks out must not be covered by anything floating (fixed) on the page. */
-function inTheOpen(s: Spot, self: Element | null) {
-  const vx = s.peek === "left" ? s.x + SIZE * 0.25 : s.peek === "right" ? s.x + SIZE * 0.75 : s.x + SIZE / 2;
-  const vy = s.peek === "top" ? s.y + SIZE * 0.3 : s.y + SIZE / 2;
-  if (vx < 0 || vy < 0 || vx > window.innerWidth || vy > window.innerHeight) return false;
-  return document.elementsFromPoint(vx, vy).filter((el) => !self?.contains(el) && !el.closest("[data-pet]")).slice(0, 1).every((hit) => !floating(hit));
-}
-
-function spotBy({ r, name }: { r: DOMRect; name: string }): Spot | null {
-  const W = window.innerWidth;
-  const H = window.innerHeight - reserve();
-  const peek = pick<Spot["peek"]>(["top", "top", "left", "right"]);
-  const at =
-    peek === "top"
-      ? { x: between(r.left, Math.max(r.left, r.right - SIZE)), y: r.top - SIZE * 0.6 }
-      : peek === "left"
-        ? { x: r.left - SIZE * 0.5, y: between(r.top, Math.max(r.top, r.bottom - SIZE)) }
-        : { x: r.right - SIZE * 0.5, y: between(r.top, Math.max(r.top, r.bottom - SIZE)) };
-  // Keep the part that peeks out on screen (on a phone a right-edge peek would otherwise end up off it).
-  const p = { x: Math.min(W - SIZE - 4, Math.max(4, at.x)), y: Math.min(H - SIZE, Math.max(4, at.y)) };
-  const cx = (p.x + SIZE / 2) / W;
-  const cy = (p.y + SIZE / 2) / H;
-  return { ...p, name, peek, col: cx < 0.36 ? "left" : cx > 0.64 ? "right" : "center", row: cy < 0.36 ? "top" : cy > 0.64 ? "bottom" : "middle" };
-}
 
 export function Nova() {
   const [pet, setPet] = useState<Pet | null>(null);
@@ -229,10 +114,16 @@ export function Nova() {
     posRef.current = pos;
   }, [pos]);
 
+  // Whether a speech bubble is up right now (thunder doesn't talk over it).
+  const saying = useRef(false);
   const speak = useCallback((text: string, ms = 3500, talk = true, asked = false) => {
     clearTimeout(sayTimer.current);
     setSay(text);
-    sayTimer.current = setTimeout(() => setSay(null), ms);
+    saying.current = true;
+    sayTimer.current = setTimeout(() => {
+      setSay(null);
+      saying.current = false;
+    }, ms);
     // Out loud too, in its own little voice. In a live conversation it stays quiet unless the owner
     // asked it directly ("Nova, tell me a joke"); then it answers just after HIVEMIND's short "over to Nova".
     if (!talk) return;
@@ -269,6 +160,19 @@ export function Nova() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the browser's saved settings once on mount
     setRoam(!stays);
     setPos(stays && saved ? clamp(JSON.parse(saved)) : home());
+    // Its default corner can land on a button (it floats above the page): once the page has drawn,
+    // nudge it to the nearest free spot. A spot the owner dragged it to is left alone.
+    if (!(stays && saved)) {
+      setTimeout(() => {
+        const start = home();
+        if (!coversControl(start, self.current)) return;
+        for (let up = 1; up <= 8; up++)
+          for (const dx of [0, -70, -140]) {
+            const p = clamp({ x: start.x + dx, y: start.y - up * 55 });
+            if (!coversControl(p, self.current)) return setPos(p);
+          }
+      }, 1500);
+    }
     setHidden(store.get(HIDE_KEY) === "1");
     setHour(hourNow());
     setToday(dayNow());
@@ -340,7 +244,8 @@ export function Nova() {
     const boom = () => {
       setStartled(true);
       setTimeout(() => setStartled(false), 1400);
-      speak(THUNDER_JUMP[Math.floor(Math.random() * THUNDER_JUMP.length)], 2200);
+      // It always jumps, but only cries out if it isn't already saying something (a greeting, a result).
+      if (!saying.current) speak(THUNDER_JUMP[Math.floor(Math.random() * THUNDER_JUMP.length)], 2200);
     };
     window.addEventListener(THUNDER_EVENT, boom);
     return () => window.removeEventListener(THUNDER_EVENT, boom);
@@ -489,10 +394,12 @@ export function Nova() {
       hop();
       if (!all) return speak(found ? `Time up! ${found}/${total} sparks 🌟 Innoru try?` : "Lights on! 💡", 3500);
       sfx.done();
+      // Celebrate at once; the growth it earned is added when the server has counted the walk.
+      speak("Ellam kandupidichitom! ✨", 6000);
       const r = await fetch("/api/pet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ walk: true }) }).catch(() => null);
       const data = r?.ok ? await r.json().catch(() => null) : null;
       if (data?.pet) setPet(data.pet);
-      speak(data?.counted ? `Ellam kandupidichitom! ✨ +${data.xp} growth` : "Ellam kandupidichitom! ✨ (today's walk points are full)", 4500);
+      if (data?.counted) speak(`Ellam kandupidichitom! ✨ +${data.xp} growth`, 4500, false);
     },
     [hop, speak],
   );
@@ -1014,214 +921,5 @@ export function Nova() {
       </div>
     </div>
     </>
-  );
-}
-
-function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSeek, onWalk, voiceOn, onVoice, festival, onWear, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: React.CSSProperties; sheet: boolean; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; voiceOn: boolean; onVoice: () => void; festival: Festival | null; onWear: (w: AccessoryId | "none") => void; onClose: () => void; onHide: () => void }) {
-  const fedPct = pet.fed.due ? Math.round((pet.fed.done / pet.fed.due) * 100) : 0;
-  return (
-    <div
-      style={at}
-      className={`pet-pop ${sheet ? "fixed inset-x-2 bottom-[calc(var(--tabbar-h,0px)+var(--music-h,0px)+0.5rem)] z-10 max-h-[70dvh] pb-6" : `absolute ${place} w-72`} overflow-y-auto overscroll-contain rounded-2xl border border-line bg-[#0b1016]/95 p-4 text-sm text-fg shadow-2xl backdrop-blur-md`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: GLOW[mood] }}>
-            ◆ Pocket pet · day {pet.days}
-          </p>
-          <p className="mt-0.5 text-base font-semibold">{pet.name}</p>
-          <p className="text-xs text-faint">{pet.stageName}</p>
-        </div>
-        {/* Up here, not in the bottom corner: on a phone the voice button floats over that corner. */}
-        <div className="flex items-center gap-1">
-          <button type="button" onClick={onVoice} title={voiceOn ? "Its voice is on: tap to keep it quiet" : "Its voice is off: tap to let it talk"} aria-label={voiceOn ? "Mute its voice" : "Turn its voice on"} className="rounded-md px-1.5 py-1 text-sm text-faint hover:text-fg">
-            {voiceOn ? "🔊" : "🔇"}
-          </button>
-          <button type="button" onClick={onHide} className="rounded-md px-2 py-1 text-[11px] text-faint hover:text-fg">
-            Put away
-          </button>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md px-1.5 text-faint hover:text-fg">
-            ✕
-          </button>
-        </div>
-      </div>
-      <p className="mt-3 rounded-lg bg-white/5 px-3 py-2 text-[13px] leading-snug">“{line}”</p>
-
-      <Bar label="Growth" value={pet.progress} color={GLOW[mood]} note={pet.toNext === null ? "Fully grown 👑" : `${pet.toNext} to evolve`} />
-      <Bar label="Fed today" value={fedPct / 100} color="#8ce99a" note={pet.fed.due ? `${pet.fed.done} / ${pet.fed.due} habits` : "No habits today: add one to feed it"} />
-
-      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-faint">Today it got</p>
-      {pet.today.length ? (
-        <ul className="mt-1 space-y-0.5 text-xs">
-          {pet.today.map((t) => (
-            <li key={t}>{t}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-1 text-xs text-soft">Nothing yet. Habits, check-ins, game wins, songs and memories feed it.</p>
-      )}
-      {festival && (
-        <p className="mt-3 rounded-lg px-3 py-1.5 text-xs" style={{ background: `${festival.glow}22`, color: festival.glow }}>
-          ✨ Today&apos;s look: {festival.name}
-        </p>
-      )}
-      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-faint">Wear</p>
-      <div className="mt-1 flex flex-wrap gap-1.5">
-        {ACCESSORIES.map((a) => {
-          const has = pet.unlocked.includes(a.id);
-          const on = pet.wear === a.id;
-          return (
-            <button
-              key={a.id}
-              type="button"
-              disabled={!has}
-              onClick={() => onWear(on ? "none" : a.id)}
-              title={has ? (on ? "Take it off" : `Wear the ${a.name.toLowerCase()}`) : `Unlocks at stage ${a.stage + 1}`}
-              className={`rounded-full border px-2.5 py-1 text-xs ${on ? "border-amber-300 bg-amber-300/15 text-amber-200" : "border-line"} ${has ? "hover:border-line-strong" : "cursor-not-allowed opacity-40"}`}
-            >
-              {a.emoji} {a.name}
-              {!has && " 🔒"}
-            </button>
-          );
-        })}
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <button type="button" onClick={onSeek} className="rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
-          🙈 Hide and seek
-        </button>
-        <button type="button" onClick={onRoam} className="rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
-          {roam ? "📍 Stay here" : "✨ Wander around"}
-        </button>
-        <button type="button" onClick={onWalk} className="col-span-2 rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
-          🏮 Lantern walk: find sparks in the dark
-        </button>
-      </div>
-      <p className="mt-3 text-[11px] text-faint">{pet.xp} growth points</p>
-    </div>
-  );
-}
-
-function Bar({ label, value, color, note }: { label: string; value: number; color: string; note: string }) {
-  return (
-    <div className="mt-3">
-      <div className="flex justify-between text-[11px] text-faint">
-        <span>{label}</span>
-        <span>{note}</span>
-      </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full transition-[width] duration-700" style={{ width: `${Math.round(value * 100)}%`, background: color }} />
-      </div>
-    </div>
-  );
-}
-/**
- * The lantern itself: an illustrated chibi (two 3x3 sprite sheets, see the page-mascot skill). One
- * sheet turns its head toward the pointer, the other holds its expressions. It lights up as it
- * grows: an unlit seed, then lit, then fireflies circling it, then a crown of sparks.
- */
-const SHEETS = { directions: "/mascots/nova-directions.webp", reactions: "/mascots/nova-reactions.webp" };
-const DIRECTIONS = ["up-left", "up", "up-right", "left", "center", "right", "down-left", "down", "down-right"] as const;
-const REACTION = { blink: 0, heart: 1, sparkle: 2, surprised: 3, starstruck: 4, bashful: 5, sleepy: 6, dizzy: 7, delighted: 8 } as const;
-type Reaction = keyof typeof REACTION;
-// Clockwise from the right, matching atan2 with y pointing down.
-const CLOCKWISE = ["right", "down-right", "down", "down-left", "left", "up-left", "up", "up-right"] as const;
-const cell = (i: number) => ({ backgroundPosition: `${(i % 3) * 50}% ${Math.floor(i / 3) * 50}%`, backgroundSize: "300% 300%", backgroundRepeat: "no-repeat" as const });
-
-function Creature({ stage, mood, look, eating, evolving, poked, quiet = false, festival = null, wear = null, sky = "calm", startled = false }: { stage: number; mood: Look; look: { x: number; y: number }; eating: boolean; evolving: boolean; poked: boolean; quiet?: boolean; festival?: Festival | null; wear?: AccessoryId | null; sky?: Sky; startled?: boolean }) {
-  // A festival tints its glow when it's simply happy.
-  const glow = festival && mood === "happy" ? festival.glow : GLOW[mood];
-  // A blink every few seconds, and a beat for dancing (star eyes / big grin).
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 450);
-    return () => clearInterval(t);
-  }, []);
-  const blink = tick % 11 === 0;
-
-  const reaction: Reaction | null = evolving
-    ? "sparkle"
-    : startled
-      ? "surprised"
-    : eating
-      ? "heart"
-      : poked
-        ? "delighted"
-        : mood === "dancing"
-          ? tick % 2
-            ? "starstruck"
-            : "delighted"
-          : mood === "sleepy"
-            ? "sleepy"
-            : mood === "sulking"
-              ? "dizzy"
-              : mood === "hungry"
-                ? "surprised"
-                : mood === "missed"
-                  ? tick % 4 < 2
-                    ? "surprised"
-                    : "heart"
-                  : blink
-                    ? "blink"
-                    : null;
-  const mag = Math.hypot(look.x, look.y);
-  const dir = mag < 0.6 ? "center" : CLOCKWISE[Math.round(((Math.atan2(look.y, look.x) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 4)) % 8];
-  const body = mood === "dancing" ? "pet-dance" : mood === "sleepy" ? "pet-breathe" : mood === "missed" || poked || eating || startled ? "pet-hop" : "pet-float";
-  // Grows a little and glows brighter with each stage; the seed is an unlit lantern.
-  const scale = [0.78, 0.9, 1, 1.06][stage] ?? 1;
-  const lit = stage === 0 ? "saturate(0.55) brightness(0.85)" : mood === "sulking" ? "grayscale(0.75) brightness(0.9)" : "none";
-  // Hiding (quiet): no glow or fireflies, they would give it away.
-  const aura = quiet ? 0 : mood === "sulking" ? 0.25 : [0.25, 0.5, 0.7, 0.9][stage] ?? 0.7;
-
-  return (
-    <div className="relative h-full w-full">
-      {/* Aura behind it. */}
-      {!quiet && <div className="pet-glow absolute inset-[12%] rounded-full blur-xl" style={{ background: glow, opacity: aura }} />}
-      {evolving && <div className="pet-burst absolute inset-[30%] rounded-full border-2" style={{ borderColor: glow }} />}
-
-      {/* Fireflies circling it (stage 3+), more of them at the last stage. */}
-      {stage >= 2 && !quiet && (
-        <div className="pet-orbit pointer-events-none absolute inset-[-14%]">
-          {[...Array(stage >= 3 ? 5 : 3).keys()].map((i, _, a) => (
-            <span
-              key={i}
-              className="pet-glow absolute h-1.5 w-1.5 rounded-full"
-              style={{
-                left: `${50 + 46 * Math.cos((i / a.length) * Math.PI * 2)}%`,
-                top: `${50 + 46 * Math.sin((i / a.length) * Math.PI * 2)}%`,
-                background: "#fff3bf",
-                boxShadow: `0 0 8px 3px ${glow}`,
-                animationDelay: `${i * 0.4}s`,
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      <div className={`${body} absolute inset-0`} style={{ transformOrigin: "50% 90%" }}>
-        <div className="absolute inset-0" style={{ transform: `scale(${scale})`, transformOrigin: "50% 85%", filter: quiet ? lit : `${lit} drop-shadow(0 0 ${4 + stage * 3}px ${glow}aa)`, transition: "filter 0.6s" }}>
-          <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.directions})`, ...cell(DIRECTIONS.indexOf(dir)), opacity: reaction ? 0 : 1 }} />
-          <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.reactions})`, ...cell(REACTION[reaction ?? "blink"]), opacity: reaction ? 1 : 0 }} />
-          {!quiet && <Looks festival={festival} wear={wear} sky={sky} />}
-        </div>
-        {/* Crown of sparks (last stage). */}
-        {stage >= 3 && <span className="pet-glow absolute left-1/2 top-[-6%] -translate-x-1/2 text-sm leading-none text-amber-300">✦✧✦</span>}
-      </div>
-
-      {/* Mood extras around it. */}
-      {mood === "dancing" && (
-        <>
-          <span className="pet-note absolute left-[2%] top-[18%] text-sm text-teal-200">♪</span>
-          <span className="pet-note absolute right-[2%] top-[8%] text-sm text-teal-200" style={{ animationDelay: "0.7s" }}>♫</span>
-        </>
-      )}
-      {mood === "sulking" && (
-        <div className="absolute left-1/2 top-[-12%] -translate-x-1/2">
-          <span className="block text-lg leading-none">☁️</span>
-          <span className="pet-rain absolute left-[30%] top-full h-1.5 w-px bg-sky-300" />
-          <span className="pet-rain absolute left-[60%] top-full h-1.5 w-px bg-sky-300" style={{ animationDelay: "0.4s" }} />
-        </div>
-      )}
-      {mood === "hungry" && <span className="absolute right-[-4%] top-[4%] text-base">🍚</span>}
-    </div>
   );
 }

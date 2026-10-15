@@ -50,5 +50,10 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "mammoth": {
+      "argparse": "^2.0.1"
+    }
   }
 }

@@ -240,7 +240,15 @@ function Photos() {
                 {/* Shimmer until the thumbnail arrives (it covers this when loaded). */}
                 <span aria-hidden className="absolute inset-0 animate-pulse bg-raised" />
                 {/* eslint-disable-next-line @next/next/no-img-element -- private photo served by the app */}
-                <img src={`/api/photos/${p.id}?t=1`} alt={p.title} loading="lazy" className="relative h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                <img
+                  src={(p as { thumb?: string }).thumb ?? `/api/photos/${p.id}?t=1`}
+                  // The direct link lasts an hour: if it has run out, load it through the app instead.
+                  onError={(e) => {
+                    const fallback = `/api/photos/${p.id}?t=1`;
+                    if (!e.currentTarget.src.endsWith(fallback)) e.currentTarget.src = fallback;
+                  }}
+                  alt={p.title}
+                  loading="lazy" className="relative h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                 {p.private && <Lock size={12} className="absolute right-1.5 top-1.5 text-white drop-shadow" />}
               </button>
             </li>

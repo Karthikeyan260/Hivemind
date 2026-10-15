@@ -13,6 +13,20 @@ export function geminiClient() {
 const PRIMARY = process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite";
 const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash";
 
+/**
+ * Every Gemini model to try, in order, when one is busy or out of free quota. On the free tier the
+ * main model is sometimes "503 high demand" and 2.5 Flash allows only ~20 requests a day, so two more
+ * that handle tools and instructions well come after them: 2.5 Flash-Lite (fast) and Gemma 4.
+ * GEMINI_MODELS="a,b,c" overrides the whole list.
+ */
+export const GEMINI_CHAIN = [
+  ...new Set(
+    process.env.GEMINI_MODELS
+      ? process.env.GEMINI_MODELS.split(",").map((m) => m.trim()).filter(Boolean)
+      : [PRIMARY, "gemini-2.5-flash-lite", FALLBACK, "gemma-4-26b-a4b-it"],
+  ),
+];
+
 // Overloaded / rate-limited / timed out → worth trying the other Gemini model. Bad key (400/403) is not.
 function isTransient(err: unknown) {
   const status = (err as { status?: number })?.status;
@@ -27,7 +41,7 @@ const toContents = (messages: ChatMessage[]) =>
  * producing any text; once tokens have been sent, errors propagate to the caller.
  */
 export async function* streamGemini(messages: ChatMessage[], opts: GenerateOptions = {}) {
-  const models = PRIMARY === FALLBACK ? [PRIMARY] : [PRIMARY, FALLBACK];
+  const models = GEMINI_CHAIN;
   let lastErr: unknown;
   for (const model of models) {
     let started = false;
@@ -60,7 +74,7 @@ export const geminiProvider: AIProvider = {
   model: PRIMARY,
   isConfigured: () => !!process.env.GEMINI_API_KEY,
   async generate(messages: ChatMessage[], opts: GenerateOptions = {}) {
-    const models = PRIMARY === FALLBACK ? [PRIMARY] : [PRIMARY, FALLBACK];
+    const models = GEMINI_CHAIN;
     let lastErr: unknown;
     for (const model of models) {
       try {

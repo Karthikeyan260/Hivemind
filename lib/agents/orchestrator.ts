@@ -1,6 +1,6 @@
 import "server-only";
 import { FunctionCallingConfigMode, type Content, type FunctionDeclaration, type Part } from "@google/genai";
-import { geminiClient } from "@/lib/ai/gemini";
+import { GEMINI_CHAIN, geminiClient } from "@/lib/ai/gemini";
 import type { ChatMessage } from "@/lib/ai/types";
 import { nowForPrompt } from "@/lib/reminders";
 import { agentRoster, AGENTS } from "./registry";
@@ -9,7 +9,7 @@ import { intentCheck } from "./intent";
 import { routeAgent } from "./router";
 import { AGENT_IDS, type Agent, type AgentId, type RunContext } from "./types";
 
-const MODELS = [...new Set([process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite", process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash"])];
+const MODELS = GEMINI_CHAIN;
 const MAX_STEPS = 6;
 // Free-tier models sometimes stall without erroring; if nothing arrives by then, try the next model.
 const FIRST_CHUNK_MS = 8000;

@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { geminiClient } from "@/lib/ai/gemini";
+import { GEMINI_CHAIN, geminiClient } from "@/lib/ai/gemini";
 import { listScreened } from "@/lib/call-screen";
 import { habitsWithStats } from "@/lib/habits";
 import { readJSON, writeJSON } from "@/lib/private-store";
@@ -21,7 +21,7 @@ export type Panel = { frame: Frame; caption: string; bubble: string; mood: "calm
 export type Comic = { date: string; title: string; panels: Panel[]; made_at: string; events: number };
 
 const MOODS = ["calm", "happy", "busy", "tired", "proud", "oops"] as const;
-const MODELS = [process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite", "gemini-2.5-flash"];
+const MODELS = GEMINI_CHAIN;
 const TZ = "Asia/Kolkata";
 
 /** Today's date in India (YYYY-MM-DD). */

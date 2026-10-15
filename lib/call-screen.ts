@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { geminiClient } from "@/lib/ai/gemini";
+import { GEMINI_CHAIN, geminiClient } from "@/lib/ai/gemini";
 import type { Room } from "@/lib/call-rooms";
 import { getMyVoice } from "@/lib/my-voice";
 import { readJSON, writeJSON } from "@/lib/private-store";
@@ -35,7 +35,7 @@ const SETTINGS = "call-screen-settings";
 const LOG = "call-screens";
 const DEFAULTS: ScreenSettings = { mode: "missed", wait_s: 25, my_voice: true };
 const MAX_CALLER_TURNS = 3;
-const MODELS = [process.env.GEMINI_CHAT_MODEL || "gemini-3.5-flash-lite", "gemini-2.5-flash"];
+const MODELS = GEMINI_CHAIN;
 
 export const getScreenSettings = async (supabase: SupabaseClient): Promise<ScreenSettings> => ({ ...DEFAULTS, ...(await readJSON<Partial<ScreenSettings>>(supabase, SETTINGS, {})) });
 export async function setScreenSettings(supabase: SupabaseClient, patch: Partial<ScreenSettings>) {

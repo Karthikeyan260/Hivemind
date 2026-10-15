@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
-import { addPhoto, listPhotos, removePhoto, searchPhotos, updatePhoto } from "@/lib/photos";
+import { addPhoto, listPhotos, removePhoto, searchPhotos, thumbLinks, updatePhoto } from "@/lib/photos";
 
 export const maxDuration = 60;
 const MAX = 3 * 1024 * 1024;
@@ -11,8 +11,10 @@ const MAX = 3 * 1024 * 1024;
 export const GET = handle(async (req: Request) => {
   const q = (new URL(req.url).searchParams.get("q") ?? "").slice(0, 120).trim();
   const all = await listPhotos(db());
-  const photos = q ? searchPhotos(all, q).photos : [...all].sort((a, b) => b.taken.localeCompare(a.taken));
-  return NextResponse.json({ photos: photos.slice(0, 300), total: all.length });
+  const photos = (q ? searchPhotos(all, q).photos : [...all].sort((a, b) => b.taken.localeCompare(a.taken))).slice(0, 300);
+  // Direct thumbnail links (an hour): the grid loads straight from storage. /api/photos/<id>?t=1 still works.
+  const thumbs = await thumbLinks(db(), photos.map((p) => p.id)).catch(() => ({}) as Record<string, string>);
+  return NextResponse.json({ photos: photos.map((p) => ({ ...p, thumb: thumbs[p.id] })), total: all.length });
 });
 
 /** One photo from the phone: the light copy, the thumbnail, its size, and (from the photo) when and where. */
