@@ -93,6 +93,21 @@ function hidingSpot(self: Element | null): Spot | null {
   return null;
 }
 
+/** Would the pet, standing here, cover something clickable or typeable? (Checks its middle and corners.) */
+function coversControl(p: Pos, self: Element | null) {
+  const points = [
+    [0.5, 0.5],
+    [0.2, 0.25],
+    [0.8, 0.25],
+    [0.2, 0.85],
+    [0.8, 0.85],
+  ];
+  return points.some(([fx, fy]) => {
+    const hit = document.elementsFromPoint(p.x + SIZE * fx, p.y + SIZE * fy).find((el) => !self?.contains(el) && !el.closest("[data-pet]"));
+    return !!hit?.closest("button, a, input, textarea, select, [role=button], [contenteditable=true]");
+  });
+}
+
 /** Inside something that floats over the page (a toast, the voice dock): it can come and go. */
 function floating(hit: Element) {
   const screen = window.innerWidth * window.innerHeight;
@@ -133,6 +148,8 @@ function spotBy({ r, name }: { r: DOMRect; name: string }): Spot | null {
 export function Nova() {
   const [pet, setPet] = useState<Pet | null>(null);
   const [music, setMusic] = useState(false);
+  // Asked to dance (by voice or tap) with no music on: a short dance on its own.
+  const [party, setParty] = useState(false);
   const [hour, setHour] = useState(12);
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -268,10 +285,15 @@ export function Nova() {
         if (document.visibilityState !== "visible" || drag.current) return;
         const W = window.innerWidth;
         const H = window.innerHeight - reserve();
-        flyTo(clamp({ x: between(16, W - SIZE - 16), y: between(80, H - SIZE) }), posRef.current);
+        // Somewhere it won't sit on a button, link or text box (it floats above the page and would block it).
+        let to = clamp({ x: between(16, W - SIZE - 16), y: between(80, H - SIZE) });
+        for (let i = 0; i < 12 && coversControl(to, self.current); i++) to = clamp({ x: between(16, W - SIZE - 16), y: between(80, H - SIZE) });
+        if (coversControl(to, self.current)) return;
+        flyTo(to, posRef.current);
         if (Math.random() < 0.35) setTimeout(() => speak(pick(ROAM_LINES)), FLY_MS);
       },
-      between(18_000, 38_000),
+      // Sitting on a button or link (e.g. where it first appeared): move off it right away.
+      posRef.current && coversControl(posRef.current, self.current) ? 1200 : between(18_000, 38_000),
     );
     return () => clearTimeout(t);
   }, [busy, pos, flyTo, speak]);
@@ -397,7 +419,7 @@ export function Nova() {
     [hop, speak, flyTo],
   );
 
-  const mood: Look = music ? "dancing" : sleepy ? "sleepy" : (pet?.mood ?? "happy");
+  const mood: Look = music || party ? "dancing" : sleepy ? "sleepy" : (pet?.mood ?? "happy");
   const line = evolving
     ? `Naan ippo ${pet?.stageName}! ✨`
     : eating !== null
@@ -493,6 +515,40 @@ export function Nova() {
         return { started: true, sparks: SPARKS, seconds: WALK_MS / 1000, note: "Tell them to move the pointer (or drag a finger) to guide the lantern and find the sparks in the dark." };
       },
     },
+    nova_play: {
+      description: "Play with the pet or tell it something: input 'pat' (pat / pet / cuddle it), 'dance' (it dances for a bit), 'hi' (it says hello), 'sleep' (it naps a moment), 'close' (close its card), 'open' (open its card).",
+      run: ({ input }) => {
+        if (!pet) return { error: "The pet is still waking up." };
+        const t = String(input ?? "").toLowerCase();
+        setHidden(false);
+        store.set(HIDE_KEY, null);
+        if (/close|shut|mudu/.test(t)) {
+          setOpen(false);
+          return { card: "closed" };
+        }
+        if (/open|card|show/.test(t)) {
+          setOpen(true);
+          return { card: "open" };
+        }
+        hop();
+        if (/danc|aadu|party|groove/.test(t)) {
+          setParty(true);
+          setTimeout(() => setParty(false), 8000);
+          speak("Let's goooo! 💃🎶", 3000);
+          return { dancing: true };
+        }
+        if (/hi|hello|vanakkam|hey/.test(t)) {
+          speak(`Vanakkam! 👋 Naan ${pet.name}!`, 3000);
+          return { said: "hello" };
+        }
+        if (/sleep|nap|thoongu|rest/.test(t)) {
+          speak("Konjam thoonguren… 😴", 3000);
+          return { napping: true };
+        }
+        speak("Hehe 🥰 innum pannu!", 3000);
+        return { reaction: "loved it" };
+      },
+    },
     nova_hide: {
       description: "Put Nova away (it shrinks to a small glowing dot) or bring it back. input: 'hide' or 'show'.",
       run: ({ input }) => {
@@ -541,9 +597,10 @@ export function Nova() {
   };
 
   // Bubbles and the card open toward the roomy side of the screen.
-  const below = pos.y < 200;
-  const onLeft = pos.x < 300;
-  const place = `${below ? "top-full mt-2" : "bottom-full mb-2"} ${onLeft ? "left-0" : "right-0"}`;
+  // Above or below, whichever half of the screen has room; sideways, centred on the pet but kept on screen.
+  const below = pos.y + SIZE / 2 < window.innerHeight / 2;
+  const place = below ? "top-full mt-2" : "bottom-full mb-2";
+  const shift = (w: number) => ({ left: Math.min(window.innerWidth - w - 8, Math.max(8, pos.x + SIZE / 2 - w / 2)) - pos.x });
   const peeking = seek?.phase === "hidden" ? seek.spot?.peek : undefined;
   const counting = seek?.phase === "counting";
   const bubble = say ?? (eating !== null || evolving || (!open && !seek && (mood === "hungry" || mood === "missed")) ? line : null);
@@ -610,6 +667,7 @@ export function Nova() {
           line={line}
           mood={mood}
           place={place}
+          at={shift(288)}
           roam={roam}
           onRoam={() => {
             const next = !roam;
@@ -627,7 +685,11 @@ export function Nova() {
           }}
         />
       )}
-      {bubble && !peeking && <div className={`pet-pop pointer-events-none absolute ${place} w-max max-w-56 rounded-xl border border-line bg-[#0b1016]/95 px-2.5 py-1.5 text-xs text-fg shadow-lg`}>{bubble}</div>}
+      {bubble && !peeking && (
+        <div className={`pointer-events-none absolute ${place} flex w-56 justify-center`} style={shift(224)}>
+          <div className="pet-pop w-max max-w-56 rounded-xl border border-line bg-[#0b1016]/95 px-2.5 py-1.5 text-xs text-fg shadow-lg">{bubble}</div>
+        </div>
+      )}
       <div
         ref={self}
         role="button"
@@ -655,10 +717,10 @@ export function Nova() {
   );
 }
 
-function PetCard({ pet, line, mood, place, roam, onRoam, onSeek, onWalk, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; onClose: () => void; onHide: () => void }) {
+function PetCard({ pet, line, mood, place, at, roam, onRoam, onSeek, onWalk, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: { left: number }; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; onClose: () => void; onHide: () => void }) {
   const fedPct = pet.fed.due ? Math.round((pet.fed.done / pet.fed.due) * 100) : 0;
   return (
-    <div className={`pet-pop absolute ${place} w-72 rounded-2xl border border-line bg-[#0b1016]/95 p-4 text-sm text-fg shadow-2xl backdrop-blur-md`}>
+    <div style={at} className={`pet-pop absolute ${place} max-h-[min(70vh,30rem)] w-72 overflow-y-auto rounded-2xl border border-line bg-[#0b1016]/95 p-4 text-sm text-fg shadow-2xl backdrop-blur-md`}>
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: GLOW[mood] }}>
