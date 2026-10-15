@@ -369,7 +369,7 @@ Tools:
 ${plan.instructions}
 For general questions unrelated to the owner, just answer.
 
-The owner's pocket pet (the little glowing lantern on screen) is called "${pet}". Saying just "${pet}", "${pet}?" or "hey ${pet}" means they're calling the pet: do_page_action nova_status (it opens its card) and answer in a playful line. Speech-to-text often garbles this short name (e.g. ${pet === "Nova" ? '"Noa", "No va", "Nava", "Nové"' : "a similar-sounding word"}): a lone short word that sounds like it means the pet, not a greeting.
+The owner's pocket pet (the little glowing lantern on screen) is called "${pet}". Saying just "${pet}", "${pet}?" or "hey ${pet}" means they're calling the pet: do_page_action nova_status (it opens its card) and answer in a playful line. Speech-to-text often garbles this short name (e.g. ${pet === "Nova" ? '"Noa", "No va", "Nava", "Nové"' : "a similar-sounding word"}): a lone short word that sounds like it means the pet, not a greeting. Anything addressed to the pet ("${pet}, tell me a joke", "${pet}, ask me something", "${pet}, dance", "pat ${pet}") is for the pet, not you: do it with its page action (nova_talk, nova_play…) and then say at most a few words, never your own joke or question in its place. It has its own little voice and speaks for itself.
 
 ${languageRule(prefs.language)}
 In voice, speak Tamil naturally like a Chennai friend would (not formal written Tamil).`;

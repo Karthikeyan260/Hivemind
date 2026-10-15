@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useVoiceActions } from "@/components/voice/provider";
-import { MUSIC_STATE_EVENT } from "@/lib/client-api";
+import { useVoice, useVoiceActions } from "@/components/voice/provider";
+import { type Chatter, isJealous, JEALOUS, MAKE_UP, pickChatter, THUNDER_JUMP } from "@/lib/pet-talk";
+import { type Sky, SKY_EVENT, THUNDER_EVENT } from "@/lib/sky";
+import { petSay, petVoiceOn, setPetVoice } from "./talk";
+import { ASKED_EVENT, MUSIC_STATE_EVENT } from "@/lib/client-api";
 import type { Pet } from "@/lib/pet";
 import { ACCESSORIES, type AccessoryId, accessoryFor, type Festival, festivalById, festivalOn } from "@/lib/pet-looks";
 import { judgeGuess } from "@/lib/pet-seek";
@@ -66,6 +69,21 @@ const hourNow = () => new Date().getHours();
 /** Today's local date ("2026-11-07"). */
 const dayNow = () => new Date().toLocaleDateString("en-CA");
 const FEST_KEY = "hm-pet-festival";
+const SAID_KEY = "hm-pet-said";
+/** What the pet already said today (so it doesn't repeat itself). */
+function saidToday(): string[] {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAID_KEY) ?? "{}") as { day?: string; ids?: string[] };
+    return s.day === dayNow() ? (s.ids ?? []) : [];
+  } catch {
+    return [];
+  }
+}
+function rememberSaid(id: string) {
+  try {
+    localStorage.setItem(SAID_KEY, JSON.stringify({ day: dayNow(), ids: [...saidToday(), id].slice(-20) }));
+  } catch {}
+}
 /** What a spoken festival name means ("show your Diwali look"). */
 const FEST_WORDS: [RegExp, Festival["id"]][] = [
   [/deepavali|diwali|deewali/i, "deepavali"],
@@ -183,6 +201,24 @@ export function Nova() {
   const [walk, setWalk] = useState<Walk | null>(null);
   const [clock, setClock] = useState(0);
   const [look, setLookAt] = useState({ x: 0, y: 0 });
+  // The living sky outside (umbrella in the rain, shades in the sun), and a jump at thunder.
+  const [sky, setSky] = useState<Sky>("calm");
+  const [startled, setStartled] = useState(false);
+  // A question it asked, waiting for a tap on one of its replies.
+  const [ask, setAsk] = useState<Chatter | null>(null);
+  // Jealous for a moment (it pouts until the owner gives it some attention).
+  const [pout, setPout] = useState(false);
+  const [voiceOn, setVoiceOn] = useState(true);
+  const voice = useVoice();
+  const liveOn = useRef(false);
+  useEffect(() => {
+    liveOn.current = voice.on;
+  }, [voice.on]);
+  // Jealousy bookkeeping: HIVEMIND questions since the owner last paid the pet any attention.
+  const asks = useRef(0);
+  const lastTouch = useRef(0);
+  const lastJealous = useRef(0);
+  const poutRef = useRef(false);
   const self = useRef<HTMLDivElement>(null);
   const lastFed = useRef<number | null>(null);
   const drag = useRef<{ x: number; y: number; from: Pos; moved: boolean } | null>(null);
@@ -193,11 +229,27 @@ export function Nova() {
     posRef.current = pos;
   }, [pos]);
 
-  const speak = useCallback((text: string, ms = 3500) => {
+  const speak = useCallback((text: string, ms = 3500, talk = true, asked = false) => {
     clearTimeout(sayTimer.current);
     setSay(text);
     sayTimer.current = setTimeout(() => setSay(null), ms);
+    // Out loud too, in its own little voice. In a live conversation it stays quiet unless the owner
+    // asked it directly ("Nova, tell me a joke"); then it answers just after HIVEMIND's short "over to Nova".
+    if (!talk) return;
+    if (!liveOn.current) petSay(text);
+    else if (asked) setTimeout(() => petSay(text), 2200);
   }, []);
+  /** Says a line asked for by voice, even in a live conversation. */
+  const answer = useCallback((text: string, ms = 6500) => speak(text, ms, true, true), [speak]);
+  /** The owner paid it attention: no longer ignored (and a pout is forgiven). */
+  const touched = useCallback(() => {
+    lastTouch.current = Date.now();
+    asks.current = 0;
+    if (!poutRef.current) return;
+    poutRef.current = false;
+    setPout(false);
+    setTimeout(() => speak(MAKE_UP[Math.floor(Math.random() * MAKE_UP.length)], 3500), 300);
+  }, [speak]);
   const hop = useCallback(() => {
     setPoked(true);
     setTimeout(() => setPoked(false), 700);
@@ -271,8 +323,80 @@ export function Nova() {
   useEffect(() => {
     const on = (e: Event) => setMusic(!!(e as CustomEvent<{ playing: boolean }>).detail?.playing);
     window.addEventListener(MUSIC_STATE_EVENT, on);
-    return () => window.removeEventListener(MUSIC_STATE_EVENT, on);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the saved voice choice, read once
+    setVoiceOn(petVoiceOn());
+    // The living sky (components/fx/living-sky.tsx) says what the weather is doing.
+    setSky(window.__hmSky ?? "calm");
+    const onSky = (e: Event) => setSky((e as CustomEvent<{ sky: Sky }>).detail?.sky ?? "calm");
+    window.addEventListener(SKY_EVENT, onSky);
+    return () => {
+      window.removeEventListener(MUSIC_STATE_EVENT, on);
+      window.removeEventListener(SKY_EVENT, onSky);
+    };
   }, []);
+
+  // Thunder: it jumps.
+  useEffect(() => {
+    const boom = () => {
+      setStartled(true);
+      setTimeout(() => setStartled(false), 1400);
+      speak(THUNDER_JUMP[Math.floor(Math.random() * THUNDER_JUMP.length)], 2200);
+    };
+    window.addEventListener(THUNDER_EVENT, boom);
+    return () => window.removeEventListener(THUNDER_EVENT, boom);
+  }, [speak]);
+
+  // Every question to HIVEMIND (spoken or typed) while the pet is ignored counts toward jealousy.
+  const { subscribe } = voice;
+  useEffect(() => {
+    const asked = () => void asks.current++;
+    window.addEventListener(ASKED_EVENT, asked);
+    const off = subscribe({ onTurnEnd: (interrupted) => !interrupted && asked() });
+    return () => {
+      window.removeEventListener(ASKED_EVENT, asked);
+      off();
+    };
+  }, [subscribe]);
+
+  // On its own now and then (every 7-13 min while the app is open): a question, a joke, a weather
+  // line, or, if the owner keeps talking only to HIVEMIND, a jealous pout.
+  const quiet = !pet || open || !!seek || !!walk || hidden || !!ask || hour < 5;
+  useEffect(() => {
+    if (quiet) return;
+    const first = lastTouch.current === 0 && asks.current === 0;
+    const t = setTimeout(
+      () => {
+        if (document.visibilityState !== "visible" || liveOn.current) return;
+        const now = Date.now();
+        if (isJealous({ asks: asks.current, sinceTouchMs: now - (lastTouch.current || now - 3_600_000), sinceJealousMs: now - lastJealous.current })) {
+          lastJealous.current = now;
+          asks.current = 0;
+          poutRef.current = true;
+          setPout(true);
+          speak(JEALOUS[Math.floor(Math.random() * JEALOUS.length)].say, 6000);
+          return;
+        }
+        const said = saidToday();
+        const c = pickChatter({ hour: new Date().getHours(), sky: window.__hmSky ?? "calm", said });
+        rememberSaid(c.id);
+        hop();
+        if (c.replies?.length) {
+          setAsk(c);
+          if (!liveOn.current) petSay(c.say);
+        } else speak(c.say, 6500);
+      },
+      // The first one comes a couple of minutes after opening the app; then every 7-13 minutes.
+      first ? between(100_000, 180_000) : between(420_000, 780_000),
+    );
+    return () => clearTimeout(t);
+  }, [quiet, speak, hop, ask, say]);
+
+  // An unanswered question goes away after a while.
+  useEffect(() => {
+    if (!ask) return;
+    const t = setTimeout(() => setAsk(null), 30_000);
+    return () => clearTimeout(t);
+  }, [ask]);
 
   // Its eyes follow the pointer.
   useEffect(() => {
@@ -449,7 +573,7 @@ export function Nova() {
     [hop, speak, flyTo],
   );
 
-  const mood: Look = music || party ? "dancing" : sleepy ? "sleepy" : (pet?.mood ?? "happy");
+  const mood: Look = music || party ? "dancing" : sleepy ? "sleepy" : pout ? "sulking" : (pet?.mood ?? "happy");
   const festival = preview ?? (today ? festivalOn(today) : null);
   const line = evolving
     ? `Naan ippo ${pet?.stageName}! ✨`
@@ -480,10 +604,12 @@ export function Nova() {
     return { ok: true };
   }, []);
 
+  // Any voice command to the pet counts as paying it attention (touched() in each).
   useVoiceActions({
     nova_status: {
       description: "The owner's pocket pet (a little lantern that lives on the screen; default name Nova, they may have renamed it): how it is, its stage, how fed it is today and how close it is to evolving. Also opens its card.",
       run: () => {
+        touched();
         if (!pet) return { error: "Nova is still waking up." };
         setHidden(false);
         store.set(HIDE_KEY, null);
@@ -494,6 +620,7 @@ export function Nova() {
     nova_hide_and_seek: {
       description: "Start a game of hide and seek with Nova: it hides somewhere on the screen, peeking out from behind a card, button or heading. The owner then guesses where (use nova_guess).",
       run: () => {
+        touched();
         if (!pet) return { error: "Nova is still waking up." };
         startSeek();
         return { started: true, note: "Tell the owner to close their eyes and count; Nova is hiding. Then they guess where it is (near a card or heading, or 'top left', 'bottom right'…)." };
@@ -502,6 +629,7 @@ export function Nova() {
     nova_guess: {
       description: "A guess in hide and seek: where the owner thinks Nova is hiding, in their words ('near the weather card', 'behind routines', 'top left', 'bottom'). input: the guess, or 'give up'.",
       run: ({ input }) => {
+        touched();
         const said = String(input ?? "");
         if (!seek) return { error: "No game on. Start one with nova_hide_and_seek." };
         if (seek.phase !== "hidden" || !seek.spot) return { note: "Nova is still hiding; wait a second, then guess." };
@@ -526,6 +654,7 @@ export function Nova() {
     nova_move: {
       description: "Where Nova goes: input 'stay' (stop wandering, stay where it is), 'roam' (wander around the screen again), or 'come' (fly to the middle of the screen).",
       run: ({ input }) => {
+        touched();
         const t = String(input ?? "").toLowerCase();
         // "Stay here" / "wander around" first: "here" alone must not mean "come".
         const stay = /stay|stop|still|irundhu|anga/.test(t) && !/roam|wander|move around|suthu/.test(t);
@@ -547,6 +676,7 @@ export function Nova() {
     nova_rename: {
       description: "Rename the owner's pet (default name Nova): 'rename my pet to Pixel', 'call it Sparky'. input: just the new name.",
       run: async ({ input }) => {
+        touched();
         const r = await fetch("/api/pet", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: String(input ?? "") }) }).catch(() => null);
         const data = r ? await r.json().catch(() => ({})) : {};
         if (!r?.ok) return { error: data.error ?? "Couldn't rename it." };
@@ -559,6 +689,7 @@ export function Nova() {
     nova_lantern_walk: {
       description: "Lantern walk with the pet: the screen goes dark, the pet follows the owner's pointer / finger like a lantern and they hunt for hidden sparks in its light (all found = growth points). input: 'start' ('lights off', 'lantern walk') or 'stop' ('lights on').",
       run: ({ input }) => {
+        touched();
         if (/stop|end|quit|lights on/i.test(String(input ?? ""))) {
           if (walk) void endWalk(false, walk.sparks.filter((s) => s.got).length, walk.sparks.length);
           return { stopped: true };
@@ -571,6 +702,7 @@ export function Nova() {
     nova_play: {
       description: "Play with the pet or tell it something: input 'pat' (pat / pet / cuddle it), 'dance' (it dances for a bit), 'hi' (it says hello), 'sleep' (it naps a moment), 'close' (close its card), 'open' (open its card).",
       run: ({ input }) => {
+        touched();
         if (!pet) return { error: "The pet is still waking up." };
         const t = String(input ?? "").toLowerCase();
         setHidden(false);
@@ -587,24 +719,25 @@ export function Nova() {
         if (/danc|aadu|party|groove/.test(t)) {
           setParty(true);
           setTimeout(() => setParty(false), 8000);
-          speak("Let's goooo! 💃🎶", 3000);
+          answer("Let's goooo! 💃🎶", 3000);
           return { dancing: true };
         }
         if (/hi|hello|vanakkam|hey/.test(t)) {
-          speak(`Vanakkam! 👋 Naan ${pet.name}!`, 3000);
+          answer(`Vanakkam! 👋 Naan ${pet.name}!`, 3000);
           return { said: "hello" };
         }
         if (/sleep|nap|thoongu|rest/.test(t)) {
-          speak("Konjam thoonguren… 😴", 3000);
+          answer("Konjam thoonguren… 😴", 3000);
           return { napping: true };
         }
-        speak("Hehe 🥰 innum pannu!", 3000);
+        answer("Hehe 🥰 innum pannu!", 3000);
         return { reaction: "loved it" };
       },
     },
     nova_wear: {
       description: "Dress the pet: input an accessory it has unlocked ('bow', 'malli garland', 'shades', or 'none' to take it off), or a festival to preview that look for a while ('Diwali', 'Karthigai Deepam', 'Pongal', 'Tamil New Year', 'Christmas', 'New Year', 'Independence Day'). Festival looks also appear on their own on those days.",
       run: async ({ input }) => {
+        touched();
         if (!pet) return { error: "The pet is still waking up." };
         const said = String(input ?? "");
         const fest = FEST_WORDS.find(([re]) => re.test(said));
@@ -628,6 +761,7 @@ export function Nova() {
     nova_hide: {
       description: "Put Nova away (it shrinks to a small glowing dot) or bring it back. input: 'hide' or 'show'.",
       run: ({ input }) => {
+        touched();
         const hide = !/show|back|bring/i.test(String(input ?? ""));
         setHidden(hide);
         store.set(HIDE_KEY, hide ? "1" : null);
@@ -638,6 +772,41 @@ export function Nova() {
         return { hidden: hide };
       },
     },
+    nova_talk: {
+      description: "The pet's own little voice and chatter: input 'joke' (tell one now), 'talk' / 'ask me something' (a question now), 'quiet' / 'mute' (stop speaking out loud, bubbles stay), 'voice on' (speak again).",
+      run: ({ input }) => {
+        touched();
+        const t = String(input ?? "").toLowerCase();
+        if (/quiet|mute|silent|stop talking|shut/.test(t)) {
+          setPetVoice(false);
+          setVoiceOn(false);
+          speak("Sari, amaidhiya irukken 🤐", 3000, false);
+          return { voice: "off" };
+        }
+        if (/voice on|speak|unmute|talk again|pesu/.test(t) && !/joke|ask|question/.test(t)) {
+          setPetVoice(true);
+          setVoiceOn(true);
+          answer("Yay! Ippo pesalaam 🥳", 3000);
+          return { voice: "on" };
+        }
+        const said = saidToday();
+        const c = /joke|funny|sirippu/.test(t)
+          ? (pickChatter({ hour: 11, sky: "calm", said: [...said, "mood", "song", "water", "walk", "game", "work"] }) ?? null)
+          : pickChatter({ hour: new Date().getHours(), sky, said });
+        rememberSaid(c.id);
+        hop();
+        if (c.replies?.length) {
+          setAsk(c);
+          if (liveOn.current) setTimeout(() => petSay(c.say), 2200);
+          else petSay(c.say);
+        } else answer(c.say);
+        return {
+          said: c.say,
+          ...(c.replies ? { replies: c.replies.map((r) => r.label) } : {}),
+          note: `${pet?.name ?? "Nova"} says this out loud in its own voice. Reply with at most three words (like "Over to ${pet?.name ?? "Nova"}!"); don't repeat it, tell your own joke or answer for it.`,
+        };
+      },
+    },
   });
 
   if (!pos || !pet) return null;
@@ -645,6 +814,7 @@ export function Nova() {
   const onDown = (e: React.PointerEvent) => {
     // During a lantern walk the walk itself moves it (a touch on the pet must not drag it or open its card).
     if (walk) return;
+    touched();
     drag.current = { x: e.clientX, y: e.clientY, from: pos, moved: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
@@ -771,6 +941,13 @@ export function Nova() {
           }}
           onSeek={startSeek}
           onWalk={startWalk}
+          voiceOn={voiceOn}
+          onVoice={() => {
+            const next = !voiceOn;
+            setPetVoice(next);
+            setVoiceOn(next);
+            if (next) speak("Yay! Ippo pesalaam 🥳", 3000);
+          }}
           festival={festival}
           onWear={(w) => void wearIt(w)}
           onClose={() => setOpen(false)}
@@ -781,7 +958,34 @@ export function Nova() {
           }}
         />
       )}
-      {bubble && !peeking && (
+      {/* A question it asked: tap an answer (it replies, out loud). */}
+      {ask && !peeking && !open && (
+        <div className={`absolute ${place} z-10 flex w-60 justify-center`} style={shift(240)}>
+          <div className="pet-pop w-full rounded-xl border border-line bg-[#0b1016]/95 p-2.5 text-xs text-fg shadow-lg">
+            <p>{ask.say}</p>
+            <div className="mt-2 flex gap-1.5">
+              {ask.replies?.map((r) => (
+                <button
+                  key={r.label}
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    setAsk(null);
+                    touched();
+                    hop();
+                    answer(r.answer, 5000);
+                    if (/Kannai moodunga/.test(r.answer)) setTimeout(startSeek, 1200);
+                  }}
+                  className="flex-1 rounded-lg border border-line px-2 py-1.5 hover:border-line-strong"
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {bubble && !peeking && !ask && (
         <div className={`pointer-events-none absolute ${place} flex w-56 justify-center`} style={shift(224)}>
           <div className="pet-pop w-max max-w-56 rounded-xl border border-line bg-[#0b1016]/95 px-2.5 py-1.5 text-xs text-fg shadow-lg">{bubble}</div>
         </div>
@@ -806,14 +1010,14 @@ export function Nova() {
         }}
       >
         {eating !== null && <span className="pet-plus pointer-events-none absolute -top-2 left-1/2 text-sm font-bold text-amber-300">+{eating}</span>}
-        <Creature stage={pet.stage} mood={mood} look={facing} eating={eating !== null} evolving={evolving} poked={poked} quiet={!!peeking} festival={festival} wear={pet.wear} />
+        <Creature stage={pet.stage} mood={mood} look={facing} eating={eating !== null} evolving={evolving} poked={poked} quiet={!!peeking} festival={festival} wear={pet.wear} sky={sky} startled={startled} />
       </div>
     </div>
     </>
   );
 }
 
-function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSeek, onWalk, festival, onWear, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: React.CSSProperties; sheet: boolean; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; festival: Festival | null; onWear: (w: AccessoryId | "none") => void; onClose: () => void; onHide: () => void }) {
+function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSeek, onWalk, voiceOn, onVoice, festival, onWear, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: React.CSSProperties; sheet: boolean; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; voiceOn: boolean; onVoice: () => void; festival: Festival | null; onWear: (w: AccessoryId | "none") => void; onClose: () => void; onHide: () => void }) {
   const fedPct = pet.fed.due ? Math.round((pet.fed.done / pet.fed.due) * 100) : 0;
   return (
     <div
@@ -830,6 +1034,9 @@ function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSeek, onWa
         </div>
         {/* Up here, not in the bottom corner: on a phone the voice button floats over that corner. */}
         <div className="flex items-center gap-1">
+          <button type="button" onClick={onVoice} title={voiceOn ? "Its voice is on: tap to keep it quiet" : "Its voice is off: tap to let it talk"} aria-label={voiceOn ? "Mute its voice" : "Turn its voice on"} className="rounded-md px-1.5 py-1 text-sm text-faint hover:text-fg">
+            {voiceOn ? "🔊" : "🔇"}
+          </button>
           <button type="button" onClick={onHide} className="rounded-md px-2 py-1 text-[11px] text-faint hover:text-fg">
             Put away
           </button>
@@ -920,7 +1127,7 @@ type Reaction = keyof typeof REACTION;
 const CLOCKWISE = ["right", "down-right", "down", "down-left", "left", "up-left", "up", "up-right"] as const;
 const cell = (i: number) => ({ backgroundPosition: `${(i % 3) * 50}% ${Math.floor(i / 3) * 50}%`, backgroundSize: "300% 300%", backgroundRepeat: "no-repeat" as const });
 
-function Creature({ stage, mood, look, eating, evolving, poked, quiet = false, festival = null, wear = null }: { stage: number; mood: Look; look: { x: number; y: number }; eating: boolean; evolving: boolean; poked: boolean; quiet?: boolean; festival?: Festival | null; wear?: AccessoryId | null }) {
+function Creature({ stage, mood, look, eating, evolving, poked, quiet = false, festival = null, wear = null, sky = "calm", startled = false }: { stage: number; mood: Look; look: { x: number; y: number }; eating: boolean; evolving: boolean; poked: boolean; quiet?: boolean; festival?: Festival | null; wear?: AccessoryId | null; sky?: Sky; startled?: boolean }) {
   // A festival tints its glow when it's simply happy.
   const glow = festival && mood === "happy" ? festival.glow : GLOW[mood];
   // A blink every few seconds, and a beat for dancing (star eyes / big grin).
@@ -933,6 +1140,8 @@ function Creature({ stage, mood, look, eating, evolving, poked, quiet = false, f
 
   const reaction: Reaction | null = evolving
     ? "sparkle"
+    : startled
+      ? "surprised"
     : eating
       ? "heart"
       : poked
@@ -956,7 +1165,7 @@ function Creature({ stage, mood, look, eating, evolving, poked, quiet = false, f
                     : null;
   const mag = Math.hypot(look.x, look.y);
   const dir = mag < 0.6 ? "center" : CLOCKWISE[Math.round(((Math.atan2(look.y, look.x) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 4)) % 8];
-  const body = mood === "dancing" ? "pet-dance" : mood === "sleepy" ? "pet-breathe" : mood === "missed" || poked || eating ? "pet-hop" : "pet-float";
+  const body = mood === "dancing" ? "pet-dance" : mood === "sleepy" ? "pet-breathe" : mood === "missed" || poked || eating || startled ? "pet-hop" : "pet-float";
   // Grows a little and glows brighter with each stage; the seed is an unlit lantern.
   const scale = [0.78, 0.9, 1, 1.06][stage] ?? 1;
   const lit = stage === 0 ? "saturate(0.55) brightness(0.85)" : mood === "sulking" ? "grayscale(0.75) brightness(0.9)" : "none";
@@ -992,7 +1201,7 @@ function Creature({ stage, mood, look, eating, evolving, poked, quiet = false, f
         <div className="absolute inset-0" style={{ transform: `scale(${scale})`, transformOrigin: "50% 85%", filter: quiet ? lit : `${lit} drop-shadow(0 0 ${4 + stage * 3}px ${glow}aa)`, transition: "filter 0.6s" }}>
           <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.directions})`, ...cell(DIRECTIONS.indexOf(dir)), opacity: reaction ? 0 : 1 }} />
           <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.reactions})`, ...cell(REACTION[reaction ?? "blink"]), opacity: reaction ? 1 : 0 }} />
-          {!quiet && <Looks festival={festival} wear={wear} />}
+          {!quiet && <Looks festival={festival} wear={wear} sky={sky} />}
         </div>
         {/* Crown of sparks (last stage). */}
         {stage >= 3 && <span className="pet-glow absolute left-1/2 top-[-6%] -translate-x-1/2 text-sm leading-none text-amber-300">✦✧✦</span>}

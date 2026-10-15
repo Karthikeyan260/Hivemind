@@ -73,6 +73,8 @@ export const VIDEO_EVENT = "hivemind:video";
 export const MEDIA_START_EVENT = "hivemind:media-start";
 /** The music player started or stopped (Nova dances while it plays). detail: { playing } */
 export const MUSIC_STATE_EVENT = "hivemind:music-state";
+/** The owner asked HIVEMIND something by typing (the pet notices when it's being ignored). */
+export const ASKED_EVENT = "hivemind:asked";
 
 export function useFetch<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);

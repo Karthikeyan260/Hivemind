@@ -1,13 +1,16 @@
 import type { AccessoryId, Festival } from "@/lib/pet-looks";
+import type { Sky } from "@/lib/sky";
 
 /**
  * Outfits drawn over the lantern sprite (same 100x100 box as one sprite cell: the handle ring sits
  * around y 5-22, the eyes near y 48, the base around y 75). Drawn, not emoji, so they match the art.
- * A festival hat replaces a head accessory; everything else layers.
+ * A festival hat replaces a head accessory; the weather outside wins over both (an umbrella in the
+ * rain, shades on a sunny day); everything else layers.
  */
-export function Looks({ festival, wear }: { festival: Festival | null; wear: AccessoryId | null }) {
+export function Looks({ festival, wear, sky = "calm" }: { festival: Festival | null; wear: AccessoryId | null; sky?: Sky }) {
   const id = festival?.id;
-  const hat = id === "christmas" ? <SantaHat /> : id === "newyear" ? <PartyHat /> : null;
+  const wet = sky === "rain" || sky === "thunder";
+  const hat = wet ? <Umbrella /> : id === "christmas" ? <SantaHat /> : id === "newyear" ? <PartyHat /> : null;
   return (
     <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden>
       {/* Behind-and-around pieces first. */}
@@ -32,7 +35,7 @@ export function Looks({ festival, wear }: { festival: Festival | null; wear: Acc
 
       {/* On the lantern. */}
       {wear === "garland" && <Garland />}
-      {wear === "shades" && <Shades />}
+      {(wear === "shades" || sky === "sunny") && <Shades />}
       {hat ?? (wear === "bow" ? <Bow /> : null)}
     </svg>
   );
@@ -189,6 +192,18 @@ function Flag() {
       <rect x="0" y="4" width="16" height="4" fill="#f8f9fa" />
       <rect x="0" y="8" width="16" height="4" fill="#2f9e44" />
       <circle cx="8" cy="6" r="1.4" fill="none" stroke="#1c7ed6" strokeWidth="0.6" />
+    </g>
+  );
+}
+
+function Umbrella() {
+  // A little umbrella held over the lantern, swaying (its stick hooks down beside the handle).
+  return (
+    <g className="pet-umbrella">
+      <path d="M50 2 L50 -4" stroke="#495057" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M20 22 Q22 2 50 0 Q78 2 80 22 Q75 18 70 22 Q65 18 60 22 Q55 18 50 22 Q45 18 40 22 Q35 18 30 22 Q25 18 20 22 Z" fill="#4dabf7" stroke="#1971c2" strokeWidth="0.9" />
+      <path d="M50 0 Q42 10 40 22 M50 0 Q58 10 60 22" stroke="#ffd43b" strokeWidth="2.2" fill="none" opacity="0.9" />
+      <path d="M78 21 L78 46 Q78 51 73 51" stroke="#495057" strokeWidth="1.8" fill="none" strokeLinecap="round" />
     </g>
   );
 }

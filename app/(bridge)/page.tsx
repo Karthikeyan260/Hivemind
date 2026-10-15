@@ -25,7 +25,7 @@ import { VoiceMascot } from "@/components/mascot";
 import { ActionChips } from "@/components/home/action-chips";
 import { HomePanels } from "@/components/home/panels";
 import { cx, RichText } from "@/components/ui";
-import { api, type Brain as BrainT, type HiveEvent, type JobListing, type Source, streamHivemind, useFetch } from "@/lib/client-api";
+import { api, ASKED_EVENT, type Brain as BrainT, type HiveEvent, type JobListing, type Source, streamHivemind, useFetch } from "@/lib/client-api";
 import { isMuted, setMuted, sfx } from "@/lib/sfx";
 import { useVoice, useVoiceActions } from "@/components/voice/provider";
 import type { LiveState } from "@/lib/live";
@@ -277,6 +277,7 @@ function Bridge() {
     async (text: string, opts: { spoken?: boolean } = {}) => {
       const message = text.trim();
       if (!message || state !== "idle") return;
+      window.dispatchEvent(new Event(ASKED_EVENT));
       // In a live conversation, typed text goes into the same real-time session.
       if (voice.on) {
         setInput("");

@@ -17,7 +17,7 @@ export type Weather = {
   place: string;
   region: string;
   local_time: string;
-  current: { temp_c: number; feels_like_c: number; humidity_pct: number; wind_kmh: number; rain_mm: number; condition: string };
+  current: { temp_c: number; feels_like_c: number; humidity_pct: number; wind_kmh: number; rain_mm: number; condition: string; code: number; is_day: boolean };
   days: { date: string; max_c: number; min_c: number; rain_chance_pct: number; condition: string }[];
 };
 
@@ -55,12 +55,12 @@ async function loadWeather(place: string): Promise<Weather> {
   }
 
   type Forecast = {
-    current: { time: string; temperature_2m: number; apparent_temperature: number; relative_humidity_2m: number; weather_code: number; wind_speed_10m: number; precipitation: number };
+    current: { time: string; temperature_2m: number; apparent_temperature: number; relative_humidity_2m: number; weather_code: number; wind_speed_10m: number; precipitation: number; is_day: number };
     daily: { time: string[]; temperature_2m_max: number[]; temperature_2m_min: number[]; precipitation_probability_max: number[]; weather_code: number[] };
   };
   const f = await json<Forecast>(
     `https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}&timezone=auto&forecast_days=4` +
-      "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation" +
+      "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,precipitation,is_day" +
       "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code",
   );
   const c = f.current;
@@ -75,6 +75,8 @@ async function loadWeather(place: string): Promise<Weather> {
       wind_kmh: c.wind_speed_10m,
       rain_mm: c.precipitation,
       condition: condition(c.weather_code),
+      code: c.weather_code,
+      is_day: c.is_day !== 0,
     },
     days: f.daily.time.map((date, i) => ({
       date,
