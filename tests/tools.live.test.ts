@@ -172,6 +172,8 @@ describe.skipIf(!RUN)("every tool, live", () => {
     await run("todays_kural", { topic: "anger" });
     await run("todays_kural", { number: 391 });
     await run("game_record", {});
+    await run("my_pet", {});
+    await run("my_wrapped", {});
     await run("list_apps", {});
     await run("open_app", { which: `${TAG} no such app` }, { expectError: true });
     await run("autopilot_feed", {});

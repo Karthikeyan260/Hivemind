@@ -90,9 +90,17 @@ type RunOpts = {
 };
 
 /** One model turn, streamed. Falls back to the next model only if nothing has been streamed yet. */
+/** A model whose free daily quota is used up: skipped for a while instead of costing a failed call each turn. */
+const quotaOut = new Map<string, number>();
+
 async function step(contents: Content[], system: string, tools: FunctionDeclaration[], onText?: (t: string) => void, stop?: AbortSignal, force?: string) {
   let lastErr: unknown;
-  for (const model of MODELS) {
+  // Each model once; a model that's only busy for a moment ("503 high demand") gets one more try first.
+  const attempts = MODELS.filter((m) => Date.now() >= (quotaOut.get(m) ?? 0)).flatMap((m) => [m, m]);
+  if (!attempts.length) attempts.push(...MODELS);
+  for (let i = 0; i < attempts.length; i++) {
+    const model = attempts[i];
+    const retry = i > 0 && attempts[i - 1] === model;
     if (stop?.aborted) throw new Error("Stopped: out of time");
     let streamed = false;
     const abort = new AbortController();
@@ -133,6 +141,7 @@ async function step(contents: Content[], system: string, tools: FunctionDeclarat
       if (!text.trim() && !calls.length) {
         console.warn(`agent step: ${model} gave an empty reply (${finish || "no reason"})`);
         lastErr = new Error(`empty reply (${finish || "no reason"})`);
+        if (!retry) i++; // an empty reply isn't a busy server: go straight to the next model
         continue;
       }
       return { parts, text, model, calls };
@@ -141,7 +150,15 @@ async function step(contents: Content[], system: string, tools: FunctionDeclarat
       stop?.removeEventListener("abort", cut);
       if (streamed || stop?.aborted) throw err;
       lastErr = err;
-      console.warn(`agent step: ${model} ${abort.signal.aborted ? "stalled" : "failed"}, trying next model`, abort.signal.aborted ? "" : err instanceof Error ? err.message.slice(0, 120) : err);
+      const msg = err instanceof Error ? err.message : String(err);
+      const busy = !abort.signal.aborted && /503|high demand|overloaded|UNAVAILABLE/i.test(msg);
+      if (/429|RESOURCE_EXHAUSTED/.test(msg) && /PerDay|per day/i.test(msg)) quotaOut.set(model, Date.now() + 60 * 60_000);
+      console.warn(`agent step: ${model} ${abort.signal.aborted ? "stalled" : busy && !retry ? "busy, retrying once" : "failed, trying next model"}`, abort.signal.aborted ? "" : msg.slice(0, 120));
+      if (busy && !retry) {
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      if (!retry) i++; // not a busy blip (stall, quota, bad request): don't retry this model
     }
   }
   throw lastErr;
