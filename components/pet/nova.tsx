@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVoice, useVoiceActions } from "@/components/voice/provider";
 import { type Chatter, isJealous, JEALOUS, MAKE_UP, pickChatter, THUNDER_JUMP } from "@/lib/pet-talk";
@@ -65,6 +66,8 @@ const FEST_WORDS: [RegExp, Festival["id"]][] = [
 ];
 
 export function Nova() {
+  // On its garden page it is already there, at home on its island: no second one floating about.
+  const atHome = usePathname() === "/garden";
   const [pet, setPet] = useState<Pet | null>(null);
   const [music, setMusic] = useState(false);
   // Asked to dance (by voice or tap) with no music on: a short dance on its own.
@@ -752,7 +755,7 @@ export function Nova() {
     },
   });
 
-  if (!pos || !pet) return null;
+  if (!pos || !pet || atHome) return null;
 
   const onDown = (e: React.PointerEvent) => {
     // During a lantern walk the walk itself moves it (a touch on the pet must not drag it or open its card).

@@ -30,7 +30,7 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   // The game record ("how many games did I win", "my chess level"): it lives in the app, not in the brain.
   if (/\b(how many games|games? (did|have) i (win|won|lose|lost|play|played)|my (game|chess) (record|level|stats)|chess level|win(s)? (in|at) (chess|ludo|dots|colou?r clash))\b/.test(m)) return "core";
   // The pocket pet (Nova by default, or whatever it was renamed): "how is my pet", "rename my pet to Pixel".
-  if (/\b(my|the) (pocket )?pet\b|\bnova\b|\brename (it|him|her)\b/.test(m)) return "core";
+  if (/\b(my|the) (pocket )?pet\b|\bnova\b|\brename (it|him|her)\b|\b(my|pet'?s?) garden\b/.test(m)) return "core";
   // Morning brief (news on followed topics) and Dream mode.
   if (/\b(morning brief|news brief|my brief|brief me|my topics|in my brief)\b|\bdream(ed|s|ing)?\b|\blearn(ed|t)? (last night|overnight)\b/.test(m)) return "core";
   // Kitchen / hands-free mode is a screen, not a routine.

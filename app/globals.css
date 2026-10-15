@@ -930,3 +930,65 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
 @keyframes pet-kick { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-7px) scale(1.06, 0.95); } 100% { transform: translateY(0) scale(1); } }
 .pet-kick { animation: pet-kick 0.22s ease-out; }
 @media (prefers-reduced-motion: reduce) { html.music-live .beat-edge, .beat-flash { display: none; } }
+
+/* ---------- Nova's garden ---------- */
+@keyframes garden-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes garden-wind { 0%, 100% { transform: skewX(4deg); } 18% { transform: skewX(-9deg); } 34% { transform: skewX(2deg); } 50% { transform: skewX(-4deg); } 72% { transform: skewX(3deg); } }
+@keyframes garden-canopy { 0%, 100% { transform: rotate(-1.5deg) scale(1); } 50% { transform: rotate(2deg) scale(1.03, 0.98); } }
+@keyframes garden-pop { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.18); opacity: 1; } 80% { transform: scale(0.94); } 100% { transform: scale(1); opacity: 1; } }
+@keyframes garden-boing { 0% { transform: scale(1); } 30% { transform: scale(1.35, 0.8); } 55% { transform: scale(0.9, 1.15); } 100% { transform: scale(1); } }
+@keyframes garden-cloud { from { transform: translateX(-25%); } to { transform: translateX(105%); } }
+@keyframes garden-wing { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(0.15); } }
+@keyframes garden-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes garden-sparkle { 0%, 70%, 100% { opacity: 0; transform: scale(0.3); } 80% { opacity: 1; transform: scale(1); } }
+@keyframes garden-flicker { 0%, 100% { opacity: 0.95; } 20% { opacity: 0.75; } 22% { opacity: 1; } 60% { opacity: 0.85; } 62% { opacity: 1; } }
+@keyframes garden-flow { to { stroke-dashoffset: -56; } }
+@keyframes garden-root { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+@keyframes garden-twinkle { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@keyframes garden-shoot { 0%, 88% { transform: translate(-12%, 6%); opacity: 0; } 90% { opacity: 1; } 100% { transform: translate(70%, 34%); opacity: 0; } }
+@keyframes garden-rays { to { transform: rotate(360deg); } }
+@keyframes garden-firefly { 0% { transform: translate(0, 0); opacity: 0.2; } 25% { transform: translate(28px, -18px); opacity: 1; } 50% { transform: translate(-12px, -34px); opacity: 0.3; } 75% { transform: translate(-30px, -8px); opacity: 0.95; } 100% { transform: translate(0, 0); opacity: 0.2; } }
+@keyframes garden-splash { 0% { transform: scale(0.2); opacity: 0.9; } 100% { transform: scale(1.8); opacity: 0; } }
+@keyframes garden-rain { from { transform: translateY(0); } to { transform: translateY(50%); } }
+@keyframes garden-smoke { 0% { transform: translate(0, 0) scale(0.6); opacity: 0; } 20% { opacity: 0.55; } 100% { transform: translate(14px, -34px) scale(1.6); opacity: 0; } }
+@keyframes garden-zzz { 0% { transform: translate(0, 0); opacity: 0; } 25% { opacity: 1; } 100% { transform: translate(16px, -30px); opacity: 0; } }
+@keyframes garden-birds { from { transform: translateX(-10%); } to { transform: translateX(112%); } }
+@keyframes garden-flap { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(-0.5); } }
+@keyframes garden-petal { 0% { transform: translate(0, 0) rotate(0); opacity: 0; } 8% { opacity: 0.9; } 30% { transform: translate(-60px, 190px) rotate(160deg); } 60% { transform: translate(-30px, 400px) rotate(320deg); } 92% { opacity: 0.85; } 100% { transform: translate(-150px, 680px) rotate(560deg); opacity: 0; } }
+@keyframes garden-beam { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes garden-dust { 0% { transform: translate(-50%, 0) scale(0.4); opacity: 0.7; } 100% { transform: translate(-150%, -60%) scale(1.6); opacity: 0; } }
+@keyframes garden-burst { 0% { transform: rotate(var(--a)) translateX(0) scale(1); opacity: 1; } 100% { transform: rotate(var(--a)) translateX(26px) scale(0.3); opacity: 0; } }
+@keyframes garden-walk { 0%, 100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-5px) rotate(-4deg); } 50% { transform: translateY(0) rotate(0); } 75% { transform: translateY(-5px) rotate(4deg); } }
+.garden-bob { animation: garden-bob 6s ease-in-out infinite; will-change: transform; }
+.garden-wind { animation: garden-wind 5s ease-in-out infinite; }
+.garden-canopy { animation: garden-canopy 5s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+.garden-pop { animation: garden-pop 0.7s cubic-bezier(.3,.6,.35,1.2) both; transform-box: fill-box; transform-origin: 50% 100%; }
+.garden-boing { animation: garden-boing 0.6s ease-out; transform-box: fill-box; transform-origin: 50% 100%; }
+.garden-cloud { animation: garden-cloud 70s linear infinite; will-change: transform; }
+.garden-wing-l, .garden-wing-r { animation: garden-wing 0.28s ease-in-out infinite; transform-origin: 0 0; }
+.garden-wing-r { animation-delay: 0.02s; }
+.garden-float { animation: garden-float 3s ease-in-out infinite; }
+.garden-sparkle { animation: garden-sparkle 4s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+.garden-flicker { animation: garden-flicker 3.2s linear infinite; }
+.garden-flow { animation: garden-flow 0.7s linear infinite; }
+.garden-root { animation: garden-root 4s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 0; }
+.garden-twinkle { animation: garden-twinkle 3s ease-in-out infinite; }
+.garden-shoot { animation: garden-shoot 11s ease-in infinite; }
+.garden-rays { animation: garden-rays 90s linear infinite; }
+.garden-firefly { animation: garden-firefly 9s ease-in-out infinite; }
+.garden-splash { animation: garden-splash 1.4s ease-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+.garden-rain { animation: garden-rain 1s linear infinite; will-change: transform; }
+.garden-smoke { animation: garden-smoke 3.9s ease-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+.garden-zzz { animation: garden-zzz 3.3s ease-out infinite; }
+.garden-birds { animation: garden-birds 46s linear infinite; animation-delay: -18s; will-change: transform; }
+.garden-flap { animation: garden-flap 0.5s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+.garden-petal { animation: garden-petal 14s linear infinite; will-change: transform; }
+.garden-beam { animation: garden-beam 9s ease-in-out infinite; }
+.garden-dust { animation: garden-dust 0.6s ease-out infinite; }
+.garden-burst { animation: garden-burst 0.7s ease-out forwards; margin: -3px 0 0 -3px; }
+.garden-walk { animation: garden-walk 0.55s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .garden-bob, .garden-wind, .garden-canopy, .garden-cloud, .garden-wing-l, .garden-wing-r, .garden-float, .garden-sparkle, .garden-flicker, .garden-flow, .garden-root, .garden-twinkle, .garden-shoot, .garden-rays, .garden-firefly, .garden-splash, .garden-rain, .garden-walk, .garden-smoke, .garden-zzz, .garden-birds, .garden-flap, .garden-petal, .garden-beam, .garden-dust { animation: none; }
+  .garden-petal, .garden-burst { display: none; }
+  .garden-pop { animation-duration: 1ms; }
+}

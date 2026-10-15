@@ -1,0 +1,133 @@
+/**
+ * Nova's garden: what grows on the island (pure, shared by the server and the page) and where each
+ * thing stands. Positions come from each item's own key, so the garden looks the same every visit
+ * and only grows: nothing jumps around when something new is planted.
+ */
+export type GardenItem =
+  | { kind: "flower"; id: string; date: string; label: string; hue: number }
+  | { kind: "tree"; id: string; size: number; label: string }
+  | { kind: "lamp"; id: string; date: string; label: string }
+  | { kind: "gem"; id: string; date: string; label: string; hue: number };
+
+export type Garden = {
+  items: GardenItem[];
+  butterflies: number;
+  counts: { flowers: number; trees: number; lamps: number; gems: number; butterflies: number };
+  /** Name of the pet living there. */
+  pet: string;
+  stage: number;
+};
+
+/** A stable number 0..1 from a string (FNV-1a). */
+export function hash01(s: string, salt = 0) {
+  let h = 2166136261 ^ salt;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 100000) / 100000;
+}
+
+/** A habit's own flower colour, the same every time. */
+export const hueOf = (key: string) => Math.round(hash01(key, 7) * 360);
+
+/** The island's size: it widens as more grows on it (viewBox units, centre x 500). */
+export function islandSize(n: number) {
+  const rx = Math.min(430, 190 + Math.sqrt(n) * 22);
+  // A bigger island floats a little higher, so its rocky underside still fits in the 640-high frame.
+  const cy = 400 - Math.max(0, rx - 250) * 0.5;
+  return { cx: 500, cy, rx, ry: rx * 0.3, depth: Math.min(rx * 0.78, 630 - cy) };
+}
+
+export type Placed = GardenItem & { x: number; y: number };
+
+/** The pet's cottage (its door), at the back of the island's middle. */
+export function homeSpot(n: number) {
+  const { cx, cy, ry } = islandSize(n);
+  return { x: cx, y: Math.round(cy - ry * 0.42) };
+}
+
+/** The stepping-stone path from the cottage door down to the island's front edge: x at a given y. */
+export function pathX(n: number, y: number) {
+  const { cx } = islandSize(n);
+  const home = homeSpot(n);
+  return cx + Math.sin((y - home.y) / 38) * 14;
+}
+
+/** Spots kept free: the cottage, its path, and the pet's yard in the middle. */
+function blocked(n: number, x: number, y: number) {
+  const { cx, cy, rx, ry } = islandSize(n);
+  const home = homeSpot(n);
+  if (((x - home.x) / 78) ** 2 + ((y - home.y + 8) / 30) ** 2 < 1) return true;
+  if (y > home.y && Math.abs(x - pathX(n, y)) < 17) return true;
+  return Math.hypot((x - cx) / rx, (y - cy) / ry) < 0.22;
+}
+
+/**
+ * Where each item stands on the island's top. Each habit's flowers grow together in their own bed
+ * around the island; lantern-walk lamps line the path to the pet's cottage; trees stand towards the
+ * back; gems lie about wherever there's room. The cottage, path and the middle stay free.
+ */
+export function layout(items: GardenItem[]): Placed[] {
+  const n = items.length;
+  const { cx, cy, rx, ry } = islandSize(n);
+  const home = homeSpot(n);
+  const placed: Placed[] = [];
+  const inside = (x: number, y: number) => Math.hypot((x - cx) / rx, (y - cy) / ry) <= 0.94;
+  // Flower beds: one per habit, spread evenly round the island (skipping the cottage at the back).
+  const habit = (it: GardenItem) => it.id.split(":")[1] ?? "";
+  const habits = [...new Set(items.filter((i) => i.kind === "flower").map(habit))].sort();
+  const perHabit = new Map(habits.map((h) => [h, items.filter((i) => i.kind === "flower" && habit(i) === h).length]));
+  const bed = new Map(
+    habits.map((h, i) => {
+      const a = -Math.PI / 2 + 0.75 + ((i + 0.5) / habits.length) * (Math.PI * 2 - 1.5);
+      const r = habits.length === 1 ? 0.55 : 0.6;
+      return [h, { x: cx + Math.cos(a) * r * rx, y: cy + Math.sin(a) * r * ry, r: 34 + Math.sqrt(perHabit.get(h) ?? 1) * 10 }];
+    }),
+  );
+  // Trees first (they need the most room), then lamps, gems, flowers.
+  const order = { tree: 0, lamp: 1, gem: 2, flower: 3 } as const;
+  const sorted = [...items].sort((a, b) => order[a.kind] - order[b.kind] || a.id.localeCompare(b.id));
+  let lampNo = 0;
+  const pathLen = cy + ry * 0.9 - (home.y + 26);
+  for (const it of sorted) {
+    // The first lamps light the cottage path, in pairs down to the edge.
+    if (it.kind === "lamp" && lampNo < 10) {
+      const i = lampNo++;
+      const y = Math.round(home.y + 26 + ((Math.floor(i / 2) + 0.5) / 5) * pathLen);
+      placed.push({ ...it, x: Math.round(pathX(n, y) + (i % 2 ? 26 : -26)), y });
+      continue;
+    }
+    const gap = it.kind === "tree" ? 70 : it.kind === "lamp" ? 40 : it.kind === "gem" ? 26 : 13;
+    let best: { x: number; y: number; d: number } | null = null;
+    const b = it.kind === "flower" ? bed.get(habit(it)) : undefined;
+    // 16 tries where it belongs; if those all miss (a crowded bed), anywhere free on the island.
+    for (let t = 0; t < 60 && !(best && t >= 16); t++) {
+      let x: number;
+      let y: number;
+      if (b && t < 16) {
+        // Somewhere in its habit's bed.
+        const a = hash01(it.id, t * 31 + 1) * Math.PI * 2;
+        const r = Math.sqrt(hash01(it.id, t * 31 + 2)) * b.r;
+        x = b.x + Math.cos(a) * r;
+        y = b.y + Math.sin(a) * r * 0.42;
+      } else {
+        // Angle and distance from the item's key; trees prefer the back half (smaller y).
+        const a = hash01(it.id, t * 31 + 1) * Math.PI * 2;
+        const r = 0.3 + 0.62 * Math.sqrt(hash01(it.id, t * 31 + 2));
+        x = cx + Math.cos(a) * r * rx * 0.94;
+        y = cy + Math.sin(a) * r * ry * 0.86;
+        if (it.kind === "tree") y = cy - Math.abs(y - cy);
+      }
+      if (!inside(x, y) || blocked(n, x, y)) continue;
+      x = Math.round(x);
+      y = Math.round(y);
+      const d = Math.min(Infinity, ...placed.map((p) => Math.hypot(p.x - x, (p.y - y) * 2.2)));
+      if (!best || d > best.d) best = { x, y, d };
+      if (d >= gap) break;
+    }
+    if (best) placed.push({ ...it, x: best.x, y: best.y });
+  }
+  // Drawn back to front.
+  return placed.sort((a, b) => a.y - b.y);
+}

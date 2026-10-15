@@ -75,15 +75,19 @@ export const routines: Record<string, Tool> = {
   my_pet: {
     name: "my_pet",
     description:
-      "Nova, the owner's pocket pet: a little glowing lantern that lives on the HIVEMIND screen and grows as they finish habits, do the night check-in, win games, play music and save memories ('how is Nova', 'how's my pet', 'is my pet hungry', 'when will it evolve'). Returns its stage, mood, what it says, how fed it is today and the growth left to evolve. Answer playfully, in its voice where it fits. Its default name is Nova, but the owner may have renamed it: any pet name they use means it. To rename it ('rename my pet to Pixel', 'call Nova Sparky from now on'), pass new_name.",
+      "Nova, the owner's pocket pet: a little glowing lantern that lives on the HIVEMIND screen and grows as they finish habits, do the night check-in, win games, play music and save memories ('how is Nova', 'how's my pet', 'is my pet hungry', 'when will it evolve'). Returns its stage, mood, what it says, how fed it is today and the growth left to evolve. Answer playfully, in its voice where it fits. Its default name is Nova, but the owner may have renamed it: any pet name they use means it. To rename it ('rename my pet to Pixel', 'call Nova Sparky from now on'), pass new_name. Also its garden ('show Nova's garden', 'what grew in my garden'): the island where flowers (habit days), trees (night check-ins), lamps (lantern walks), gems (game wins) and butterflies (songs) grow; the counts come back as garden and a link opens it.",
     parameters: obj({ new_name: { type: "string", description: "Only to rename the pet: the new name, as the owner said it." } }),
     async run(args, ctx) {
       const { getPet, renamePet, STAGES } = await import("@/lib/pet");
       const renamed = typeof args.new_name === "string" && args.new_name.trim() ? await renamePet(ctx.supabase, args.new_name).catch((e: Error) => ({ error: e.message })) : null;
       if (renamed && typeof renamed === "object") return renamed;
       const p = await getPet(ctx.supabase);
+      const { getGarden } = await import("@/lib/garden");
+      const garden = await getGarden(ctx.supabase).then((g) => g.counts).catch(() => null);
+      ctx.actions.push({ label: `🌱 ${p.name}'s garden`, href: "/garden" });
       return {
         name: p.name,
+        ...(garden ? { garden } : {}),
         stage: `${p.stageName} (${p.stage + 1} of ${STAGES.length})`,
         mood: p.mood,
         says: p.line,

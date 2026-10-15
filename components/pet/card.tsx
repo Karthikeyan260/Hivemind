@@ -83,6 +83,9 @@ export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSee
         <button type="button" onClick={onWalk} className="col-span-2 rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
           🏮 Lantern walk: find sparks in the dark
         </button>
+        <a href="/garden" className="col-span-2 rounded-lg border border-line px-2 py-1.5 text-center text-xs hover:border-line-strong">
+          🌱 {pet.name}&apos;s garden: everything you grew
+        </a>
       </div>
       <p className="mt-3 text-[11px] text-faint">{pet.xp} growth points</p>
     </div>
