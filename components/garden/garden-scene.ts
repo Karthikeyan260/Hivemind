@@ -125,6 +125,9 @@ const LOOK: Record<Phase, { sun: [number, number, number]; sunCol: string; sunI:
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
+/** Geometry with one vertex per triangle corner (some shapes already are; converting again only warns). */
+const unindexed = (g: THREE.BufferGeometry) => (g.index ? g.toNonIndexed() : g);
+
 /** A soft round puff, drawn once into a canvas (clouds, mist, smoke, glows). */
 function puffTexture(kind: "cloud" | "glow") {
   const c = document.createElement("canvas");
@@ -180,6 +183,77 @@ function leafTexture() {
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/**
+ * A kolam drawn into a canvas: a dot grid looped with white rice-flour lines (Pongal), or a round
+ * rangoli in festival colours (Deepavali).
+ */
+function kolamTexture(kind: "pulli" | "rangoli") {
+  const c = document.createElement("canvas");
+  c.width = c.height = 512;
+  const g = c.getContext("2d")!;
+  g.lineCap = "round";
+  // Swept, washed earth under it (the traditional ground for a kolam).
+  const wash = g.createRadialGradient(256, 256, 120, 256, 256, 256);
+  wash.addColorStop(0, kind === "pulli" ? "rgba(122,78,44,0.95)" : "rgba(96,58,36,0.9)");
+  wash.addColorStop(1, "rgba(122,78,44,0)");
+  g.fillStyle = wash;
+  g.fillRect(0, 0, 512, 512);
+  if (kind === "pulli") {
+    const n = 5;
+    const step = 80;
+    const o = 256 - ((n - 1) * step) / 2;
+    g.strokeStyle = "rgba(255,255,255,0.97)";
+    g.lineWidth = 14;
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++) {
+        const x = o + i * step;
+        const y = o + j * step;
+        // Loops around every dot, petals between neighbours.
+        g.beginPath();
+        g.arc(x, y, 26, 0, Math.PI * 2);
+        g.stroke();
+        if (i < n - 1 && j < n - 1) {
+          g.beginPath();
+          g.ellipse(x + step / 2, y + step / 2, 30, 12, Math.PI / 4, 0, Math.PI * 2);
+          g.stroke();
+          g.beginPath();
+          g.ellipse(x + step / 2, y + step / 2, 30, 12, -Math.PI / 4, 0, Math.PI * 2);
+          g.stroke();
+        }
+      }
+    g.fillStyle = "#fff";
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) g.fillRect(o + i * step - 7, o + j * step - 7, 14, 14);
+    g.strokeStyle = "rgba(255,90,90,0.9)";
+    g.lineWidth = 12;
+    g.strokeRect(20, 20, 472, 472);
+  } else {
+    const cols = ["#ff3d6e", "#ffb000", "#00c2a8", "#7c4dff", "#ff7a00", "#2ecc71"];
+    for (let ring = 6; ring >= 1; ring--) {
+      const r = ring * 38;
+      const petals = 6 + ring * 2;
+      g.fillStyle = cols[ring % cols.length];
+      for (let k = 0; k < petals; k++) {
+        const a = (k / petals) * Math.PI * 2;
+        g.save();
+        g.translate(256 + Math.cos(a) * r * 0.75, 256 + Math.sin(a) * r * 0.75);
+        g.rotate(a);
+        g.beginPath();
+        g.ellipse(0, 0, r * 0.32, r * 0.14, 0, 0, Math.PI * 2);
+        g.fill();
+        g.restore();
+      }
+    }
+    g.fillStyle = "#fff6d0";
+    g.beginPath();
+    g.arc(256, 256, 30, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
   return t;
 }
 
@@ -241,6 +315,9 @@ export class GardenScene {
   private dayOnly: THREE.Object3D[] = [];
   private grass: THREE.InstancedMesh | null = null;
   private grassCount = 0;
+  private grassOrig: Float32Array | null = null;
+  private grassXZ: Float32Array | null = null;
+  private decorClear: { x: number; z: number; r: number }[] = [];
   private grassMat: THREE.ShaderMaterial | null = null;
   private ground: THREE.Mesh | null = null;
   private island = new THREE.Group();
@@ -299,7 +376,7 @@ export class GardenScene {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // The scene barely moves: shadows are drawn once (and again when something changes).
     this.renderer.shadowMap.autoUpdate = false;
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -911,6 +988,9 @@ void main() {`);
     }
     mesh.count = k;
     this.grassCount = k;
+    this.grassOrig = (mesh.instanceMatrix.array as Float32Array).slice();
+    this.grassXZ = new Float32Array(k * 2);
+    for (let i = 0; i < k; i++) this.grassXZ.set([this.grassOrig[i * 16 + 12], this.grassOrig[i * 16 + 14]], i * 2);
     mesh.frustumCulled = false;
     this.grass = mesh;
     this.island.add(mesh);
@@ -1254,6 +1334,14 @@ void main() {`);
   }
   private waterMats: THREE.ShaderMaterial[] = [];
   private leafTex: THREE.Texture | null = null;
+  /* seasons and festivals */
+  private decor = new THREE.Group();
+  private decorKey = "";
+  private flames: THREE.Sprite[] = [];
+  private frogs: { o: THREE.Group; home: THREE.Vector3; t0: number; from: THREE.Vector3; to: THREE.Vector3; next: number }[] = [];
+  private bursts: { pts: THREE.Points; vel: Float32Array; origin: THREE.Vector3; t0: number; on: boolean }[] = [];
+  private nextBurst = 0;
+  private fireworks = false;
   private glowTex: THREE.Texture | null = null;
   private shoot: THREE.Line | null = null;
   private shootAt = { t0: -99, next: 4, from: new THREE.Vector3(), dir: new THREE.Vector3() };
@@ -1274,7 +1362,7 @@ void main() {`);
       leaf.scale(1, 0.25, 0.5);
       leaf.rotateZ(0.5);
       leaf.translate(0.03, 0.1, 0);
-      return mergeGeometries([st.toNonIndexed(), leaf.toNonIndexed()]);
+      return mergeGeometries([unindexed(st), unindexed(leaf)]);
     })();
     const heads: THREE.BufferGeometry[] = [
       // Daisy: a ring of petals.
@@ -1286,20 +1374,20 @@ void main() {`);
           p.rotateY((i / 8) * Math.PI * 2);
           p.rotateX(-0.25);
           p.translate(0, 0.3, 0);
-          return p.toNonIndexed();
+          return unindexed(p);
         }),
       ),
       // Tulip: a cup.
       (() => {
         const l = new THREE.LatheGeometry([new THREE.Vector2(0.0, 0), new THREE.Vector2(0.035, 0.01), new THREE.Vector2(0.045, 0.05), new THREE.Vector2(0.032, 0.095), new THREE.Vector2(0.036, 0.1)], 10);
         l.translate(0, 0.29, 0);
-        return l.toNonIndexed();
+        return unindexed(l);
       })(),
       // Pompom: a round head.
       (() => {
         const s = new THREE.IcosahedronGeometry(0.055, 1);
         s.translate(0, 0.33, 0);
-        return s.toNonIndexed();
+        return unindexed(s);
       })(),
       // Sunflower: thin petals, wide.
       mergeGeometries(
@@ -1311,7 +1399,7 @@ void main() {`);
           p.rotateZ(0.0);
           p.rotateX(-0.9);
           p.translate(0, 0.34, 0);
-          return p.toNonIndexed();
+          return unindexed(p);
         }),
       ),
     ];
@@ -1388,7 +1476,7 @@ void main() {`);
         const d = 1 + (fbm(v.x * 3 + seed, v.y * 3, v.z * 3, 3) - 0.5) * 0.45;
         p.setXYZ(i, v.x * d + x, v.y * d * 0.9 + y, v.z * d + z);
       }
-      return geo.toNonIndexed();
+      return unindexed(geo);
     };
     let canopy: THREE.BufferGeometry;
     let leafCol: [string, string];
@@ -1404,7 +1492,7 @@ void main() {`);
             p.setXYZ(i, v.x * d, v.y, v.z * d);
           }
           c.translate(0, 0.75 + k * 0.42, 0);
-          return c.toNonIndexed();
+          return unindexed(c);
         }),
       );
       leafCol = ["#1f4a2a", "#3d7a45"];
@@ -1663,6 +1751,301 @@ void main() {`);
     this.scene.add(this.rain);
   }
 
+  /* ── seasons and festivals ── */
+
+  /** Spots on the grass away from everything planted, the cottage, the path and the pond. */
+  private freeSpots(count: number, seed: string, clear = 0.5, rMax = 0.88) {
+    const n = this.opts.n;
+    const home = this.toWorld(homeSpot(n).x, homeSpot(n).y);
+    const pond = pondSpot(n);
+    const pw = this.toWorld(pond.x, pond.y);
+    const prw = (pond.rx / this.isl.rx) * this.R;
+    const taken = [...this.itemsById.values()].map((it) => this.toWorld(it.x, it.y));
+    const out: THREE.Vector3[] = [];
+    for (let i = 0; out.length < count && i < count * 60; i++) {
+      const a = hash01(`${seed}a${i}`) * Math.PI * 2;
+      const r = Math.sqrt(hash01(`${seed}r${i}`)) * this.R * rMax;
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      if (Math.hypot(x - home.x, z - home.z) < 1.6 || Math.hypot(x - pw.x, z - pw.z) < prw + 0.5) continue;
+      if (z > home.z && Math.abs(x - this.pathWorld(z)) < 0.55) continue;
+      if (taken.some((p) => Math.hypot(p.x - x, p.z - z) < clear) || out.some((p) => Math.hypot(p.x - x, p.z - z) < clear * 2)) continue;
+      out.push(new THREE.Vector3(x, this.heightAt(x, z), z));
+    }
+    return out;
+  }
+  private pathWorld(z: number) {
+    const R = this.R;
+    return ((pathX(this.opts.n, z * (this.isl.ry / R) + this.isl.cy) - this.isl.cx) / this.isl.rx) * R;
+  }
+
+  /** Monsoon: rain puddles that ripple, and a few frogs that hop about. */
+  private buildMonsoon() {
+    const water = this.waterMats[0];
+    for (const p of this.freeSpots(7, "pd", 0.45)) {
+      const geo = new THREE.CircleGeometry(0.28 + hash01(`pz${p.x}`) * 0.22, 24);
+      const pos = geo.attributes.position as THREE.BufferAttribute;
+      for (let i = 1; i < pos.count; i++) {
+        const k = 0.8 + fbm(pos.getX(i) * 6, 1, pos.getY(i) * 6, 2) * 0.45;
+        pos.setXY(i, pos.getX(i) * k, pos.getY(i) * k * 0.75);
+      }
+      const m = new THREE.Mesh(geo, water);
+      m.rotation.x = -Math.PI / 2;
+      m.rotation.z = hash01(`pr${p.z}`) * 6;
+      m.position.copy(p).y += 0.025;
+      this.decor.add(m);
+      this.decorClear.push({ x: p.x, z: p.z, r: 0.55 });
+    }
+    const skin = new THREE.MeshStandardMaterial({ color: "#4e9a3a", roughness: 0.5 });
+    const belly = new THREE.MeshStandardMaterial({ color: "#c9d97a", roughness: 0.6 });
+    const eye = new THREE.MeshStandardMaterial({ color: "#111", roughness: 0.2 });
+    for (const p of this.freeSpots(3, "fg", 0.6, 0.75)) {
+      const f = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 10), skin);
+      body.scale.set(1, 0.7, 1.25);
+      body.position.y = 0.05;
+      const b2 = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), belly);
+      b2.scale.set(1, 0.5, 1.1);
+      b2.position.set(0, 0.035, 0.02);
+      f.add(body, b2);
+      for (const sx of [-1, 1]) {
+        const e = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), skin);
+        e.position.set(sx * 0.035, 0.1, 0.05);
+        const pu = new THREE.Mesh(new THREE.SphereGeometry(0.011, 6, 5), eye);
+        pu.position.set(sx * 0.038, 0.106, 0.068);
+        const leg = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), skin);
+        leg.scale.set(0.6, 0.45, 1.3);
+        leg.position.set(sx * 0.065, 0.02, -0.03);
+        f.add(e, pu, leg);
+      }
+      f.scale.setScalar(2.4);
+      this.decorClear.push({ x: p.x, z: p.z, r: 0.3 });
+      f.position.copy(p);
+      f.rotation.y = hash01(`fr${p.x}`) * 6;
+      f.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+      this.frogs.push({ o: f, home: p.clone(), t0: -9, from: p.clone(), to: p.clone(), next: 2 + hash01(`fn${p.z}`) * 5 });
+      this.decor.add(f);
+    }
+  }
+
+  /** Pongal: a kolam at the door, sugarcane leaning by it, and a pot boiling over on a little fire. */
+  private buildPongal() {
+    this.buildKolam("pulli");
+    const n = this.opts.n;
+    const home = this.toWorld(homeSpot(n).x, homeSpot(n).y);
+    const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25);
+    const cane = new THREE.MeshStandardMaterial({ color: "#6a2f4a", roughness: 0.55 });
+    const node = new THREE.MeshStandardMaterial({ color: "#c9b27a", roughness: 0.7 });
+    const leaf = this.windy(new THREE.MeshStandardMaterial({ color: "#5f9a3a", roughness: 0.7, side: THREE.DoubleSide }), 0.08);
+    for (const side of [-1, 1]) {
+      const g = new THREE.Group();
+      for (let k = 0; k < 7; k++) {
+        const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.038, 0.3, 8), cane);
+        seg.position.y = 0.15 + k * 0.3;
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.037, 0.008, 5, 10), node);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = k * 0.3 + 0.3;
+        g.add(seg, ring);
+      }
+      for (let k = 0; k < 5; k++) {
+        const l = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.8), leaf);
+        l.geometry.translate(0, 0.4, 0);
+        l.position.y = 2.05;
+        l.rotation.set(0.6 + k * 0.08, (k / 5) * Math.PI * 2, 0.3);
+        g.add(l);
+      }
+      g.position.set(home.x + side * 0.42 * S, home.y, home.z + 0.95 * S);
+      g.scale.setScalar(1.3);
+      g.rotation.z = -side * 0.12;
+      g.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+      this.decor.add(g);
+    }
+    // The pongal pot: clay, a turmeric-leaf collar, rice foaming over, on three stones and a fire.
+    const pot = new THREE.Group();
+    const clay = new THREE.MeshStandardMaterial({ color: "#a4532e", roughness: 0.8 });
+    const body = new THREE.Mesh(new THREE.LatheGeometry([new THREE.Vector2(0.0, 0), new THREE.Vector2(0.14, 0.02), new THREE.Vector2(0.2, 0.12), new THREE.Vector2(0.17, 0.25), new THREE.Vector2(0.12, 0.3), new THREE.Vector2(0.14, 0.33)], 24), clay);
+    body.position.y = 0.14;
+    const foam = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: "#fffaf0", roughness: 0.9 }));
+    foam.scale.y = 0.7;
+    foam.position.y = 0.47;
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.02, 6, 20), new THREE.MeshStandardMaterial({ color: "#3e8a2c" }));
+    collar.rotation.x = Math.PI / 2;
+    collar.position.y = 0.4;
+    const stone = new THREE.MeshStandardMaterial({ color: "#7b746a", roughness: 1 });
+    for (let k = 0; k < 3; k++) {
+      const st = new THREE.Mesh(new THREE.DodecahedronGeometry(0.08, 0), stone);
+      const a = (k / 3) * Math.PI * 2;
+      st.position.set(Math.cos(a) * 0.17, 0.06, Math.sin(a) * 0.17);
+      pot.add(st);
+    }
+    pot.add(body, foam, collar);
+    this.glowTex ??= puffTexture("glow");
+    const fire = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: new THREE.Color("#ff8a2a").multiplyScalar(3), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    fire.position.y = 0.08;
+    fire.scale.setScalar(0.35);
+    fire.raycast = () => {};
+    this.flames.push(fire);
+    pot.add(fire);
+    const px = home.x - 1.25 * S;
+    const pz = home.z + 0.75 * S;
+    pot.position.set(px, this.heightAt(px, pz), pz);
+    pot.scale.setScalar(1.7);
+    this.decorClear.push({ x: px, z: pz, r: 0.6 });
+    pot.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+    this.decor.add(pot);
+  }
+
+  /** A kolam (or rangoli) on the ground in front of the cottage door. */
+  private buildKolam(kind: "pulli" | "rangoli") {
+    const n = this.opts.n;
+    const home = this.toWorld(homeSpot(n).x, homeSpot(n).y);
+    const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25);
+    const z = home.z + 1.35 * S;
+    const x = this.pathWorld(z);
+    this.decorClear.push({ x, z, r: 1.05 });
+    const tex = kolamTexture(kind);
+    // A soft glow of its own, so it still shows at night.
+    const mat = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: "#ffffff", emissiveIntensity: this.phase === "night" ? 0.5 : 0.12, transparent: true, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.9), mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, this.heightAt(x, z) + 0.09, z);
+    m.receiveShadow = true;
+    this.decor.add(m);
+  }
+
+  /** Clay oil lamps (agal vilakku) lining both sides of the path, and round the pond. */
+  private buildLamps(density: number) {
+    const n = this.opts.n;
+    const home = this.toWorld(homeSpot(n).x, homeSpot(n).y);
+    const clay = new THREE.MeshStandardMaterial({ color: "#b4562f", roughness: 0.75 });
+    const bowl = new THREE.LatheGeometry([new THREE.Vector2(0, 0), new THREE.Vector2(0.05, 0.005), new THREE.Vector2(0.075, 0.03), new THREE.Vector2(0.07, 0.04)], 14);
+    this.glowTex ??= puffTexture("glow");
+    const place = (x: number, z: number, i: number) => {
+      const g = new THREE.Group();
+      const b = new THREE.Mesh(bowl, clay);
+      b.castShadow = true;
+      const f = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: new THREE.Color("#ffb347").multiplyScalar(3.2), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      f.position.y = 0.085;
+      f.scale.set(0.1, 0.16, 1);
+      f.userData.ph = hash01(`lp${i}`) * 9;
+      f.raycast = () => {};
+      this.flames.push(f);
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: "#ff9a3c", transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
+      halo.position.y = 0.08;
+      halo.scale.setScalar(0.55);
+      halo.raycast = () => {};
+      g.add(b, f, halo);
+      g.position.set(x, this.heightAt(x, z) + 0.005, z);
+      this.decor.add(g);
+    };
+    let i = 0;
+    const step = 0.38 / density;
+    for (let z = home.z + 0.95; z < this.R * 0.9; z += step) {
+      const x = this.pathWorld(z);
+      place(x - 0.34, z, i++);
+      place(x + 0.34, z + step / 2, i++);
+    }
+    // Round the pond, and a row along the cottage's front.
+    const pond = pondSpot(n);
+    const pw = this.toWorld(pond.x, pond.y);
+    const prw = (pond.rx / this.isl.rx) * this.R;
+    const around = Math.round(12 * density);
+    for (let k = 0; k < around; k++) {
+      const a = (k / around) * Math.PI * 2;
+      if (Math.abs(((a - POND_ANGLE + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.4) continue;
+      place(pw.x + Math.cos(a) * (prw + 0.28), pw.z + Math.sin(a) * (prw + 0.28), i++);
+    }
+    const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25);
+    for (let k = -3; k <= 3; k++) if (k) place(home.x + k * 0.28 * S, home.z + 0.85 * S, i++);
+  }
+
+  /** Deepavali: bursts of colour over the island. */
+  private buildFireworks() {
+    this.fireworks = true;
+    const N = 160;
+    for (let b = 0; b < 4; b++) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+      const mat = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: { uColor: { value: new THREE.Color() }, uAlpha: { value: 0 }, uSize: { value: 26 * this.renderer.getPixelRatio() } },
+        vertexShader: `uniform float uSize; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = uSize * (6.0 / -mv.z); gl_Position = projectionMatrix * mv; }`,
+        fragmentShader: `uniform vec3 uColor; uniform float uAlpha; void main(){ float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(uColor * 3.0, a * a * uAlpha); }`,
+      });
+      const pts = new THREE.Points(geo, mat);
+      pts.frustumCulled = false;
+      pts.visible = false;
+      this.scene.add(pts);
+      const vel = new Float32Array(N * 3);
+      this.bursts.push({ pts, vel, origin: new THREE.Vector3(), t0: 0, on: false });
+    }
+  }
+
+  private updateDecor(t: number, dt: number) {
+    for (const f of this.flames) {
+      const k = 0.85 + Math.sin(t * 13 + (f.userData.ph ?? 0)) * 0.08 + Math.sin(t * 29 + (f.userData.ph ?? 0) * 2) * 0.06;
+      f.material.opacity = k;
+    }
+    for (const fr of this.frogs) {
+      if (t > fr.next) {
+        const a = Math.random() * Math.PI * 2;
+        const d = 0.25 + Math.random() * 0.35;
+        const x = fr.home.x + Math.cos(a) * d;
+        const z = fr.home.z + Math.sin(a) * d;
+        fr.from.copy(fr.o.position);
+        fr.to.set(x, this.heightAt(x, z), z);
+        fr.t0 = t;
+        fr.next = t + 3 + Math.random() * 6;
+        fr.o.rotation.y = Math.atan2(x - fr.from.x, z - fr.from.z);
+      }
+      const k = (t - fr.t0) / 0.45;
+      if (k >= 0 && k <= 1) {
+        fr.o.position.lerpVectors(fr.from, fr.to, k);
+        fr.o.position.y += Math.sin(k * Math.PI) * 0.22;
+        fr.o.scale.set(2.4, 2.4 * (1 + Math.sin(k * Math.PI) * 0.25), 2.4);
+      }
+    }
+    if (!this.fireworks) return;
+    if (t > this.nextBurst) {
+      const b = this.bursts.find((x) => !x.on);
+      if (b) {
+        const a = Math.random() * Math.PI * 2;
+        b.origin.set(Math.cos(a) * this.R * (0.3 + Math.random() * 0.6), this.R * (0.35 + Math.random() * 0.4), Math.sin(a) * this.R * (0.3 + Math.random() * 0.5) - this.R * 0.35);
+        const speed = this.R * (0.35 + Math.random() * 0.2);
+        for (let i = 0; i < b.vel.length / 3; i++) {
+          const u = Math.random() * 2 - 1;
+          const th = Math.random() * Math.PI * 2;
+          const r = Math.sqrt(1 - u * u);
+          const s = speed * (0.75 + Math.random() * 0.25);
+          b.vel.set([Math.cos(th) * r * s, u * s, Math.sin(th) * r * s], i * 3);
+        }
+        (b.pts.material as THREE.ShaderMaterial).uniforms.uColor.value.setHSL(Math.random(), 0.95, 0.6);
+        b.t0 = t;
+        b.on = true;
+        b.pts.visible = true;
+      }
+      this.nextBurst = t + 0.9 + Math.random() * 1.8;
+    }
+    for (const b of this.bursts) {
+      if (!b.on) continue;
+      const k = t - b.t0;
+      const pos = b.pts.geometry.attributes.position as THREE.BufferAttribute;
+      const drag = (1 - Math.exp(-k * 2.2)) / 2.2;
+      for (let i = 0; i < pos.count; i++) {
+        pos.setXYZ(i, b.origin.x + b.vel[i * 3] * drag, b.origin.y + b.vel[i * 3 + 1] * drag - 0.9 * k * k, b.origin.z + b.vel[i * 3 + 2] * drag);
+      }
+      pos.needsUpdate = true;
+      (b.pts.material as THREE.ShaderMaterial).uniforms.uAlpha.value = Math.max(0, 1 - k / 2.2) * Math.min(1, k * 8);
+      if (k > 2.2) {
+        b.on = false;
+        b.pts.visible = false;
+      }
+    }
+    void dt;
+  }
+
   /* ── quality ── */
 
   private enableHigh() {
@@ -1797,6 +2180,58 @@ void main() {`);
     if (!it) return;
     this.tip = this.toWorld(it.x, it.y).add(new THREE.Vector3(0, it.kind === "tree" ? 2.6 : it.kind === "lamp" ? 1.25 : 0.55, 0));
   }
+  /**
+   * Dress the island for the season or a festival: monsoon puddles and frogs, a kolam with sugarcane
+   * and a pongal pot at Pongal, clay lamps along the path at Karthigai Deepam, rangoli, lamps and
+   * fireworks at Deepavali.
+   */
+  setDecor(festival: string | null, monsoon: boolean) {
+    const key = `${festival ?? ""}|${monsoon}`;
+    if (key === this.decorKey) return;
+    this.decorKey = key;
+    this.island.remove(this.decor);
+    this.decor.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+      for (const mat of mats) mat.dispose();
+    });
+    this.decor = new THREE.Group();
+    this.flames = [];
+    this.frogs = [];
+    for (const b of this.bursts) this.scene.remove(b.pts);
+    this.bursts = [];
+    this.fireworks = false;
+    this.decorClear = [];
+    if (monsoon) this.buildMonsoon();
+    if (festival === "pongal") this.buildPongal();
+    if (festival === "karthigai") this.buildLamps(1);
+    if (festival === "deepavali") {
+      this.buildLamps(0.6);
+      this.buildKolam("rangoli");
+      this.buildFireworks();
+    }
+    this.island.add(this.decor);
+    this.clearGrass();
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  /** Grass back where it was, then pressed flat under the decorations (kolam, puddles, the pot). */
+  private clearGrass() {
+    if (!this.grass || !this.grassOrig || !this.grassXZ) return;
+    const arr = this.grass.instanceMatrix.array as Float32Array;
+    arr.set(this.grassOrig);
+    for (let i = 0; i < this.grassCount; i++) {
+      const x = this.grassXZ[i * 2];
+      const z = this.grassXZ[i * 2 + 1];
+      if (this.decorClear.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) {
+        // Squash the blade to nothing: scale its columns down.
+        for (let j = 0; j < 12; j++) arr[i * 16 + j] *= 0.02;
+      }
+    }
+    this.grass.instanceMatrix.needsUpdate = true;
+  }
+
   setLit(on: boolean) {
     this.lit = on;
     for (const m of this.windowMats) m.emissiveIntensity = on ? (this.phase === "night" ? 3.2 : 1.6) : 0;
@@ -1908,6 +2343,7 @@ void main() {`);
       b.o.position.y = b.y + Math.sin(t * b.sp + b.ph) * (b.spin && b.spin < 0.1 ? this.R * 0.04 : 0.04);
       if (b.spin) b.o.rotation.y += dt * b.spin;
     }
+    this.updateDecor(t, dt);
     // Butterflies on wandering loops, flapping.
     for (const b of this.butterflies) {
       const a = t * b.sp + b.ph;

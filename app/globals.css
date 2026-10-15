@@ -997,6 +997,8 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
 .garden-part-r { animation: garden-part-r 1.7s cubic-bezier(.5,0,.3,1) 0.15s forwards; }
 .garden-aurora { animation: garden-aurora 16s ease-in-out infinite; will-change: transform, opacity; }
 .garden-hop { animation: garden-hop 0.9s ease-out 2; }
+@keyframes garden-sheet { from { transform: translateY(14px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
+.garden-sheet { animation: garden-sheet 0.35s cubic-bezier(.2,.8,.2,1); }
 [data-garden] g.cursor-pointer:hover { filter: brightness(1.18) drop-shadow(0 0 4px rgba(255,255,255,.7)); }
 .garden-walk { animation: garden-walk 0.55s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {

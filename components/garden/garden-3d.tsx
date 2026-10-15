@@ -5,7 +5,9 @@ import { Creature } from "@/components/pet/creature";
 import { ErrorText } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { useFetch } from "@/lib/client-api";
+import type { GardenDay } from "@/lib/garden-day";
 import { type Garden, homeSpot, islandSize, layout } from "@/lib/garden-layout";
+import { festivalById, festivalOn } from "@/lib/pet-looks";
 import type { Sky } from "@/lib/sky";
 import type { GardenScene } from "./garden-scene";
 import { type Phase, phaseNow } from "./phase";
@@ -17,6 +19,12 @@ import { type Phase, phaseNow } from "./phase";
  */
 type Pt = { x: number; y: number };
 const PHASE_NAME: Record<Phase, string> = { dawn: "Dawn", day: "Daytime", golden: "Golden hour", dusk: "Dusk", night: "Night" };
+/** Festivals the island dresses up for (others only change Nova's outfit). */
+const DECOR = ["pongal", "karthigai", "deepavali"] as const;
+const DECOR_ICON: Record<string, string> = { pongal: "🌾", karthigai: "🪔", deepavali: "🎆", monsoon: "🌧️" };
+const todayLocal = () => new Date().toLocaleDateString("en-CA");
+/** The north-east monsoon over Tamil Nadu: October to December. */
+const monsoonMonth = () => [9, 10, 11].includes(new Date().getMonth());
 
 export function Garden3D({ onFail }: { onFail: () => void }) {
   const feed = useFetch<{ garden: Garden }>("/api/pet/garden");
@@ -44,6 +52,11 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
   const [love, setLove] = useState(false);
   const [inside, setInside] = useState(false);
   const [hint, setHint] = useState(true);
+  // A flower's day (what happened on the date it was planted).
+  const [day, setDay] = useState<{ date: string; data?: GardenDay; error?: string } | null>(null);
+  // Festival / season on the island: today's, or one previewed (?fest=deepavali, or by voice).
+  const [fest, setFest] = useState<string | null>(null);
+  const [monsoon, setMonsoon] = useState(false);
   const insideRef = useRef(false);
   const busy = useRef(0);
   const awake = useRef(0);
@@ -57,6 +70,11 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the clock and the sky, read on mount
     setPhase(phaseNow());
+    const asked = new URLSearchParams(location.search).get("fest");
+    const today = festivalOn(todayLocal())?.id ?? null;
+    const isDecor = (id: string | null) => (DECOR as readonly string[]).includes(id ?? "");
+    setFest(isDecor(asked) ? asked : !asked && isDecor(today) ? today : null);
+    setMonsoon(asked === "monsoon" || (!asked && monsoonMonth()));
     setSky((window as unknown as { __hmSky?: Sky }).__hmSky ?? "calm");
     const on = (e: Event) => setSky((e as CustomEvent<{ sky: Sky }>).detail?.sky ?? "calm");
     window.addEventListener("hivemind:sky", on);
@@ -126,6 +144,7 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
     const p = placed.find((x) => x.id === id);
     if (!p) return;
     showTip(p.id, p.label);
+    if ("date" in p) openDay(p.date);
     // The pet goes to look at it, and loves it.
     const to = { x: p.x + (p.x > isl.cx ? -26 : 26), y: p.y + 6 };
     const wait = insideRef.current ? 450 : 0;
@@ -141,6 +160,16 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
         later(() => setLove(false), 1800);
       }, ms);
     }, wait);
+  }
+  async function openDay(date: string) {
+    setDay({ date });
+    try {
+      const r = await fetch(`/api/pet/garden/day?date=${date}`);
+      const j = (await r.json()) as { day?: GardenDay; error?: string };
+      setDay((d) => (d?.date === date ? (j.day ? { date, data: j.day } : { date, error: j.error ?? "Couldn't open that day." }) : d));
+    } catch {
+      setDay((d) => (d?.date === date ? { date, error: "Couldn't open that day." } : d));
+    }
   }
   const pickRef = useRef(pick);
   useEffect(() => {
@@ -244,6 +273,9 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
     scene.current?.setLook(phase, wet);
   }, [phase, wet, ready]);
   useEffect(() => {
+    scene.current?.setDecor(fest, monsoon || wet);
+  }, [fest, monsoon, wet, ready]);
+  useEffect(() => {
     scene.current?.setLit(night || inside);
     scene.current?.setSleeping(inside && night);
   }, [night, inside, ready]);
@@ -253,6 +285,36 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
   }, []);
 
   useVoiceActions({
+    garden_festival: {
+      description: "Nova's garden page: dress the island for a festival or season to preview it. input: 'deepavali' (lamps, rangoli, fireworks), 'karthigai' (oil lamps along the path), 'pongal' (kolam, sugarcane, pongal pot), 'monsoon' (puddles, frogs) or 'today' (back to today's).",
+      run: ({ input }) => {
+        const t = String(input).toLowerCase();
+        if (/monsoon|rain|mazhai/.test(t)) {
+          setMonsoon(true);
+          setFest(null);
+          return { shown: "monsoon" };
+        }
+        const id = /deepa|diwali/.test(t) ? "deepavali" : /karthi|deepam/.test(t) ? "karthigai" : /pongal|sankranti/.test(t) ? "pongal" : null;
+        if (!id) {
+          const today = festivalOn(todayLocal())?.id ?? null;
+          setFest((DECOR as readonly string[]).includes(today ?? "") ? today : null);
+          setMonsoon(monsoonMonth());
+          return { shown: "today" };
+        }
+        setFest(id);
+        setMonsoon(false);
+        return { shown: festivalById(id)?.name };
+      },
+    },
+    garden_day: {
+      description: "Nova's garden page: open what happened on a date (the day a flower was planted): mood, check-in, habits, songs, notes. input: a date like 2026-10-14.",
+      run: ({ input }) => {
+        const d = String(input).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return { error: "Say a date like 2026-10-14." };
+        void openDay(d);
+        return { opened: d };
+      },
+    },
     garden_describe: {
       description: "Nova's garden page: what has grown on the island (flowers from habits, trees from night check-ins, lamps from lantern walks, gems from game wins, butterflies from songs).",
       run: () => (g ? { ...g.counts, pet: g.pet, note: "Say it warmly in one or two sentences." } : { error: "The garden is still loading." }),
@@ -313,7 +375,9 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
 
         {/* Title. */}
         <div className="pointer-events-none absolute top-5 left-5 sm:top-7 sm:left-8">
-          <p className="font-mono text-[10px] tracking-[0.35em] text-white/60 uppercase">Pocket pet · {PHASE_NAME[phase]}</p>
+          <p className="font-mono text-[10px] tracking-[0.35em] text-white/60 uppercase">Pocket pet · {PHASE_NAME[phase]}
+            {fest ? ` · ${DECOR_ICON[fest] ?? ""} ${festivalById(fest)?.name ?? fest}` : monsoon || wet ? ` · ${DECOR_ICON.monsoon} Monsoon` : ""}
+          </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)] sm:text-5xl">{g?.pet ?? "Nova"}&apos;s garden</h1>
           <p className="mt-2 max-w-sm text-sm text-white/75 drop-shadow">Everything you keep up with grows here.</p>
         </div>
@@ -341,8 +405,117 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
         )}
 
         {ready && hint && <div className="pointer-events-none absolute inset-x-0 top-[38%] text-center text-xs text-white/85 drop-shadow transition-opacity sm:top-auto sm:right-8 sm:bottom-8 sm:left-auto sm:text-right">Drag to look around · pinch to zoom · tap anything</div>}
+        {day && <DayCard day={day} onClose={() => setDay(null)} />}
         {g && !g.items.length && <div className="pointer-events-none absolute inset-x-0 top-1/3 text-center text-sm text-white/90 drop-shadow">The island is waiting. Finish a habit today to plant the first flower 🌱</div>}
       </div>
+    </div>
+  );
+}
+
+/** What happened on the day a flower was planted: a glass card over the island. */
+function DayCard({ day, onClose }: { day: { date: string; data?: GardenDay; error?: string }; onClose: () => void }) {
+  const d = day.data;
+  const pretty = new Date(`${day.date}T12:00:00`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const empty = d && !d.mood && !d.habits.length && !d.songs.length && !d.notes.length && !d.memories.length && !d.wins.length && !d.walked;
+  return (
+    <div className="garden-sheet absolute inset-x-3 bottom-3 z-10 max-h-[64%] overflow-y-auto rounded-3xl border border-white/15 bg-[#0b1220]/75 p-5 text-white shadow-2xl backdrop-blur-2xl sm:inset-x-auto sm:top-6 sm:right-6 sm:bottom-6 sm:max-h-none sm:w-[360px]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[10px] tracking-[0.3em] text-white/50 uppercase">A day in your garden</p>
+          <h2 className="mt-1 text-lg leading-snug font-semibold">{pretty}</h2>
+          {d?.festival && <p className="mt-1 text-xs text-amber-200">✨ {d.festival}</p>}
+        </div>
+        <button onClick={onClose} aria-label="Close" className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10 text-white/80 hover:bg-white/20">
+          ✕
+        </button>
+      </div>
+
+      {!d && !day.error && <p className="mt-6 animate-pulse text-sm text-white/60">Opening the day…</p>}
+      {day.error && <p className="mt-6 text-sm text-rose-300">{day.error}</p>}
+      {empty && <p className="mt-6 text-sm text-white/70">A quiet day. Just this little flower to remember it by 🌸</p>}
+
+      {d?.mood && (
+        <div className="mt-5 flex gap-3 rounded-2xl bg-white/5 p-3.5">
+          <span className="text-4xl leading-none">{d.mood.emoji}</span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium">You felt {d.mood.word}</p>
+            {d.reflection && <p className="mt-1 text-sm leading-relaxed whitespace-pre-line text-white/75">“{d.reflection}”</p>}
+          </div>
+        </div>
+      )}
+
+      {!!d?.habits.length && (
+        <Section title="Done that day">
+          <div className="flex flex-wrap gap-1.5">
+            {d.habits.map((h) => (
+              <span key={h.name} className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs text-emerald-100">
+                {h.emoji} {h.name}
+              </span>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {!!d?.songs.length && (
+        <Section title="Songs you played">
+          <ul className="space-y-2">
+            {d.songs.map((s) => (
+              <li key={s.title} className="flex items-center gap-2.5">
+                {s.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- remote album art
+                  <img src={s.image} alt="" className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+                ) : (
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/10">🎵</span>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm">{s.title}</p>
+                  <p className="truncate text-xs text-white/55">{s.artists}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {!!(d?.notes.length || d?.memories.length) && (
+        <Section title="You saved">
+          <ul className="space-y-1.5 text-sm">
+            {d.notes.map((x) => (
+              <li key={x.title} className="rounded-xl bg-white/5 px-3 py-2">
+                📝 {x.title}
+                {x.summary && <span className="mt-0.5 block text-xs text-white/55">{x.summary}</span>}
+              </li>
+            ))}
+            {d.memories.map((m) => (
+              <li key={m} className="rounded-xl bg-white/5 px-3 py-2">
+                🧠 {m}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {!!(d?.wins.length || d?.walked) && (
+        <Section title="With Nova">
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            {d.wins.map((w, i) => (
+              <span key={i} className="rounded-full bg-sky-400/15 px-2.5 py-1 text-sky-100">
+                💎 Won {w}
+              </span>
+            ))}
+            {d.walked && <span className="rounded-full bg-amber-400/15 px-2.5 py-1 text-amber-100">🏮 Lantern walk</span>}
+          </div>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-5">
+      <p className="mb-2 text-[11px] font-medium tracking-wide text-white/50 uppercase">{title}</p>
+      {children}
     </div>
   );
 }
