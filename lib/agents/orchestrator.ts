@@ -151,8 +151,8 @@ async function step(contents: Content[], system: string, tools: FunctionDeclarat
       if (streamed || stop?.aborted) throw err;
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
-      const busy = !abort.signal.aborted && /503|high demand|overloaded|UNAVAILABLE/i.test(msg);
-      if (/429|RESOURCE_EXHAUSTED/.test(msg) && /PerDay|per day/i.test(msg)) quotaOut.set(model, Date.now() + 60 * 60_000);
+      const busy = !abort.signal.aborted && /\b503\b|high demand|overloaded|UNAVAILABLE/i.test(msg);
+      if (/\b429\b|RESOURCE_EXHAUSTED/.test(msg) && /PerDay|per day/i.test(msg)) quotaOut.set(model, Date.now() + 60 * 60_000);
       console.warn(`agent step: ${model} ${abort.signal.aborted ? "stalled" : busy && !retry ? "busy, retrying once" : "failed, trying next model"}`, abort.signal.aborted ? "" : msg.slice(0, 120));
       if (busy && !retry) {
         await new Promise((r) => setTimeout(r, 1500));

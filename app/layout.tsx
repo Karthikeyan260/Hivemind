@@ -15,6 +15,7 @@ import { VersionWatcher } from "@/components/version-watcher";
 import { NightCheckin } from "@/components/day/night-checkin";
 import { Nova } from "@/components/pet/nova";
 import { LivingSky } from "@/components/fx/living-sky";
+import { BeatLights } from "@/components/fx/beat-lights";
 import { passwordRequired } from "@/lib/session";
 import "./globals.css";
 
@@ -61,6 +62,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <ReminderWatcher />
           <NightCheckin />
           <LivingSky />
+          <BeatLights />
           <Nova />
           <WakeListener />
           <VersionWatcher />

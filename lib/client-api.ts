@@ -73,6 +73,11 @@ export const VIDEO_EVENT = "hivemind:video";
 export const MEDIA_START_EVENT = "hivemind:media-start";
 /** The music player started or stopped (Nova dances while it plays). detail: { playing } */
 export const MUSIC_STATE_EVENT = "hivemind:music-state";
+/**
+ * Chat switched a screen effect on or off (screen_effects tool). detail: { effect, on }, effect:
+ * "music_lights" | "weather" | "pet_voice" | "lights" (music lights + weather).
+ */
+export const FX_EVENT = "hivemind:fx";
 /** The owner asked HIVEMIND something by typing (the pet notices when it's being ignored). */
 export const ASKED_EVENT = "hivemind:asked";
 
@@ -255,10 +260,11 @@ export async function streamHivemind(body: { message?: string } & Record<string,
       if (!line) continue;
       const e = JSON.parse(line) as HiveEvent;
       // play_music / play_video: hand it to the on-screen player instead of showing a link.
-      const media = e.type === "action" && e.href?.match(/^(music|video):(.*)$/);
+      const media = e.type === "action" && e.href?.match(/^(music|video|fx):(.*)$/);
       if (media) {
         try {
-          window.dispatchEvent(new CustomEvent(media[1] === "music" ? MUSIC_EVENT : VIDEO_EVENT, { detail: JSON.parse(decodeURIComponent(media[2])) }));
+          const kind = media[1] === "music" ? MUSIC_EVENT : media[1] === "video" ? VIDEO_EVENT : FX_EVENT;
+          window.dispatchEvent(new CustomEvent(kind, { detail: JSON.parse(decodeURIComponent(media[2])) }));
         } catch {}
         continue;
       }

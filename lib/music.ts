@@ -282,5 +282,14 @@ Played lately (choose mostly others): ${[...recent].slice(0, 15).join("; ")}` : 
 export async function streamUrl(media: string) {
   const r = await call<{ status?: string; auth_url?: string }>({ __call: "song.generateAuthToken", ctx: "android", bitrate: "320", url: media });
   if (r.status !== "success" || !r.auth_url) throw new Error("This song can't be played right now.");
-  return r.auth_url.replace(/^http:/, "https:");
+  const url = r.auth_url.replace(/^http:/, "https:");
+  // The link redirects once to the real file. That redirect doesn't allow other sites to read the
+  // audio, the file itself does: hand the browser the file's own address, so the page can listen to
+  // the beat (music lights). If the redirect can't be resolved, the original link still plays.
+  try {
+    const res = await fetch(url, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(2500) });
+    const to = res.headers.get("location");
+    if (res.status >= 300 && res.status < 400 && to?.startsWith("https://")) return to;
+  } catch {}
+  return url;
 }

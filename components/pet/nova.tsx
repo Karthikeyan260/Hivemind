@@ -5,7 +5,7 @@ import { useVoice, useVoiceActions } from "@/components/voice/provider";
 import { type Chatter, isJealous, JEALOUS, MAKE_UP, pickChatter, THUNDER_JUMP } from "@/lib/pet-talk";
 import { type Sky, SKY_EVENT, THUNDER_EVENT } from "@/lib/sky";
 import { petSay, petVoiceOn, setPetVoice } from "./talk";
-import { ASKED_EVENT, MUSIC_STATE_EVENT } from "@/lib/client-api";
+import { ASKED_EVENT, FX_EVENT, MUSIC_STATE_EVENT } from "@/lib/client-api";
 import type { Pet } from "@/lib/pet";
 import { type AccessoryId, accessoryFor, type Festival, festivalById, festivalOn } from "@/lib/pet-looks";
 import { judgeGuess } from "@/lib/pet-seek";
@@ -13,6 +13,7 @@ import { PetCard } from "./card";
 import { Creature } from "./creature";
 import { between, clamp, dayNow, GLOW, home, hourNow, type Look, pick, type Pos, reserve, SIZE, type Spot, store } from "./shared";
 import { coversControl, hidingSpot, PEEK_CLIP } from "./space";
+import * as beat from "@/lib/beat";
 import { sfx } from "@/lib/sfx";
 
 /**
@@ -68,6 +69,8 @@ export function Nova() {
   const [music, setMusic] = useState(false);
   // Asked to dance (by voice or tap) with no music on: a short dance on its own.
   const [party, setParty] = useState(false);
+  // Music lights: a counter bumped on every beat of the song, so the pet bounces in time.
+  const [kick, setKick] = useState(0);
   const [hour, setHour] = useState(12);
   const [today, setToday] = useState("");
   // "Show me your Diwali look": that festival's outfit for a little while, whatever the date.
@@ -163,15 +166,18 @@ export function Nova() {
     // Its default corner can land on a button (it floats above the page): once the page has drawn,
     // nudge it to the nearest free spot. A spot the owner dragged it to is left alone.
     if (!(stays && saved)) {
-      setTimeout(() => {
-        const start = home();
-        if (!coversControl(start, self.current)) return;
+      // Checked twice: once the page has drawn, and again after slow pages (the home page builds for a few seconds).
+      const nudge = () => {
+        const here = posRef.current ?? home();
+        if (!coversControl(here, self.current)) return;
         for (let up = 1; up <= 8; up++)
           for (const dx of [0, -70, -140]) {
-            const p = clamp({ x: start.x + dx, y: start.y - up * 55 });
+            const p = clamp({ x: here.x + dx, y: here.y - up * 55 });
             if (!coversControl(p, self.current)) return setPos(p);
           }
-      }, 1500);
+      };
+      setTimeout(nudge, 1500);
+      setTimeout(nudge, 7000);
     }
     setHidden(store.get(HIDE_KEY) === "1");
     setHour(hourNow());
@@ -237,6 +243,24 @@ export function Nova() {
       window.removeEventListener(MUSIC_STATE_EVENT, on);
       window.removeEventListener(SKY_EVENT, onSky);
     };
+  }, []);
+
+  // Bounces on the beat while music plays (lib/beat.ts listens to the song).
+  useEffect(() => {
+    if (!music) return;
+    return beat.onBeat(() => setKick((n) => n + 1));
+  }, [music]);
+
+  // "Nova, be quiet" typed in chat (screen_effects tool, pet_voice).
+  useEffect(() => {
+    const fx = (e: Event) => {
+      const d = (e as CustomEvent<{ effect: string; on: boolean }>).detail;
+      if (d?.effect !== "pet_voice") return;
+      setPetVoice(!!d.on);
+      setVoiceOn(!!d.on);
+    };
+    window.addEventListener(FX_EVENT, fx);
+    return () => window.removeEventListener(FX_EVENT, fx);
   }, []);
 
   // Thunder: it jumps.
@@ -917,7 +941,7 @@ export function Nova() {
         }}
       >
         {eating !== null && <span className="pet-plus pointer-events-none absolute -top-2 left-1/2 text-sm font-bold text-amber-300">+{eating}</span>}
-        <Creature stage={pet.stage} mood={mood} look={facing} eating={eating !== null} evolving={evolving} poked={poked} quiet={!!peeking} festival={festival} wear={pet.wear} sky={sky} startled={startled} />
+        <Creature stage={pet.stage} mood={mood} look={facing} eating={eating !== null} evolving={evolving} poked={poked} quiet={!!peeking} festival={festival} wear={pet.wear} sky={sky} startled={startled} kick={kick} />
       </div>
     </div>
     </>

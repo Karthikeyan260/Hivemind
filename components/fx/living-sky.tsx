@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useVoiceActions } from "@/components/voice/provider";
+import { FX_EVENT } from "@/lib/client-api";
 import { getFix } from "@/lib/location";
 import { type Sky, SKY_EVENT, skyFor, skyFromWords, THUNDER_EVENT } from "@/lib/sky";
 
@@ -73,6 +74,21 @@ export function LivingSky() {
       clearInterval(t);
     };
   }, [askHere]);
+
+  // "Weather effects off" / "lights off" typed in chat (screen_effects tool).
+  useEffect(() => {
+    const fx = (e: Event) => {
+      const d = (e as CustomEvent<{ effect: string; on: boolean }>).detail;
+      if (d?.effect !== "weather" && d?.effect !== "lights") return;
+      setOff(!d.on);
+      try {
+        if (d.on) localStorage.removeItem(OFF_KEY);
+        else localStorage.setItem(OFF_KEY, "1");
+      } catch {}
+    };
+    window.addEventListener(FX_EVENT, fx);
+    return () => window.removeEventListener(FX_EVENT, fx);
+  }, []);
 
   // Tell the pet (and anything else) what the sky is doing.
   useEffect(() => {

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { useVoice } from "@/components/voice/provider";
 import { MEDIA_START_EVENT, MUSIC_EVENT, MUSIC_STATE_EVENT } from "@/lib/client-api";
+import * as beat from "@/lib/beat";
 import { isPublicPage } from "@/lib/public-paths";
 
 /**
@@ -37,6 +38,8 @@ export function MusicPlayer() {
   const voice = useVoice();
   const audio = useRef<HTMLAudioElement | null>(null);
   const links = useRef(new Map<string, { url: string; at: number }>());
+  // Songs whose server wouldn't let the page listen to them (music lights): these play plainly.
+  const plainIds = useRef(new Set<string>());
   const [queue, setQueue] = useState<Song[]>([]);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -82,6 +85,10 @@ export function MusicPlayer() {
       setError(null);
       setLoading(true);
       try {
+        // Ask for the audio in a way the page may listen to (music lights); a song whose server
+        // doesn't allow that is retried plainly in onError.
+        if (!plainIds.current.has(s.id)) el.crossOrigin = "anonymous";
+        else el.removeAttribute("crossorigin");
         el.src = await link(s, fresh);
         await el.play();
         setBlocked(false);
@@ -259,9 +266,16 @@ export function MusicPlayer() {
   }, [song, next, previous]);
 
   async function onError() {
-    // An expired link: get a fresh one once, then give up on this song.
     const s = st.current.queue[st.current.index];
     if (!s) return;
+    // Its server wouldn't let the page listen in: play it plainly (no beat for this one).
+    const el = audio.current;
+    if (el?.crossOrigin && !plainIds.current.has(s.id)) {
+      plainIds.current.add(s.id);
+      await playAt(st.current.queue, st.current.index);
+      return;
+    }
+    // An expired link: get a fresh one once, then give up on this song.
     const hit = links.current.get(s.id);
     if (hit && Date.now() - hit.at > 60_000) {
       links.current.delete(s.id);
@@ -291,12 +305,14 @@ export function MusicPlayer() {
       <audio
         ref={audio}
         preload="auto"
+        onPlaying={(e) => beat.start(e.currentTarget)}
         onPlay={() => {
           setPlaying(true);
           window.dispatchEvent(new CustomEvent(MEDIA_START_EVENT, { detail: { source: "music" } }));
           window.dispatchEvent(new CustomEvent(MUSIC_STATE_EVENT, { detail: { playing: true } }));
         }}
         onPause={() => {
+          beat.stop();
           setPlaying(false);
           window.dispatchEvent(new CustomEvent(MUSIC_STATE_EVENT, { detail: { playing: false } }));
         }}

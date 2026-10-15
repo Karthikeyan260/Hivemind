@@ -19,7 +19,7 @@ type Reaction = keyof typeof REACTION;
 const CLOCKWISE = ["right", "down-right", "down", "down-left", "left", "up-left", "up", "up-right"] as const;
 const cell = (i: number) => ({ backgroundPosition: `${(i % 3) * 50}% ${Math.floor(i / 3) * 50}%`, backgroundSize: "300% 300%", backgroundRepeat: "no-repeat" as const });
 
-export function Creature({ stage, mood, look, eating, evolving, poked, quiet = false, festival = null, wear = null, sky = "calm", startled = false }: { stage: number; mood: Look; look: { x: number; y: number }; eating: boolean; evolving: boolean; poked: boolean; quiet?: boolean; festival?: Festival | null; wear?: AccessoryId | null; sky?: Sky; startled?: boolean }) {
+export function Creature({ stage, mood, look, eating, evolving, poked, quiet = false, festival = null, wear = null, sky = "calm", startled = false, kick = 0 }: { stage: number; mood: Look; look: { x: number; y: number }; eating: boolean; evolving: boolean; poked: boolean; quiet?: boolean; festival?: Festival | null; wear?: AccessoryId | null; sky?: Sky; startled?: boolean; kick?: number }) {
   // A festival tints its glow when it's simply happy.
   const glow = festival && mood === "happy" ? festival.glow : GLOW[mood];
   // A blink every few seconds, and a beat for dancing (star eyes / big grin).
@@ -90,10 +90,13 @@ export function Creature({ stage, mood, look, eating, evolving, poked, quiet = f
       )}
 
       <div className={`${body} absolute inset-0`} style={{ transformOrigin: "50% 90%" }}>
+        {/* A little bounce on every beat of the song (music lights): a new key restarts it. */}
+        <div key={kick} className={`absolute inset-0 ${kick ? "pet-kick" : ""}`} style={{ transformOrigin: "50% 90%" }}>
         <div className="absolute inset-0" style={{ transform: `scale(${scale})`, transformOrigin: "50% 85%", filter: quiet ? lit : `${lit} drop-shadow(0 0 ${4 + stage * 3}px ${glow}aa)`, transition: "filter 0.6s" }}>
           <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.directions})`, ...cell(DIRECTIONS.indexOf(dir)), opacity: reaction ? 0 : 1 }} />
           <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.reactions})`, ...cell(REACTION[reaction ?? "blink"]), opacity: reaction ? 1 : 0 }} />
           {!quiet && <Looks festival={festival} wear={wear} sky={sky} />}
+        </div>
         </div>
         {/* Crown of sparks (last stage). */}
         {stage >= 3 && <span className="pet-glow absolute left-1/2 top-[-6%] -translate-x-1/2 text-sm leading-none text-amber-300">✦✧✦</span>}

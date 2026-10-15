@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { level as beatLevel } from "@/lib/beat";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Lensflare, LensflareElement } from "three/addons/objects/Lensflare.js";
 import {
@@ -1069,14 +1070,16 @@ export class GalaxyScene {
     }
     // Fast attack, slower release, like a VU meter.
     this.voice += (this.voiceTarget - this.voice) * Math.min(1, dt * (this.voiceTarget > this.voice ? 22 : 8));
-    this.flow?.update(dt, t, Math.max(this.energy, this.voice * 0.7));
+    // Music lights: the bass of the song that's playing drives the core like HIVEMIND's voice does.
+    const v = Math.max(this.voice, this.reduced ? 0 : beatLevel() * 0.8);
+    this.flow?.update(dt, t, Math.max(this.energy, v * 0.7));
     this.updateFocus(dt);
 
     // Shaders & core
     this.sky.material.uniforms.uTime.value = t;
     this.plasma.material.uniforms.uTime.value = t;
     this.plasma.material.uniforms.uEnergy.value = this.energy;
-    this.corona.material.uniforms.uIntensity.value = 1.1 + this.energy * 0.6 + this.voice * 2.2 + Math.sin(t * 2) * 0.1;
+    this.corona.material.uniforms.uIntensity.value = 1.1 + this.energy * 0.6 + v * 2.2 + Math.sin(t * 2) * 0.1;
     for (const m of this.flowMats) m.uniforms.uTime.value = t * (1 + this.energy * 2);
     for (const p of this.planets) {
       p.mesh.material.uniforms.uTime.value = t;
@@ -1087,15 +1090,15 @@ export class GalaxyScene {
       r.rotation.z += dt * (0.12 + i * 0.06) * spin * (i % 2 ? -1 : 1);
     });
     const pulse = 1 + Math.sin(t * (2 + this.energy * 6)) * (0.03 + this.energy * 0.08);
-    this.plasma.scale.setScalar(pulse + this.voice * 0.35);
+    this.plasma.scale.setScalar(pulse + v * 0.35);
     // Keep the monogram on the camera-facing surface of the plasma so things in front still hide it.
-    const coreScale = pulse + this.voice * 0.35;
+    const coreScale = pulse + v * 0.35;
     this.monogram.position.copy(this.camera.position).normalize().multiplyScalar(4.25 * coreScale);
     this.monogram.scale.setScalar(10 * coreScale);
-    this.monogram.material.opacity = 0.94 + Math.sin(t * 1.3) * 0.05 - this.voice * 0.2;
+    this.monogram.material.opacity = 0.94 + Math.sin(t * 1.3) * 0.05 - v * 0.2;
     // Up close the reactor fills the frame, so rays and bloom back off with proximity.
     const near = THREE.MathUtils.smoothstep(this.camera.position.length(), 35, 170);
-    this.bloom.intensity = (0.55 + near * 0.5) + this.energy * 0.3 * near + this.voice * 0.6 * near + warpStress * 1.2;
+    this.bloom.intensity = (0.55 + near * 0.5) + this.energy * 0.3 * near + v * 0.6 * near + warpStress * 1.2;
     const ab = 0.0006 + this.energy * 0.0004 + warpStress * 0.012;
     this.chroma.offset.set(ab, ab);
     this.godRays.godRaysMaterial.uniforms.weight.value = (0.08 + near * 0.24) + this.energy * 0.14 * near;
