@@ -343,8 +343,9 @@ export function Nova() {
     const here = posRef.current;
     const sparks: Walk["sparks"] = [];
     // Spread out, not on top of each other and not where the pet already stands.
+    // Only where the light can reach and the eye can see: not under the tab bar / music bar at the bottom.
     for (let tries = 0; sparks.length < SPARKS && tries < 400; tries++) {
-      const p = { x: between(40, W - 40), y: between(70, H - 60), got: false };
+      const p = { x: between(36, W - 36), y: between(70, H - reserve() - 24), got: false };
       if (here && Math.hypot(p.x - (here.x + SIZE / 2), p.y - (here.y + SIZE / 2)) < LIGHT * 1.5) continue;
       if (sparks.some((q) => Math.hypot(p.x - q.x, p.y - q.y) < 120)) continue;
       sparks.push(p);
@@ -380,11 +381,18 @@ export function Nova() {
   useEffect(() => {
     if (!walking) return;
     const follow = (e: PointerEvent) => {
-      const to = clamp({ x: e.clientX - SIZE / 2, y: e.clientY - SIZE / 2 });
+      // A finger would hide the lantern: on touch it floats a little above the fingertip.
+      const lift = e.pointerType === "touch" ? 70 : 0;
+      // Anywhere on screen during the walk (the usual clamp keeps it off the bottom bars, out of reach of sparks).
+      const to = {
+        x: Math.min(window.innerWidth - SIZE / 2, Math.max(-SIZE / 2, e.clientX - SIZE / 2)),
+        y: Math.min(window.innerHeight - SIZE / 2, Math.max(-SIZE / 2, e.clientY - SIZE / 2 - lift)),
+      };
       setPos(to);
       const w = walkRef.current;
       if (!w) return;
-      const found = w.sparks.filter((s) => !s.got && Math.hypot(s.x - (to.x + SIZE / 2), s.y - (to.y + SIZE / 2)) < 60);
+      const reach = e.pointerType === "touch" ? 70 : 60;
+      const found = w.sparks.filter((s) => !s.got && Math.hypot(s.x - (to.x + SIZE / 2), s.y - (to.y + SIZE / 2)) < reach);
       if (!found.length) return;
       sfx.hover();
       const sparks = w.sparks.map((s) => (found.includes(s) ? { ...s, got: true } : s));
@@ -635,6 +643,8 @@ export function Nova() {
   if (!pos || !pet) return null;
 
   const onDown = (e: React.PointerEvent) => {
+    // During a lantern walk the walk itself moves it (a touch on the pet must not drag it or open its card).
+    if (walk) return;
     drag.current = { x: e.clientX, y: e.clientY, from: pos, moved: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
@@ -666,9 +676,15 @@ export function Nova() {
 
   // Bubbles and the card open toward the roomy side of the screen.
   // Above or below, whichever half of the screen has room; sideways, centred on the pet but kept on screen.
-  const below = pos.y + SIZE / 2 < window.innerHeight / 2;
+  // The side with more room (the bottom bars don't count as room).
+  const roomBelow = window.innerHeight - reserve() - (pos.y + SIZE) - 12;
+  const roomAbove = pos.y - 12;
+  const below = roomBelow > roomAbove;
   const place = below ? "top-full mt-2" : "bottom-full mb-2";
   const shift = (w: number) => ({ left: Math.min(window.innerWidth - w - 8, Math.max(8, pos.x + SIZE / 2 - w / 2)) - pos.x });
+  // Phones: the card is a sheet above the tab bar (beside a 88px pet there's never room for it).
+  const sheet = window.innerWidth < 640;
+  const cardAt = sheet ? {} : { ...shift(288), maxHeight: Math.max(220, Math.min(480, below ? roomBelow : roomAbove)) };
   const peeking = seek?.phase === "hidden" ? seek.spot?.peek : undefined;
   const counting = seek?.phase === "counting";
   const bubble = say ?? (eating !== null || evolving || (!open && !seek && (mood === "hungry" || mood === "missed")) ? line : null);
@@ -715,8 +731,17 @@ export function Nova() {
             className="fixed inset-0 z-[29] touch-none"
             style={{ background: `radial-gradient(circle at ${light.x}px ${light.y}px, rgba(255,209,102,0.12) 0, rgba(255,209,102,0.04) ${LIGHT * 0.7}px, rgba(3,5,9,0.97) ${LIGHT}px)` }}
           />
-          <div className="pointer-events-none fixed left-1/2 top-4 z-[31] -translate-x-1/2 rounded-full border border-line bg-[#0b1016]/90 px-4 py-1.5 font-mono text-xs text-fg">
-            🏮 {walk.sparks.filter((s) => s.got).length}/{walk.sparks.length} sparks · {left}s · <span className="text-faint">Esc to stop</span>
+          <div className="pointer-events-none fixed left-1/2 top-4 z-[31] flex -translate-x-1/2 items-center gap-2 rounded-full border border-line bg-[#0b1016]/90 py-1 pl-4 pr-1 font-mono text-xs whitespace-nowrap text-fg">
+            🏮 {walk.sparks.filter((s) => s.got).length}/{walk.sparks.length} sparks · {left}s
+            {/* Phones have no Esc key. */}
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => void endWalk(false, walk.sparks.filter((s) => s.got).length, walk.sparks.length)}
+              className="pointer-events-auto rounded-full border border-line px-3 py-1 hover:border-line-strong"
+            >
+              Stop
+            </button>
           </div>
         </>
       )}
@@ -735,7 +760,8 @@ export function Nova() {
           line={line}
           mood={mood}
           place={place}
-          at={shift(288)}
+          at={cardAt}
+          sheet={sheet}
           roam={roam}
           onRoam={() => {
             const next = !roam;
@@ -787,10 +813,13 @@ export function Nova() {
   );
 }
 
-function PetCard({ pet, line, mood, place, at, roam, onRoam, onSeek, onWalk, festival, onWear, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: { left: number }; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; festival: Festival | null; onWear: (w: AccessoryId | "none") => void; onClose: () => void; onHide: () => void }) {
+function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSeek, onWalk, festival, onWear, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: React.CSSProperties; sheet: boolean; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; festival: Festival | null; onWear: (w: AccessoryId | "none") => void; onClose: () => void; onHide: () => void }) {
   const fedPct = pet.fed.due ? Math.round((pet.fed.done / pet.fed.due) * 100) : 0;
   return (
-    <div style={at} className={`pet-pop absolute ${place} max-h-[min(70vh,30rem)] w-72 overflow-y-auto rounded-2xl border border-line bg-[#0b1016]/95 p-4 text-sm text-fg shadow-2xl backdrop-blur-md`}>
+    <div
+      style={at}
+      className={`pet-pop ${sheet ? "fixed inset-x-2 bottom-[calc(var(--tabbar-h,0px)+var(--music-h,0px)+0.5rem)] z-10 max-h-[70dvh] pb-6" : `absolute ${place} w-72`} overflow-y-auto overscroll-contain rounded-2xl border border-line bg-[#0b1016]/95 p-4 text-sm text-fg shadow-2xl backdrop-blur-md`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-[0.2em]" style={{ color: GLOW[mood] }}>
@@ -799,9 +828,15 @@ function PetCard({ pet, line, mood, place, at, roam, onRoam, onSeek, onWalk, fes
           <p className="mt-0.5 text-base font-semibold">{pet.name}</p>
           <p className="text-xs text-faint">{pet.stageName}</p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close" className="rounded-md px-1.5 text-faint hover:text-fg">
-          ✕
-        </button>
+        {/* Up here, not in the bottom corner: on a phone the voice button floats over that corner. */}
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={onHide} className="rounded-md px-2 py-1 text-[11px] text-faint hover:text-fg">
+            Put away
+          </button>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md px-1.5 text-faint hover:text-fg">
+            ✕
+          </button>
+        </div>
       </div>
       <p className="mt-3 rounded-lg bg-white/5 px-3 py-2 text-[13px] leading-snug">“{line}”</p>
 
@@ -854,12 +889,7 @@ function PetCard({ pet, line, mood, place, at, roam, onRoam, onSeek, onWalk, fes
           🏮 Lantern walk: find sparks in the dark
         </button>
       </div>
-      <div className="mt-3 flex justify-between text-[11px] text-faint">
-        <span>{pet.xp} growth points</span>
-        <button type="button" onClick={onHide} className="hover:text-fg">
-          Put away
-        </button>
-      </div>
+      <p className="mt-3 text-[11px] text-faint">{pet.xp} growth points</p>
     </div>
   );
 }
