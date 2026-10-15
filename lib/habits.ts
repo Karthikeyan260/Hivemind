@@ -154,6 +154,7 @@ export async function runHabitAlerts(supabase: SupabaseClient, now = new Date())
   // tapped on a notification while these were being sent isn't overwritten by this stale list.
   const patch = new Map<string, Partial<Pick<(typeof all)[number], "alerted" | "nudged" | "snoozeUntil">>>();
   const mark = (id: string, p: Partial<Pick<(typeof all)[number], "alerted" | "nudged" | "snoozeUntil">>) => patch.set(id, { ...patch.get(id), ...p });
+  const evening: { h: (typeof all)[number]; streak: number }[] = [];
 
   for (const h of all) {
     const st = stats(h, lp.date);
@@ -181,19 +182,30 @@ export async function runHabitAlerts(supabase: SupabaseClient, now = new Date())
       sent += await notify(supabase, { title: `${h.emoji} Time for ${h.name.toLowerCase()}`, body: `Tap ✓ Done when it's done${streakTxt}`, url: "/habits", tag: `habit-${h.id}`, actions, data });
     }
 
-    // One gentle evening nudge at 8 pm if it's still not done.
+    // Still not done by 8 pm: it goes into the pet's one evening nudge (below).
     if (lp.hour >= 20 && lp.hour < 22 && h.nudged !== lp.date && h.times.some((t) => t < "20:00")) {
       h.nudged = lp.date;
       mark(h.id, { nudged: lp.date });
-      sent += await notify(supabase, {
-        title: `${h.emoji} Still time for ${h.name.toLowerCase()}`,
-        body: st.streak ? `Keep your ${st.streak}-day streak going 🔥` : "A quick one before the day ends?",
-        url: "/habits",
-        tag: `habit-${h.id}`,
-        actions,
-        data,
-      });
+      evening.push({ h, streak: st.streak });
     }
+  }
+
+  // One evening nudge for everything still open, in the pocket pet's voice (it eats finished habits).
+  if (evening.length) {
+    const pet = (await readJSON<{ name?: string }>(supabase, "pet", {}).catch(() => ({}) as { name?: string })).name || "Nova";
+    const [one] = evening;
+    const best = Math.max(...evening.map((e) => e.streak));
+    sent += await notify(supabase, {
+      title: `🍚 ${pet} is hungry`,
+      body:
+        evening.length === 1
+          ? `${one.h.emoji} ${one.h.name} innum pending: finish it to feed ${pet}${one.streak ? ` and keep your ${one.streak}-day streak 🔥` : ""}`
+          : `${evening.length} habits pending: ${evening.map((e) => `${e.h.emoji} ${e.h.name}`).join(", ")}. Saapadu podu!${best ? ` 🔥 ${best}-day streak on the line` : ""}`,
+      url: "/habits",
+      tag: "pet-hungry",
+      // With one habit, ✓ Done right on the notification still works.
+      ...(evening.length === 1 ? { actions, data: { habit: one.h.id } } : {}),
+    });
   }
   if (patch.size) {
     const fresh = await listHabits(supabase);

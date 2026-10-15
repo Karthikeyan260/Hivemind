@@ -37,6 +37,10 @@ class Capture extends AudioWorkletProcessor {
 registerProcessor("hive-capture", Capture);
 `;
 
+/** Transcript markup, never words: "<no speech>", "<noise>", "{pause}", "[silence]". */
+export const stripMarkup = (t: string) =>
+  t.replace(/<\s*(?:no[ _-]?speech|noise|pause|silence|inaudible|unk|unintelligible)\s*>|[{[]\s*(?:pause|silence|noise|no[ _-]?speech|inaudible)\s*[}\]]/gi, "");
+
 function toBase64(bytes: Uint8Array) {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -248,7 +252,7 @@ export class LiveVoice {
       // The owner is talking; if HIVEMIND was mid-reply, that's a barge-in.
       if (this.modelSpeaking) this.endTurn(true);
       this.userText += sc.inputTranscription.text;
-      this.h.onUserText(this.userText.trim());
+      this.h.onUserText(stripMarkup(this.userText).trim());
       if (this.state === "listening" || this.state === "speaking") this.set("listening");
     }
 
@@ -269,7 +273,7 @@ export class LiveVoice {
     }
     if (sc?.outputTranscription?.text) {
       this.modelSpeaking = true;
-      this.h.onModelText(sc.outputTranscription.text);
+      this.modelText(sc.outputTranscription.text);
     }
 
     if (sc?.turnComplete && this.modelSpeaking) this.endTurn(false);
@@ -294,7 +298,28 @@ export class LiveVoice {
     return out;
   }
 
+  /**
+   * The model's words, minus the markup it sometimes writes into its transcript ("<no speech>",
+   * "{pause}"). A tag can arrive split over two chunks, so a trailing "<…" / "{…" waits for the next one.
+   */
+  private held = "";
+  private modelText(delta: string) {
+    let t = this.held + delta;
+    this.held = "";
+    const open = /[<{][^<>{}]{0,24}$/.exec(t);
+    if (open) {
+      this.held = open[0];
+      t = t.slice(0, open.index);
+    }
+    t = stripMarkup(t);
+    if (t) this.h.onModelText(t);
+  }
+
   private endTurn(interrupted: boolean) {
+    // Whatever was held back wasn't a tag after all (or was one): send what's real.
+    const rest = stripMarkup(this.held);
+    this.held = "";
+    if (rest.trim()) this.h.onModelText(rest);
     this.h.onTurnEnd(interrupted);
     // A finished reply starts a fresh "what they said next" (a barge-in keeps what was said so far).
     if (!interrupted) {

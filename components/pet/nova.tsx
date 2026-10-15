@@ -477,13 +477,16 @@ export function Nova() {
       description: "Where Nova goes: input 'stay' (stop wandering, stay where it is), 'roam' (wander around the screen again), or 'come' (fly to the middle of the screen).",
       run: ({ input }) => {
         const t = String(input ?? "").toLowerCase();
-        if (/come|here|middle|centre|center|vaa/.test(t)) {
+        // "Stay here" / "wander around" first: "here" alone must not mean "come".
+        const stay = /stay|stop|still|irundhu|anga/.test(t) && !/roam|wander|move around|suthu/.test(t);
+        const wander = /roam|wander|move around|suthu|free/.test(t);
+        if (!stay && !wander) {
+          // "Come", "come here", "where are you", or anything else: fly to the middle of the screen.
           const to = clamp({ x: window.innerWidth / 2 - SIZE / 2, y: window.innerHeight / 2 - SIZE / 2 });
           flyTo(to, pos);
           setTimeout(() => speak("Vandhuten! 👋"), FLY_MS);
           return { came: true };
         }
-        const stay = /stay|stop|still|irundhu|anga/.test(t) && !/roam|wander|move around|suthu/.test(t);
         setRoam(!stay);
         store.set(MODE_KEY, stay ? "stay" : null);
         if (stay && pos) store.set(POS_KEY, JSON.stringify(pos));

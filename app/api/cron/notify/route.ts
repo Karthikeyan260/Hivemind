@@ -13,6 +13,7 @@ import { dream, getDream, getDreamSettings } from "@/lib/dream";
 import { db } from "@/lib/db";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { runHabitAlerts } from "@/lib/habits";
+import { runPetNudges } from "@/lib/pet";
 import { listCheckins, nudgeDue } from "@/lib/checkin";
 import { todaysKural } from "@/lib/kural";
 import { monthWrapped } from "@/lib/wrapped";
@@ -76,7 +77,7 @@ export async function GET(req: Request) {
     brief = (await notify(supabase, { title: "Good morning ☀️", body: [bdays.join(" · "), plan, weather, dreamLine, kural ? `📜 Kural ${kural.num}: ${kural.en || kural.pope}` : ""].filter(Boolean).join(" "), url: "/", tag: "brief" })) > 0;
   }
   // 3. Birthdays (week / eve / day) and habits (times, snoozes, 8 pm nudge, Sunday summary).
-  const [birthdays, habits] = await Promise.all([runBirthdayAlerts(supabase, now).catch(() => 0), runHabitAlerts(supabase, now).catch(() => 0)]);
+  const [birthdays, habits] = await Promise.all([runBirthdayAlerts(supabase, now).catch(() => 0), runHabitAlerts(supabase, now).catch(() => 0), runPetNudges(supabase, now).catch(() => 0)]);
 
   // My Wrapped: on the 1st, from 9 am, last month's story cards are ready (made now, so they open at once).
   let wrapped = false;

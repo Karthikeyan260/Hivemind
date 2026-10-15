@@ -5,6 +5,7 @@ import { geminiClient } from "@/lib/ai/gemini";
 import { handle } from "@/lib/api";
 import { db } from "@/lib/db";
 import { listProjects } from "@/lib/organizer";
+import { petName } from "@/lib/pet";
 import { activeVoiceId } from "@/lib/my-voice";
 import { getPrefs, languageRule } from "@/lib/prefs";
 import { getProfile, profileForPrompt } from "@/lib/profile";
@@ -324,7 +325,7 @@ const Body = z.object({ path: z.string().max(200).default("/") }).default({ path
 export const POST = handle(async (req: Request) => {
   const { path } = Body.parse(await req.json().catch(() => ({})));
   const supabase = db();
-  const [profile, projects, schedule, prefs, routines] = await Promise.all([
+  const [profile, projects, schedule, prefs, routines, pet] = await Promise.all([
     getProfile(supabase),
     listProjects(supabase),
     agenda(supabase, 2)
@@ -332,6 +333,7 @@ export const POST = handle(async (req: Request) => {
       .catch(() => "(unavailable)"),
     getPrefs(supabase).catch(() => ({ language: "auto" as const })),
     listRoutines(supabase).catch(() => []),
+    petName(supabase).catch(() => "Nova"),
   ]);
 
   const plan = planFor(
@@ -366,6 +368,8 @@ ${schedule}
 Tools:
 ${plan.instructions}
 For general questions unrelated to the owner, just answer.
+
+The owner's pocket pet (the little glowing lantern on screen) is called "${pet}". Saying just "${pet}", "${pet}?" or "hey ${pet}" means they're calling the pet: do_page_action nova_status (it opens its card) and answer in a playful line. Speech-to-text often garbles this short name (e.g. ${pet === "Nova" ? '"Noa", "No va", "Nava", "Nové"' : "a similar-sounding word"}): a lone short word that sounds like it means the pet, not a greeting.
 
 ${languageRule(prefs.language)}
 In voice, speak Tamil naturally like a Chennai friend would (not formal written Tamil).`;

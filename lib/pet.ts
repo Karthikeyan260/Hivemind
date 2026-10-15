@@ -13,7 +13,8 @@ import { addDays, localParts } from "@/lib/reminders";
  * all counted from the day it was born, so it starts as a seed and grows over weeks.
  */
 /** walks: the local date of each finished lantern walk (all sparks found). */
-type Saved = { born: string; lastSeen: string; name?: string; walks?: string[] };
+/** missedFor / stageNotified: which absence and which stage already got a push (so each one goes once). */
+type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; missedFor?: string; stageNotified?: number };
 export const DEFAULT_NAME = "Nova";
 const KEY = "pet";
 
@@ -45,14 +46,15 @@ export type Pet = {
 /** Growth points per thing done (music is capped so leaving a playlist on doesn't count much). */
 const XP = { habit: 10, checkin: 8, win: 6, game: 2, memory: 2, play: 1, playsPerDay: 10, walk: 5, walksPerDay: 3 } as const;
 
-export async function getPet(supabase: SupabaseClient, now = new Date()): Promise<Pet> {
+/** The owner looking at it (the app) marks today as seen; the scheduler checking on it (touch: false) doesn't. */
+export async function getPet(supabase: SupabaseClient, now = new Date(), opts: { touch?: boolean } = {}): Promise<Pet> {
   const today = localParts(now).date;
   const saved = await readJSON<Saved | null>(supabase, KEY, null);
   const born = saved?.born ?? today;
   const name = saved?.name || DEFAULT_NAME;
   const walks = saved?.walks ?? [];
   const away = saved ? Math.round((+new Date(`${today}T00:00:00Z`) - +new Date(`${saved.lastSeen}T00:00:00Z`)) / 86_400_000) : 0;
-  if (!saved || saved.lastSeen !== today) await writeJSON(supabase, KEY, { ...saved, born, lastSeen: today } satisfies Saved).catch(() => {});
+  if ((opts.touch ?? true) && (!saved || saved.lastSeen !== today)) await writeJSON(supabase, KEY, { ...saved, born, lastSeen: today } satisfies Saved).catch(() => {});
 
   const months = [...new Set([born.slice(0, 7), today.slice(0, 7)])];
   const [habits, checkins, games, plays, memories] = await Promise.all([
@@ -160,3 +162,41 @@ export async function logWalk(supabase: SupabaseClient) {
   await writeJSON(supabase, KEY, { ...saved, born: saved?.born ?? today, lastSeen: today, walks: [...walks, today].slice(-500) } satisfies Saved);
   return { counted: true, xp: XP.walk };
 }
+
+/**
+ * The pet's own pushes (the scheduler runs this): "misses you" once the owner has been away 3 days
+ * (once per absence, daytime only), and "evolved!" once per new stage. Its evening "hungry" nudge
+ * lives with the habit reminders (lib/habits.ts), where it replaces the old one-per-habit nudge.
+ */
+export async function runPetNudges(supabase: SupabaseClient, now = new Date()) {
+  const saved = await readJSON<Saved | null>(supabase, KEY, null);
+  if (!saved) return 0;
+  const { notify } = await import("@/lib/push");
+  const lp = localParts(now);
+  const name = saved.name || DEFAULT_NAME;
+  const changes: Partial<Saved> = {};
+  let sent = 0;
+
+  const away = Math.round((+new Date(`${lp.date}T00:00:00Z`) - +new Date(`${saved.lastSeen}T00:00:00Z`)) / 86_400_000);
+  if (away >= 3 && lp.hour >= 10 && lp.hour < 21 && saved.missedFor !== saved.lastSeen) {
+    sent += await notify(supabase, { title: `🥺 ${name} misses you`, body: `${away} days aachu! Vaa, konjam pesalam. Your habits and ${name} are waiting.`, url: "/", tag: "pet" });
+    changes.missedFor = saved.lastSeen;
+  }
+
+  const pet = await getPet(supabase, now, { touch: false });
+  if (saved.stageNotified === undefined) changes.stageNotified = pet.stage;
+  else if (pet.stage > saved.stageNotified && lp.hour >= 8 && lp.hour < 22) {
+    sent += await notify(supabase, { title: `✨ ${name} evolved!`, body: `Now a ${pet.stageName}. Come see the new look 🏮`, url: "/", tag: "pet" });
+    changes.stageNotified = pet.stage;
+  }
+
+  // Merged into a fresh read, so a rename or walk logged meanwhile isn't lost.
+  if (Object.keys(changes).length) {
+    const fresh = await readJSON<Saved | null>(supabase, KEY, null);
+    if (fresh) await writeJSON(supabase, KEY, { ...fresh, ...changes } satisfies Saved);
+  }
+  return sent;
+}
+
+/** The pet's current name (the default until renamed). */
+export const petName = async (supabase: SupabaseClient) => (await readJSON<Saved | null>(supabase, KEY, null).catch(() => null))?.name || DEFAULT_NAME;
