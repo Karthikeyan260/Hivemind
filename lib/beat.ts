@@ -1,5 +1,7 @@
 "use client";
 
+import { type BeatColor, DEFAULT_COLOR, hueRgb, rgbOf, vividOf } from "@/lib/beat-color";
+
 /**
  * Listens to the song that's playing and finds its beat, for the music lights: the app's glow, the
  * galaxy core and the pet pulse with the bass, and a bass drop flashes the screen.
@@ -29,6 +31,7 @@ let prevBass = 0;
 let beatCount = 0;
 let fluxAvg = 0;
 let songStart = 0;
+let rainbowAt = 0;
 const debug = typeof localStorage !== "undefined" && (() => { try { return localStorage.getItem("hm-beat-debug") === "1"; } catch { return false; } })();
 let lastCss = -1;
 let bins: Uint8Array<ArrayBuffer> | null = null;
@@ -36,6 +39,61 @@ const beats = new Set<Listener>();
 const drops = new Set<Listener>();
 
 export const level = () => lvl;
+
+/* ───── colour ───── */
+const COLOR_KEY = "hm-beat-color";
+let color: BeatColor = (() => {
+  try {
+    return (typeof localStorage !== "undefined" && localStorage.getItem(COLOR_KEY)) || DEFAULT_COLOR;
+  } catch {
+    return DEFAULT_COLOR;
+  }
+})();
+let cover: [number, number, number] | null = null;
+let lastHue = 0;
+
+export const getColor = () => color;
+/** The current light colour as RGB (what the lights show right now). */
+export function currentRgb(): [number, number, number] {
+  if (color === "rainbow") return hueRgb(lastHue);
+  if (color === "auto") return cover ?? rgbOf(DEFAULT_COLOR);
+  return rgbOf(color);
+}
+function paint(rgb = currentRgb()) {
+  if (typeof document !== "undefined") document.documentElement.style.setProperty("--beat-rgb", rgb.join(" "));
+}
+/** "blue", "#ff00aa", "rainbow", "auto" (the song's cover). Remembered on this device. */
+export function setColor(c: BeatColor) {
+  color = c;
+  try {
+    if (c === DEFAULT_COLOR) localStorage.removeItem(COLOR_KEY);
+    else localStorage.setItem(COLOR_KEY, c);
+  } catch {}
+  paint();
+  window.dispatchEvent(new Event(COLOR_EVENT));
+}
+export const COLOR_EVENT = "hivemind:beat-color";
+
+/** The song's cover, for the "auto" colour: its most vivid tone (gold if it can't be read). */
+export function setCover(url: string | undefined) {
+  cover = null;
+  paint();
+  if (!url) return;
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    try {
+      const c = document.createElement("canvas");
+      c.width = c.height = 24;
+      const g = c.getContext("2d", { willReadFrequently: true });
+      if (!g) return;
+      g.drawImage(img, 0, 0, 24, 24);
+      cover = vividOf(g.getImageData(0, 0, 24, 24).data);
+      paint();
+    } catch {}
+  };
+  img.src = url;
+}
 export const isSynthetic = () => synthetic;
 export function onBeat(f: Listener) {
   beats.add(f);
@@ -117,6 +175,12 @@ function frame(now: number) {
   }
   lvl = Math.max(0, lvl - 0.035);
   css(lvl);
+  // Rainbow: the colour drifts around the wheel (a full turn every ~12 s), a step every ~100 ms.
+  if (color === "rainbow" && now - rainbowAt > 100) {
+    rainbowAt = now;
+    lastHue = (now / 33) % 360;
+    paint(hueRgb(lastHue));
+  }
   // Debug readout for tests (only when asked for).
   if (debug) (window as unknown as { __beat?: unknown }).__beat = { bass: +bass.toFixed(3), avg: +avg.toFixed(3), synthetic, tracks: source ? 1 : 0, beats: beatCount };
 }
@@ -149,6 +213,7 @@ export function start(audio: HTMLAudioElement) {
   } catch {
     synthetic = true;
   }
+  paint();
   document.documentElement.classList.add("music-live");
   if (!running) {
     running = true;

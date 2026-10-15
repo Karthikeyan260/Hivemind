@@ -25,6 +25,7 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   if (/\b(make|build|create|design)\b.*\b(app|tool|tracker)\b|\b(open|delete|remove|change|update|fix)\b.*\bapp\b|\b(my|what) apps\b/.test(m)) return "core";
   if (/\bcomics?\b/.test(m)) return "core";
   // Screen effects ("lights off", "music lights on", "stop the rain on screen", "nova be quiet").
+  if (/(music )?lights?.{0,20}(colou?r|blue|pink|red|green|purple|white|rainbow|gold|orange|cyan|yellow|neelam|sivappu|pachai)|(colou?r|blue|pink|red|green|purple|white|rainbow|gold).{0,25}(music )?lights?/.test(m)) return "core";
   if (/\b(music )?lights? (on|off)\b|\b(turn|switch) (on|off) (the )?(music )?(lights?|effects?|glow)\b|\b(weather|screen) effects?\b|\brain on (the )?screen\b|\bnova,? (be )?quiet\b/.test(m)) return "core";
   // The game record ("how many games did I win", "my chess level"): it lives in the app, not in the brain.
   if (/\b(how many games|games? (did|have) i (win|won|lose|lost|play|played)|my (game|chess) (record|level|stats)|chess level|win(s)? (in|at) (chess|ludo|dots|colou?r clash))\b/.test(m)) return "core";

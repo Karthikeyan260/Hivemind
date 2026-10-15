@@ -903,14 +903,14 @@ body {
 .pet-umbrella { animation: pet-umbrella 2.4s ease-in-out infinite; transform-box: view-box; transform-origin: 50px 30px; }
 
 /* ---------- music lights (lib/beat.ts sets --beat 0..1 and html.music-live) ---------- */
-:root { --beat: 0; }
+:root { --beat: 0; --beat-rgb: 255 180 70; }
 .beat-edge { opacity: 0; }
 /* Always a soft glow while music plays (so it's clearly on), much brighter on each beat. */
 html.music-live .beat-edge {
   opacity: 1;
   box-shadow:
-    inset 0 0 calc(40px + var(--beat) * 110px) calc(4px + var(--beat) * 14px) rgba(255, 180, 70, calc(0.18 + var(--beat) * 0.5)),
-    inset 0 0 calc(6px + var(--beat) * 18px) calc(var(--beat) * 3px) rgba(255, 220, 150, calc(var(--beat) * 0.55));
+    inset 0 0 calc(40px + var(--beat) * 110px) calc(4px + var(--beat) * 14px) rgb(var(--beat-rgb) / calc(0.18 + var(--beat) * 0.5)),
+    inset 0 0 calc(6px + var(--beat) * 18px) calc(var(--beat) * 3px) rgb(var(--beat-rgb) / calc(var(--beat) * 0.6));
 }
 /* A warm "speaker" glow rising from the music bar. */
 html.music-live .beat-edge::after {
@@ -921,12 +921,12 @@ html.music-live .beat-edge::after {
   width: min(900px, 120vw);
   height: calc(140px + var(--beat) * 160px);
   transform: translateX(-50%);
-  background: radial-gradient(ellipse at 50% 100%, rgba(255, 185, 80, calc(0.16 + var(--beat) * 0.45)), transparent 70%);
+  background: radial-gradient(ellipse at 50% 100%, rgb(var(--beat-rgb) / calc(0.16 + var(--beat) * 0.45)), transparent 70%);
 }
-html.music-live .border-line { border-color: color-mix(in srgb, var(--color-line), #ffc96b calc(15% + var(--beat) * 85%)); }
-html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--color-line-strong), #ffd98f calc(20% + var(--beat) * 80%)); }
+html.music-live .border-line { border-color: color-mix(in srgb, var(--color-line), rgb(var(--beat-rgb)) calc(15% + var(--beat) * 85%)); }
+html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--color-line-strong), rgb(var(--beat-rgb)) calc(20% + var(--beat) * 80%)); }
 @keyframes beat-flash { 0% { opacity: 0; } 8% { opacity: 1; } 100% { opacity: 0; } }
-.beat-flash { background: radial-gradient(circle at 50% 45%, rgba(255, 236, 190, 0.38), rgba(255, 170, 70, 0.14) 45%, transparent 75%); animation: beat-flash 0.7s ease-out forwards; }
+.beat-flash { background: radial-gradient(circle at 50% 45%, rgb(var(--beat-rgb) / 0.4), rgb(var(--beat-rgb) / 0.14) 45%, transparent 75%); animation: beat-flash 0.7s ease-out forwards; }
 @keyframes pet-kick { 0% { transform: translateY(0) scale(1); } 35% { transform: translateY(-7px) scale(1.06, 0.95); } 100% { transform: translateY(0) scale(1); } }
 .pet-kick { animation: pet-kick 0.22s ease-out; }
 @media (prefers-reduced-motion: reduce) { html.music-live .beat-edge, .beat-flash { display: none; } }

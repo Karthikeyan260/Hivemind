@@ -7,6 +7,7 @@ import { cx } from "@/components/ui";
 import { useVoice } from "@/components/voice/provider";
 import { MEDIA_START_EVENT, MUSIC_EVENT, MUSIC_STATE_EVENT } from "@/lib/client-api";
 import * as beat from "@/lib/beat";
+import { BeatColorPicker } from "@/components/fx/beat-color-picker";
 import { isPublicPage } from "@/lib/public-paths";
 
 /**
@@ -305,7 +306,10 @@ export function MusicPlayer() {
       <audio
         ref={audio}
         preload="auto"
-        onPlaying={(e) => beat.start(e.currentTarget)}
+        onPlaying={(e) => {
+          beat.start(e.currentTarget);
+          beat.setCover(st.current.queue[st.current.index]?.image);
+        }}
         onPlay={() => {
           setPlaying(true);
           window.dispatchEvent(new CustomEvent(MEDIA_START_EVENT, { detail: { source: "music" } }));
@@ -364,6 +368,7 @@ export function MusicPlayer() {
               <VolIcon size={16} />
               <input type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => setVolume(Number(e.target.value))} className="w-20" aria-label="Volume" />
             </label>
+            <BeatColorPicker />
             <button type="button" onClick={() => setShowQueue(!showQueue)} aria-label="Queue" className={cx("p-1.5 hover:text-fg", showQueue ? "text-core" : "text-soft")}>
               <ListMusic size={18} />
             </button>

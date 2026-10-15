@@ -618,7 +618,7 @@ export function Nova() {
       },
     },
     nova_lantern_walk: {
-      description: "Lantern walk with the pet: the screen goes dark, the pet follows the owner's pointer / finger like a lantern and they hunt for hidden sparks in its light (all found = growth points). input: 'start' ('lights off', 'lantern walk') or 'stop' ('lights on').",
+      description: "Lantern walk with the pet: the screen goes dark, the pet follows the owner's pointer / finger like a lantern and they hunt for hidden sparks in its light (all found = growth points). input: 'start' ('Nova, lights off', 'lantern walk', 'spark hunt') or 'stop' ('Nova, lights on', 'stop the walk'). A plain 'lights off' is the screen effects (music_lights / living_weather), not this.",
       run: ({ input }) => {
         touched();
         if (/stop|end|quit|lights on/i.test(String(input ?? ""))) {
