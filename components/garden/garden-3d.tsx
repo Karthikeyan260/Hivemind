@@ -26,10 +26,19 @@ const todayLocal = () => new Date().toLocaleDateString("en-CA");
 /** The north-east monsoon over Tamil Nadu: October to December. */
 const monsoonMonth = () => [9, 10, 11].includes(new Date().getMonth());
 
-export function Garden3D({ onFail }: { onFail: () => void }) {
+/** What to dress the island for: a festival or "monsoon" from the link (?fest=), "today" or nothing for today's. */
+function decorFor(asked: string | null) {
+  const today = festivalOn(todayLocal())?.id ?? null;
+  const isDecor = (id: string | null) => (DECOR as readonly string[]).includes(id ?? "");
+  const own = !asked || asked === "today";
+  return { fest: isDecor(asked) ? asked : own && isDecor(today) ? today : null, monsoon: asked === "monsoon" || (own && monsoonMonth()) };
+}
+
+export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?: string | null }) {
   const feed = useFetch<{ garden: Garden }>("/api/pet/garden");
   const g = feed.data?.garden;
   const placed = useMemo(() => (g ? layout(g.items) : []), [g]);
+  const gardenKey = g ? `${g.items.map((i) => i.id).join(",")}|${g.butterflies}|${g.stage}` : "";
   const n = g?.items.length ?? 0;
   const isl = islandSize(n);
   const home = homeSpot(n);
@@ -42,7 +51,9 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
   const petEl = useRef<HTMLDivElement>(null);
   const tipEl = useRef<HTMLDivElement>(null);
   const scene = useRef<GardenScene | null>(null);
-  const [ready, setReady] = useState(false);
+  // Bumped each time a scene is built: the effects below re-apply the sky, decorations and lights to it.
+  const [sceneId, setSceneId] = useState(0);
+  const ready = sceneId > 0;
   const [sel, setSel] = useState<{ id: string; label: string } | null>(null);
   const [sky, setSky] = useState<Sky>("calm");
   const [phase, setPhase] = useState<Phase>("day");
@@ -70,11 +81,6 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the clock and the sky, read on mount
     setPhase(phaseNow());
-    const asked = new URLSearchParams(location.search).get("fest");
-    const today = festivalOn(todayLocal())?.id ?? null;
-    const isDecor = (id: string | null) => (DECOR as readonly string[]).includes(id ?? "");
-    setFest(isDecor(asked) ? asked : !asked && isDecor(today) ? today : null);
-    setMonsoon(asked === "monsoon" || (!asked && monsoonMonth()));
     setSky((window as unknown as { __hmSky?: Sky }).__hmSky ?? "calm");
     const on = (e: Event) => setSky((e as CustomEvent<{ sky: Sky }>).detail?.sky ?? "calm");
     window.addEventListener("hivemind:sky", on);
@@ -234,7 +240,7 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
       const s = scene.current;
       ro = new ResizeObserver(() => s.resize(cv.clientWidth, cv.clientHeight));
       ro.observe(box.current);
-      setReady(true);
+      setSceneId((x) => x + 1);
       enter(sleeping);
       if (!sleeping) later(() => comeOut(), 3600);
       else busy.current = Date.now() + 3600;
@@ -267,18 +273,24 @@ export function Garden3D({ onFail }: { onFail: () => void }) {
       canvasEl?.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rebuilt only when the garden itself changes
-  }, [g, placed]);
+  }, [gardenKey]);
 
   useEffect(() => {
     scene.current?.setLook(phase, wet);
-  }, [phase, wet, ready]);
+  }, [phase, wet, sceneId]);
+  useEffect(() => {
+    const d = decorFor(asked);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the link, which can change while the page is open
+    setFest(d.fest);
+    setMonsoon(d.monsoon);
+  }, [asked]);
   useEffect(() => {
     scene.current?.setDecor(fest, monsoon || wet);
-  }, [fest, monsoon, wet, ready]);
+  }, [fest, monsoon, wet, sceneId]);
   useEffect(() => {
     scene.current?.setLit(night || inside);
     scene.current?.setSleeping(inside && night);
-  }, [night, inside, ready]);
+  }, [night, inside, sceneId]);
   useEffect(() => {
     const t = setTimeout(() => setHint(false), 9000);
     return () => clearTimeout(t);

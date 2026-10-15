@@ -544,7 +544,7 @@ void main() {`);
             float lanes = smoothstep(0.35, 0.75, fbm(vP * 11.0 + 3.0));
             float a = band * (0.35 + dust * 0.9) * (1.0 - lanes * 0.6) * smoothstep(-0.05, 0.25, vP.y);
             vec3 c = mix(vec3(0.45, 0.4, 0.75), vec3(0.95, 0.85, 0.8), dust);
-            gl_FragColor = vec4(c * 0.55, a * 0.55);
+            gl_FragColor = vec4(c * 0.4, a * 0.28 * smoothstep(0.05, 0.4, vP.y));
           }`,
       }),
     );

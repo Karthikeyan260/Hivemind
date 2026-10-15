@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { runAgent } from "@/lib/agents/orchestrator";
-import { quickEffect } from "@/lib/agents/quick";
+import { quickEffect, quickGarden } from "@/lib/agents/quick";
 import { TOOLS } from "@/lib/agents/tools";
 import { routeAgent } from "@/lib/agents/router";
 import type { Action, AgentEvent, AgentId, RunContext, Source } from "@/lib/agents/types";
@@ -139,8 +139,15 @@ export const POST = handle(async (req: Request) => {
         const started = Date.now();
         // A simple screen switch ("lights off", "Nova be quiet"): done at once, no AI needed.
         const quick = quickEffect(message);
+        const garden = quick ? null : quickGarden(message);
         try {
-          if (quick) {
+          if (garden) {
+            // "Show the garden for Deepavali": open the garden dressed for it.
+            actions.push({ label: garden.label, href: `/garden?fest=${garden.fest}`, navigate: true });
+            reply = garden.reply;
+            send({ type: "delta", text: reply });
+            done = { type: "done", provider: "rules", model: "instant", latency_ms: Date.now() - started };
+          } else if (quick) {
             ctx.emit({ type: "tool", agent: "core", tool: "screen_effects", status: "run" });
             await TOOLS.screen_effects.run(quick.args, ctx);
             ctx.emit({ type: "tool", agent: "core", tool: "screen_effects", status: "ok" });

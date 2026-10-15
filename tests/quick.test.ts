@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quickEffect } from "@/lib/agents/quick";
+import { quickEffect, quickGarden } from "@/lib/agents/quick";
 
 const fx = (m: string) => quickEffect(m)?.args ?? null;
 
@@ -29,5 +29,23 @@ describe("quick screen switches (no AI)", () => {
     expect(fx("play a song")).toBeNull();
     expect(fx("Nova, how are you?")).toBeNull();
     expect(fx("turn off the lights in the kitchen at 9 pm and remind me to sleep early tonight please")).toBeNull();
+  });
+});
+
+describe("garden festivals from chat (no AI)", () => {
+  const fest = (m: string) => quickGarden(m)?.fest ?? null;
+  it("opens the garden dressed for the festival or season", () => {
+    expect(fest("show the garden for Deepavali")).toBe("deepavali");
+    expect(fest("Show the garden for Diwali!")).toBe("deepavali");
+    expect(fest("garden in karthigai deepam")).toBe("karthigai");
+    expect(fest("pongal island")).toBe("pongal");
+    expect(fest("show my garden in the monsoon")).toBe("monsoon");
+    expect(fest("show the garden back to normal")).toBe("today");
+  });
+  it("leaves everything else alone", () => {
+    expect(fest("show my Deepavali photos")).toBeNull();
+    expect(fest("when is deepavali this year?")).toBeNull();
+    expect(fest("open the garden")).toBeNull();
+    expect(quickEffect("show the garden for Deepavali")).toBeNull();
   });
 });
