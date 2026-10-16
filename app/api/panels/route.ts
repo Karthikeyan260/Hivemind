@@ -4,7 +4,7 @@ import { handle, parseBody } from "@/lib/api";
 import { listApps } from "@/lib/apps";
 import { listScreened } from "@/lib/call-screen";
 import { db } from "@/lib/db";
-import { getWeather } from "@/lib/external/weather";
+import { weatherHere } from "@/lib/external/weather";
 import { getPins, setPins } from "@/lib/panels";
 import { listRoutines } from "@/lib/routines";
 
@@ -15,7 +15,8 @@ export const GET = handle(async () => {
   const has = (p: string) => pinned.includes(p as never);
   const [apps, weather, calls, routines] = await Promise.all([
     listApps(supabase).catch(() => []),
-    has("weather") ? getWeather().catch(() => null) : null,
+    // Where the owner is (their newest shared location), not always the home city.
+    has("weather") ? weatherHere(supabase).catch(() => null) : null,
     has("calls") ? listScreened(supabase).catch(() => []) : null,
     has("routines") ? listRoutines(supabase).catch(() => []) : null,
   ]);

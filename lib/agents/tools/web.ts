@@ -1,5 +1,5 @@
 import "server-only";
-import { getWeather, HOME_CITY } from "@/lib/external/weather";
+import { getWeather, HOME_CITY, weatherHere } from "@/lib/external/weather";
 import { findProduct, STORE_IDS, type StoreId } from "@/lib/external/products";
 import { researchAndSave, webSearch } from "@/lib/external/web";
 import { cite, obj, S, str } from "./shared";
@@ -64,10 +64,11 @@ export const web: Record<string, Tool> = {
   },
   get_weather: {
     name: "get_weather",
-    description: `Live weather and 4-day forecast for a place (default ${HOME_CITY}).`,
+    description: `Live weather and 4-day forecast for a place (default: where the owner is right now, else ${HOME_CITY}).`,
     parameters: obj({ place: S }),
     async run(args, ctx) {
-      const w = await getWeather(str(args.place) || HOME_CITY);
+      // No place named: where the owner is (this device, or the newest shared location), else home.
+      const w = str(args.place) ? await getWeather(str(args.place)) : await weatherHere(ctx.supabase, ctx.location);
       cite(ctx, [{ type: "web", title: `Open-Meteo · ${w.place}`, href: "https://open-meteo.com", similarity: 1 }]);
       return w;
     },

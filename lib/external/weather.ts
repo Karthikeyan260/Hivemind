@@ -136,3 +136,36 @@ export function weatherText(w: Weather) {
     ...w.days.map((d) => `- ${d.date}: ${d.condition}, ${d.min_c}–${d.max_c}°C, rain chance ${d.rain_chance_pct}%`),
   ].join("\n");
 }
+
+/** Town names for spots already looked up (rounded to ~1 km), so OpenStreetMap is asked once per place. */
+const townAt = new Map<string, string>();
+/** How recent a shared device location must be to count as "where the owner is" for weather. */
+const HERE_MS = 3 * 60 * 60_000;
+
+/**
+ * The weather where the owner is: the device asking (when it sent where it is), else the newest
+ * device location shared in the last 3 hours, else the home city. Named after the town
+ * ("Ranipet"), not "Your location".
+ */
+export async function weatherHere(
+  supabase: import("@supabase/supabase-js").SupabaseClient,
+  at?: { lat: number; lng: number } | null,
+): Promise<Weather> {
+  let spot = at && Number.isFinite(at.lat) && Number.isFinite(at.lng) ? at : null;
+  if (!spot) {
+    const { listDevices } = await import("@/lib/device-location");
+    const newest = (await listDevices(supabase).catch(() => []))[0];
+    if (newest && Date.now() - Date.parse(newest.at) < HERE_MS) spot = { lat: newest.lat, lng: newest.lng };
+  }
+  if (!spot) return getWeather(HOME_CITY);
+  const w = await getWeatherAt(spot.lat, spot.lng);
+  const key = `${Math.round(spot.lat * 100)},${Math.round(spot.lng * 100)}`;
+  let town = townAt.get(key);
+  if (town === undefined) {
+    const { whereIs } = await import("@/lib/places");
+    const p = await whereIs(spot).catch(() => null);
+    town = p?.city || p?.area || "";
+    townAt.set(key, town);
+  }
+  return { ...w, place: town || w.place };
+}
