@@ -1,0 +1,46 @@
+/**
+ * Every page voice can open, in one place: the live session's `navigate` tool offers exactly these,
+ * and the browser opens only these. (They used to be two lists, and pages added to one were missing
+ * from the other, so "open Nova's garden" said "unknown page".) A test checks it matches the app.
+ */
+export const VOICE_PAGES = [
+  { path: "/", what: "home bridge: galaxy and chat console" },
+  { path: "/projects", what: "projects" },
+  { path: "/memories", what: "memories (the Memory Palace)" },
+  { path: "/career", what: "career: job match analyses and tailored resume PDFs" },
+  { path: "/journey", what: "journey: animated git-graph of education, internships, projects and current work" },
+  { path: "/habits", what: "habits (today's checklist, streaks) and birthdays" },
+  { path: "/notes", what: "notes" },
+  { path: "/documents", what: "uploaded documents" },
+  { path: "/sources", what: "data sources and imports" },
+  { path: "/search", what: "search" },
+  { path: "/settings", what: "settings" },
+  { path: "/autopilot", what: "Autopilot: what HIVEMIND noticed on its own, run it now, its schedule" },
+  { path: "/web", what: "Web tasks: HIVEMIND driving a cloud browser, approvals, live view" },
+  { path: "/map", what: "Map: where you are, your devices, places nearby, routes" },
+  { path: "/apps", what: "Apps HIVEMIND built for the owner (create, change, delete)" },
+  { path: "/routines", what: "Routines: one phrase that does several things (good morning, gym mode)" },
+  { path: "/share", what: "Share: save a link, text, photo or file into the brain (also from Android's Share menu)" },
+  { path: "/comic", what: "Your day as a comic: four panels with the owner's mascot; earlier days too" },
+  { path: "/photos", what: "Photos: the owner's photos, described and searchable by place and moment" },
+  { path: "/wrapped", what: "My Wrapped: the month in story cards (moods, habits, songs, games, photos, places)" },
+  { path: "/garden", what: "Nova's garden: the pet's 3D floating island grown from habits, check-ins, walks, wins and songs" },
+  { path: "/garden?fest=deepavali", what: "Nova's garden dressed for Deepavali (lamps, rangoli, fireworks)" },
+  { path: "/garden?fest=karthigai", what: "Nova's garden dressed for Karthigai Deepam (oil lamps along the path)" },
+  { path: "/garden?fest=pongal", what: "Nova's garden dressed for Pongal (kolam, sugarcane, pongal pot)" },
+  { path: "/garden?fest=monsoon", what: "Nova's garden in the monsoon (puddles, frogs)" },
+  { path: "/garden?fest=today", what: "Nova's garden as it is today (no festival preview)" },
+  { path: "/games", what: "Games: all the games" },
+  { path: "/games/paattu", what: "Paattu Quiz: guess the Tamil song's film" },
+  { path: "/games/draw", what: "Draw & Guess" },
+  { path: "/games/ludo", what: "Ludo" },
+  { path: "/games/cards", what: "Colour Clash (cards, like Uno)" },
+  { path: "/games/chess", what: "Chess" },
+  { path: "/games/dots", what: "Dots and Boxes" },
+  { path: "/brief", what: "Morning brief: news on the topics the owner follows, every morning" },
+  { path: "/dream", what: "Dream mode: what HIVEMIND tidied in the memories overnight, with undo" },
+  { path: "/focus", what: "Kitchen / hands-free mode: full screen, big voice orb, screen stays on" },
+  { path: "/calls", what: "Calls: call screening settings, the owner's call link, calls HIVEMIND answered" },
+] as const;
+
+export const VOICE_PAGE_PATHS: readonly string[] = VOICE_PAGES.map((p) => p.path);

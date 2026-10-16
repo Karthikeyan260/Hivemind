@@ -21,6 +21,7 @@ import { clearOfflineCache } from "@/lib/offline";
 const LOCATION_TOOLS = new Set(["where_am_i", "places_nearby", "directions"]);
 import { openExternal } from "@/lib/open-link";
 import { click, listControls, scroll, selectOption, typeText } from "./dom-tools";
+import { VOICE_PAGE_PATHS } from "@/lib/voice/pages";
 
 /** Everything a page can react to during a live conversation. */
 export type VoiceListener = {
@@ -179,7 +180,6 @@ const SLEEP_WORDS = {
     /^\W*(ok(ay)?\W+)?(good ?night|bye[ -]?bye|goodbye|bye)(\W+(hivemind|for now|then))?\W*$/i.test(q.trim()),
 };
 
-const PAGES = ["/", "/projects", "/memories", "/career", "/journey", "/habits", "/notes", "/documents", "/sources", "/search", "/settings", "/autopilot", "/web", "/map", "/apps", "/routines", "/calls", "/share", "/focus", "/comic", "/games", "/games/paattu", "/games/draw", "/games/ludo", "/games/cards", "/games/chess", "/games/dots", "/photos", "/wrapped", "/garden", "/brief", "/dream"];
 
 /**
  * One Gemini Live session for the whole site. It lives in the root layout, so the conversation keeps
@@ -265,6 +265,23 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     routerRef.current = router;
   }, [router]);
+  // Development only: run what the voice session's navigate / do_page_action tools do, for tests
+  // without a microphone. Never present in production builds.
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    const w = window as unknown as { __hmVoiceTest?: unknown };
+    w.__hmVoiceTest = {
+      navigate: (page: string) => (VOICE_PAGE_PATHS.includes(page) ? (routerRef.current.push(page), { opened: page }) : { error: `unknown page ${page}` }),
+      pageAction: async (name: string, input = "") => {
+        const get = actions.current.get(name);
+        return get ? await get().run({ input }) : { error: `No action "${name}" on this page.` };
+      },
+      actions: () => [...actions.current.keys()],
+    };
+    return () => {
+      delete w.__hmVoiceTest;
+    };
+  }, []);
 
   // "Speak in my voice": a player for the owner's cloned voice, fed with Live's transcript.
   const myVoiceRef = useRef<{ speaker: Speaker; stream: SentenceStream } | null>(null);
@@ -491,7 +508,7 @@ export function VoiceProvider({ children }: { children: React.ReactNode }) {
         },
         navigate: ({ page }) => {
           const path = String(page ?? "");
-          if (!PAGES.includes(path)) return { error: `unknown page ${path}` };
+          if (!VOICE_PAGE_PATHS.includes(path)) return { error: `unknown page ${path}` };
           routerRef.current.push(path);
           return { opened: path };
         },

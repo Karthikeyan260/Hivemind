@@ -22,9 +22,33 @@ export type Weather = {
 };
 
 async function json<T>(url: string): Promise<T> {
-  const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
-  if (!r.ok) throw new HttpError(502, `Weather service error (${r.status})`);
-  return r.json() as Promise<T>;
+  // Open-Meteo has the odd hiccup (a 5xx or a dropped connection): one quick retry before giving up.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+      if (r.ok) return r.json() as Promise<T>;
+      if (attempt || (r.status < 500 && r.status !== 429)) throw new HttpError(502, `Weather service error (${r.status})`);
+    } catch (e) {
+      if (attempt || e instanceof HttpError) throw e instanceof HttpError ? e : new HttpError(502, "Weather service didn't answer");
+    }
+    await new Promise((res) => setTimeout(res, 600));
+  }
+}
+
+/** Weather older than this isn't shown even when the service is down. */
+const STALE_OK_MS = 3 * 60 * 60_000;
+/** Fresh weather if the service answers, else the last reading (up to 3 hours old) rather than nothing. */
+async function orLast(key: string, load: () => Promise<Weather>): Promise<Weather> {
+  try {
+    const w = await load();
+    recent.set(key, { at: Date.now(), w });
+    if (recent.size > 50) recent.delete(recent.keys().next().value!);
+    return w;
+  } catch (e) {
+    const old = recent.get(key);
+    if (old && Date.now() - old.at < STALE_OK_MS) return old.w;
+    throw e;
+  }
 }
 
 // Weather barely changes in minutes and places never move: keep both while the server is warm, so the
@@ -38,10 +62,7 @@ export async function getWeather(place = HOME_CITY): Promise<Weather> {
   const key = (place.trim() || HOME_CITY).toLowerCase();
   const hit = recent.get(key);
   if (hit && Date.now() - hit.at < FRESH_MS) return hit.w;
-  const w = await loadWeather(place);
-  recent.set(key, { at: Date.now(), w });
-  if (recent.size > 50) recent.delete(recent.keys().next().value!);
-  return w;
+  return orLast(key, () => loadWeather(place));
 }
 
 async function loadWeather(place: string): Promise<Weather> {
@@ -67,10 +88,7 @@ export async function getWeatherAt(lat: number, lng: number): Promise<Weather> {
   const key = `@${la},${lo}`;
   const hit = recent.get(key);
   if (hit && Date.now() - hit.at < FRESH_MS) return hit.w;
-  const w = await forecastFor({ name: "Your location", latitude: la, longitude: lo });
-  recent.set(key, { at: Date.now(), w });
-  if (recent.size > 50) recent.delete(recent.keys().next().value!);
-  return w;
+  return orLast(key, () => forecastFor({ name: "Your location", latitude: la, longitude: lo }));
 }
 
 async function forecastFor(p: Place): Promise<Weather> {

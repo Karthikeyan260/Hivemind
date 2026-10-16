@@ -118,7 +118,7 @@ function ComicDay() {
       />
 
       {day && (
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="quiet" aria-label="Previous day" onClick={() => setDate(shift(day, -1))}>
             <ChevronLeft size={15} />
           </Button>

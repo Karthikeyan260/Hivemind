@@ -327,6 +327,34 @@ export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?:
         return { opened: d };
       },
     },
+    garden_nova: {
+      description: "Nova's garden page: Nova and its cottage. input: 'out' (call Nova out of the cottage), 'nap' (send it in for a nap).",
+      run: ({ input }) => {
+        const out = !/nap|sleep|home|in\b|inside|thoongu/i.test(String(input));
+        if (out === !insideRef.current) return { already: out ? "Nova is already outside" : "Nova is already inside" };
+        pick("home");
+        return { done: out ? "Nova is coming out" : "Nova went in for a nap" };
+      },
+    },
+    garden_find: {
+      description: "Nova's garden page: show one of the things that grew; Nova walks to it and its label shows (a flower opens its day too). input: 'flower', 'tree', 'lamp' or 'gem'.",
+      run: ({ input }) => {
+        const t = String(input).toLowerCase();
+        const kind = /tree|maram/.test(t) ? "tree" : /lamp|lantern|vilakku/.test(t) ? "lamp" : /gem|diamond|win/.test(t) ? "gem" : "flower";
+        const list = placed.filter((x) => x.kind === kind);
+        if (!list.length) return { none: `No ${kind}s on the island yet.` };
+        const it = list[Math.floor(Math.random() * list.length)];
+        pick(it.id);
+        return { showing: it.label, count: list.length };
+      },
+    },
+    garden_close: {
+      description: "Nova's garden page: close the day card (the day a flower was planted).",
+      run: () => {
+        setDay(null);
+        return { closed: true };
+      },
+    },
     garden_describe: {
       description: "Nova's garden page: what has grown on the island (flowers from habits, trees from night check-ins, lamps from lantern walks, gems from game wins, butterflies from songs).",
       run: () => (g ? { ...g.counts, pet: g.pet, note: "Say it warmly in one or two sentences." } : { error: "The garden is still loading." }),

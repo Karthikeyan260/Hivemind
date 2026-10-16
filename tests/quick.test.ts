@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quickEffect, quickGarden } from "@/lib/agents/quick";
+import { quickEffect, quickGarden, quickPage } from "@/lib/agents/quick";
 
 const fx = (m: string) => quickEffect(m)?.args ?? null;
 
@@ -47,5 +47,28 @@ describe("garden festivals from chat (no AI)", () => {
     expect(fest("when is deepavali this year?")).toBeNull();
     expect(fest("open the garden")).toBeNull();
     expect(quickEffect("show the garden for Deepavali")).toBeNull();
+  });
+});
+
+describe("open a page from chat (no AI)", () => {
+  const go = (m: string) => quickPage(m)?.href ?? null;
+  it("opens pages by name", () => {
+    expect(go("Open nova garden")).toBe("/garden");
+    expect(go("open my garden")).toBe("/garden");
+    expect(go("take me to Nova's garden")).toBe("/garden");
+    expect(go("go to settings")).toBe("/settings");
+    expect(go("show my photos")).toBe("/photos");
+    expect(go("hey hivemind, open notes please")).toBe("/notes");
+    expect(go("let's play chess")).toBe("/games/chess");
+    expect(go("open the memory palace")).toBe("/memories");
+    expect(go("open kitchen mode")).toBe("/focus");
+  });
+  it("leaves searches, songs and longer requests to the agents", () => {
+    expect(go("open my note about the Ooty trip")).toBeNull();
+    expect(go("play Anirudh songs")).toBeNull();
+    expect(go("play notes")).toBeNull();
+    expect(go("show me the weather in Madurai")).toBeNull();
+    expect(go("what's in my garden?")).toBeNull();
+    expect(quickGarden("open nova garden")).toBeNull();
   });
 });

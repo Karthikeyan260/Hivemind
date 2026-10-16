@@ -1,5 +1,6 @@
 import "server-only";
 import { getProfile } from "@/lib/profile";
+import { VOICE_PAGE_PATHS, VOICE_PAGES } from "@/lib/voice/pages";
 import { obj, S, str, askedToDelete } from "./shared";
 import type { Tool } from "../types";
 
@@ -180,6 +181,18 @@ export const routines: Record<string, Tool> = {
       ctx.changed = true;
       ctx.actions.push({ label: "Open the diary note", href: r.noteId ? `/notes?open=${r.noteId}` : "/notes" });
       return { saved: true, habits_ticked: r.habitsDone, moved_to_tomorrow: r.movedTitles, note: "Say it back warmly in one or two short sentences and wish them good night." };
+    },
+  },
+  open_page: {
+    name: "open_page",
+    description: `Open a page of the HIVEMIND app on the owner's screen ('open notes', 'go to settings', 'take me to Nova's garden', 'show my photos', 'let's play chess'). Pages: ${VOICE_PAGES.map((p) => `${p.path} = ${p.what}`).join("; ")}.`,
+    parameters: obj({ page: { type: "string", enum: [...VOICE_PAGE_PATHS] } }, ["page"]),
+    async run(args, ctx) {
+      const page = str(args.page);
+      const known = VOICE_PAGES.find((p) => p.path === page);
+      if (!known) return { error: `No page ${page}. Pick one from the list.` };
+      ctx.actions.push({ label: `Open ${known.what.split(":")[0]}`, href: page, navigate: true });
+      return { opening: page, note: "Say in a few words where you're taking them." };
     },
   },
   kitchen_mode: {

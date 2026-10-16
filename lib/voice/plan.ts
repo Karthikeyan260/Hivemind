@@ -176,6 +176,15 @@ export const GROUPS: Record<string, Group> = {
     tools: ["day_comic"],
     guide: [`Comic: "make my comic / today's comic" → day_comic (it opens on screen), then read the four panels briefly and playfully. On the Comic page: comic_make (redraw), comic_share.`],
   },
+  garden: {
+    title: "Nova's garden",
+    pages: ["/garden"],
+    hint: "Nova's garden (navigate /garden; festivals: /garden?fest=deepavali, karthigai, pongal, monsoon)",
+    tools: [],
+    guide: [
+      `Nova's garden: "open / show Nova's garden" → navigate /garden. "show the garden for Deepavali / Karthigai / Pongal / in the monsoon" → navigate /garden?fest=deepavali (karthigai, pongal, monsoon; /garden?fest=today goes back). Already on the garden page: garden_festival with the festival. "What's in my garden?" → garden_describe, answer warmly in a sentence. "What did I do on 14 October?" / "open that day" → garden_day with the date (YYYY-MM-DD, this year unless said), then read the mood, habits and songs briefly; "close it" → garden_close. "Call Nova out" / "Nova come out" → garden_nova 'out'; "Nova go to sleep / take a nap" → garden_nova 'nap'; "show me the flowers / trees / lamps / gems" → garden_find with that kind (Nova walks to one and its label shows).`,
+    ],
+  },
   focus: {
     title: "Kitchen mode",
     pages: ["/focus"],

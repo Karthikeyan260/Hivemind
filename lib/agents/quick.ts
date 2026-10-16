@@ -28,6 +28,68 @@ export function quickGarden(raw: string): GardenQuick | null {
   return null;
 }
 
+/**
+ * "Open nova garden", "go to settings", "take me to my photos", "let's play chess": open that page
+ * at once (the AI took 10-15 s and sometimes only described it). Only a short command whose whole
+ * object is a page name matches; "open my note about the trip" is a search, and goes to the agents.
+ */
+const PAGE_WORDS: [RegExp, string, string][] = [
+  [/^(nova'?s? |my |the |pet'?s? |nova pet )?(garden|island|thottam)$/, "/garden", "🌱 Nova's garden"],
+  [/^(the )?(home|bridge|console|galaxy|main page)$/, "/", "🏠 Home"],
+  [/^(my )?(notes?)$/, "/notes", "📝 Notes"],
+  [/^(my |the )?(memories|memory|memory palace|palace)$/, "/memories", "🧠 Memories"],
+  [/^(my )?projects?$/, "/projects", "📁 Projects"],
+  [/^(my )?(career|jobs?|resume)$/, "/career", "💼 Career"],
+  [/^(my )?(journey|story|timeline)$/, "/journey", "🧭 Journey"],
+  [/^(my )?(habits?|birthdays?)$/, "/habits", "✅ Habits"],
+  [/^(my )?(documents?|docs|files)$/, "/documents", "📄 Documents"],
+  [/^(my )?(sources?|imports?)$/, "/sources", "🔗 Sources"],
+  [/^search$/, "/search", "🔎 Search"],
+  [/^(the )?(settings?|preferences)$/, "/settings", "⚙️ Settings"],
+  [/^(the )?autopilot$/, "/autopilot", "🛰️ Autopilot"],
+  [/^(the )?web( tasks?)?$/, "/web", "🌐 Web tasks"],
+  [/^(the )?maps?$/, "/map", "🗺️ Map"],
+  [/^(my )?apps$/, "/apps", "🧩 Apps"],
+  [/^(my )?routines?$/, "/routines", "⚡ Routines"],
+  [/^share$/, "/share", "📤 Share"],
+  [/^(my |the |today'?s |day )?comics?$/, "/comic", "🖍️ Day comic"],
+  [/^(my )?(photos?|pictures|gallery)$/, "/photos", "🖼️ Photos"],
+  [/^(my )?wrapped$/, "/wrapped", "🎁 My Wrapped"],
+  [/^(the )?games?$/, "/games", "🎮 Games"],
+  [/^(a |the )?(game of )?chess$/, "/games/chess", "♟️ Chess"],
+  [/^ludo$/, "/games/ludo", "🎲 Ludo"],
+  [/^(the )?(paattu( quiz)?|song quiz)$/, "/games/paattu", "🎵 Paattu Quiz"],
+  [/^(draw (and|&) guess|drawing)$/, "/games/draw", "✏️ Draw & Guess"],
+  [/^(dots( and boxes)?)$/, "/games/dots", "🔲 Dots and Boxes"],
+  [/^(cards|colou?r clash|uno)$/, "/games/cards", "🃏 Colour Clash"],
+  [/^(my |the |morning )?brief$/, "/brief", "📰 Morning brief"],
+  [/^(the )?dream( mode)?$/, "/dream", "🌙 Dream mode"],
+  [/^(kitchen|focus|hands-?free)( mode)?$/, "/focus", "🍳 Kitchen mode"],
+  [/^(my )?calls?$/, "/calls", "📞 Calls"],
+];
+export function quickPage(raw: string): { href: string; label: string; reply: string } | null {
+  const m = raw
+    .toLowerCase()
+    .replace(/[.!?"']+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(hey )?(hivemind|nova),?\s*/, "")
+    .replace(/^(please|pls|can you|could you)\s+/, "")
+    .replace(/\s+(please|pls)$/, "");
+  if (m.length > 50) return null;
+  const verb = /^(open(?: up)?|go to|goto|take me to|show(?: me)?|bring up|launch|let'?s play|play)\s+(.+?)(?:\s+(?:page|screen|tab|section))?$/.exec(m);
+  if (!verb) return null;
+  const what = verb[2].trim();
+  // "play X" is music unless X is a game.
+  const isPlay = /^(let'?s play|play)$/.test(verb[1]);
+  for (const [re, href, label] of PAGE_WORDS) {
+    if (!re.test(what)) continue;
+    if (isPlay && !href.startsWith("/games")) return null;
+    return { href, label, reply: `${label.split(" ")[0]} Opening ${label.slice(label.indexOf(" ") + 1)}.` };
+  }
+  return null;
+}
+
 export function quickEffect(raw: string): Quick | null {
   const m = raw
     .toLowerCase()

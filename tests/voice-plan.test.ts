@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { TOOLS } from "@/lib/agents/tools";
 import { GROUPS, groupsFor, planFor } from "@/lib/voice/plan";
 
-// The chat-agent tools voice can reach (the token route leaves out the ones voice covers itself).
-const COVERED = new Set(["search_brain", "remember", "create_project", "get_weather", "web_search", "create_reminder", "list_reminders", "create_note", "analyze_job", "tailor_resume", "play_music", "play_video", "cancel_reminder", "reschedule_reminder", "complete_reminder"]);
+// The chat-agent tools voice can reach (the token route leaves out the ones voice covers itself;
+// open_page is chat's version of voice's own navigate).
+const COVERED = new Set(["search_brain", "remember", "create_project", "get_weather", "web_search", "create_reminder", "list_reminders", "create_note", "analyze_job", "tailor_resume", "play_music", "play_video", "cancel_reminder", "reschedule_reminder", "complete_reminder", "open_page"]);
 const ALL = Object.keys(TOOLS).filter((t) => !COVERED.has(t));
 const ctx = { routines: "good morning → weather, schedule" };
 

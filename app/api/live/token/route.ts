@@ -12,41 +12,12 @@ import { getProfile, profileForPrompt } from "@/lib/profile";
 import { agenda, agendaForPrompt, nowForPrompt } from "@/lib/reminders";
 import { listRoutines, routinesForPrompt } from "@/lib/routines";
 import { planFor } from "@/lib/voice/plan";
+import { VOICE_PAGES } from "@/lib/voice/pages";
 
 const MODEL = process.env.GEMINI_LIVE_MODEL || "gemini-3.8-live";
 const VOICE = process.env.GEMINI_TTS_VOICE || "Charon";
 
-const PAGES = [
-  { path: "/", what: "home bridge: galaxy and chat console" },
-  { path: "/projects", what: "projects" },
-  { path: "/memories", what: "memories" },
-  {
-    path: "/career",
-    what: "career: job match analyses and tailored resume PDFs",
-  },
-  {
-    path: "/journey",
-    what: "journey: animated git-graph of education, internships, projects and current work",
-  },
-  { path: "/habits", what: "habits (today's checklist, streaks) and birthdays" },
-  { path: "/notes", what: "notes" },
-  { path: "/documents", what: "uploaded documents" },
-  { path: "/sources", what: "data sources and imports" },
-  { path: "/search", what: "search" },
-  { path: "/settings", what: "settings" },
-  { path: "/autopilot", what: "Autopilot: what HIVEMIND noticed on its own, run it now, its schedule" },
-  { path: "/web", what: "Web tasks: HIVEMIND driving a cloud browser, approvals, live view" },
-  { path: "/map", what: "Map: where you are, your devices, places nearby, routes" },
-  { path: "/apps", what: "Apps HIVEMIND built for the owner (create, change, delete)" },
-  { path: "/routines", what: "Routines: one phrase that does several things (good morning, gym mode)" },
-  { path: "/share", what: "Share: save a link, text, photo or file into the brain (also from Android's Share menu)" },
-  { path: "/comic", what: "Your day as a comic: four panels with the owner's mascot; earlier days too" },
-  { path: "/games", what: "Games: Paattu Quiz (guess the Tamil song's film) and Draw & Guess (2 players + HIVEMIND)" },
-  { path: "/brief", what: "Morning brief: news on the topics the owner follows, every morning" },
-  { path: "/dream", what: "Dream mode: what HIVEMIND tidied in the memories overnight, with undo" },
-  { path: "/focus", what: "Kitchen / hands-free mode: full screen, big voice orb, screen stays on" },
-  { path: "/calls", what: "Calls: call screening settings, the owner's call link, calls HIVEMIND answered" },
-];
+const PAGES = VOICE_PAGES;
 
 const VOICE_TOOLS = [
   {
@@ -92,7 +63,7 @@ const VOICE_TOOLS = [
       properties: {
         page: {
           type: "string",
-          enum: PAGES.map((p) => p.path),
+          enum: [...PAGES.map((p) => p.path)],
           description: PAGES.map((p) => `${p.path} = ${p.what}`).join("; "),
         },
       },
@@ -292,7 +263,7 @@ const VOICE_TOOLS = [
 
 // Voice can use every chat-agent tool too (run on the server via /api/agent-tool), except the ones
 // the voice tools above already cover in a voice-friendly way (change_reminder handles all three).
-const COVERED = new Set([...VOICE_TOOLS.map((t) => t.name), "play_music", "play_video", "cancel_reminder", "reschedule_reminder", "complete_reminder"]);
+const COVERED = new Set([...VOICE_TOOLS.map((t) => t.name), "play_music", "play_video", "cancel_reminder", "reschedule_reminder", "complete_reminder", "open_page"]);
 const AGENT_VOICE_TOOLS = Object.values(AGENT_TOOLS).filter((t) => !COVERED.has(t.name));
 const declare = (t: (typeof AGENT_VOICE_TOOLS)[number]) => ({ name: t.name, description: t.description, parametersJsonSchema: t.parameters });
 
