@@ -260,7 +260,8 @@ function MapView() {
       <ErrorText error={error} />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <div className="relative overflow-hidden rounded-xl border border-line">
+        {/* isolate: the map's own layers (z-index 400+) stay inside this box, under the phone's tab bar. */}
+        <div className="relative isolate overflow-hidden rounded-xl border border-line">
           <div ref={box} className="h-[58vh] min-h-[320px] w-full bg-sunken" />
           {busy && (
             <div className="absolute right-3 top-3 z-[500] flex items-center gap-1.5 bg-[#0b1016]/90 px-2 py-1 text-xs text-soft">

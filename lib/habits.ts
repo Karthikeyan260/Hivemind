@@ -56,7 +56,8 @@ export function stats(h: Habit, today = localParts().date) {
     else if (x !== today) run = 0;
   }
   const last30 = Array.from({ length: 30 }, (_, i) => addDays(today, i - 29)).map((date) => ({ date, scheduled: scheduledOn(h, date), done: done.has(date) }));
-  const sched = last30.filter((x) => x.scheduled && x.date < today).length;
+  // Days it was due (today counts once it's done, so a tick today can't push the rate past 100%).
+  const sched = last30.filter((x) => x.scheduled && (x.date < today || x.done)).length;
   const hit = last30.filter((x) => x.scheduled && x.done).length;
   return { streak, best, doneToday: done.has(today), dueToday: scheduledOn(h, today), rate: sched ? Math.round((hit / Math.max(1, sched)) * 100) : null, last30 };
 }

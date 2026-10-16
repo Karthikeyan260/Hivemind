@@ -262,7 +262,12 @@ export function LivingSky() {
           <div className="sky-shimmer absolute inset-x-0 top-0 h-40" style={{ background: "linear-gradient(180deg, rgba(255,200,90,0.10), transparent)" }} />
         </>
       )}
-      <canvas ref={canvas} className="absolute inset-0 h-full w-full" />
+      {/* Full strength at the edges and the top; a faint drizzle over the middle, where the text is. */}
+      <canvas
+        ref={canvas}
+        className="absolute inset-0 h-full w-full"
+        style={{ maskImage: "radial-gradient(ellipse 62% 58% at 50% 56%, rgba(0,0,0,0.28) 55%, #000 100%)", WebkitMaskImage: "radial-gradient(ellipse 62% 58% at 50% 56%, rgba(0,0,0,0.28) 55%, #000 100%)" }}
+      />
       {flash > 0 && <div key={flash} className="sky-flash absolute inset-0 bg-white" />}
     </div>
   );

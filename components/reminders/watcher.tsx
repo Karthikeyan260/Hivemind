@@ -159,7 +159,10 @@ export function ReminderWatcher() {
           ) : (
             <div className="mt-2">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-[15px] font-semibold">{t.day.greeting} 👋</span>
+                {/* The wave stays with the last word instead of wrapping onto a line of its own. */}
+                <span className="text-[15px] font-semibold">
+                  {t.day.greeting.split(" ").slice(0, -1).join(" ")} <span className="whitespace-nowrap">{t.day.greeting.split(" ").slice(-1)} 👋</span>
+                </span>
                 <ListenButton day={t.day} />
               </div>
               <YourDay day={t.day} compact />

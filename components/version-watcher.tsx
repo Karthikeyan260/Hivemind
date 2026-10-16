@@ -25,7 +25,9 @@ export function VersionWatcher() {
     safe.current = voice.state === "off" && !path.startsWith("/games") && !isPublicPage(path) && !path.startsWith("/focus");
     let busy = false;
     const check = async () => {
-      if (busy || document.hidden || !MINE) return;
+      // The dev server compiles server and browser apart, each with its own "local-<time>" build id:
+      // they never match, so it reloaded in a loop. Updates only matter for deployed builds.
+      if (busy || document.hidden || !MINE || process.env.NODE_ENV === "development") return;
       busy = true;
       try {
         const r = await fetch("/api/version", { cache: "no-store" });

@@ -11,6 +11,8 @@ const plain = (t: string) =>
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}(#{1,6}|[-*+]|\d+\.)\s+/gm, "")
     .replace(/[*_`~]{1,3}/g, "")
+    // Paragraphs read as separate sentences ("Mood: rough · Feeling tired"), not run together.
+    .replace(/([^.!?:;,\s])\s*\n\s*\n\s*/g, "$1 · ")
     .replace(/\s+/g, " ")
     .trim();
 
