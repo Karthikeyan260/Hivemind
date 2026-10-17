@@ -18,7 +18,7 @@ export const POST = handle(async (req: Request) => {
   if ((await countMarkers(supabase, cap, Date.now() - 3600_000)) >= 10) return NextResponse.json({ knocked: false });
   if (!(await claimKnock(supabase, room))) return NextResponse.json({ knocked: false });
   await addMarker(supabase, cap);
-  const who = name?.replace(/[^\p{L}\p{N} .'-]/gu, "").trim() || "A friend";
+  const who = name?.replace(/[^\p{L}\p{M}\p{N} .'-]/gu, "").trim() || "A friend";
   const sent = await notify(supabase, { title: game === "party" ? `🎮 ${who} is waiting for game night` : `🎮 ${who} wants to play ${game === "ludo" ? "Ludo" : game === "cards" ? "Colour Clash" : game === "chess" ? "chess" : game === "dots" ? "Dots and Boxes" : "Draw & Guess"}`, body: "Tap to open the game: they're waiting.", url: game === "party" ? "/games/party" : `/games/${game}?friend=1`, tag: "game-knock", sticky: true });
   return NextResponse.json({ knocked: sent > 0 });
 });

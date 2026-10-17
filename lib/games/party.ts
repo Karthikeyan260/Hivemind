@@ -3,6 +3,7 @@
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { checkHost, proveHost } from "@/lib/peer-auth";
+import { callsFirst, cleanId, cleanName } from "@/lib/games/party-rules";
 
 /**
  * Game night: one link, a lobby, many friends. The owner's browser is the table: friends open the
@@ -31,12 +32,12 @@ type Wire =
   | { t: "state"; game: PartyGameKind; s: unknown }
   | { t: "act"; game: PartyGameKind; a: unknown }
   | { t: "full" }
+  /** Host → a friend the owner took off the table: don't come back (until the owner reopens game night). */
+  | { t: "removed" }
   | { t: "ping" };
 
 export const MAX_PLAYERS = 6;
 const KEEP_MS = 3 * 60 * 60_000;
-const cleanName = (v: unknown) => String(v ?? "").slice(0, 20).replace(/[^\p{L}\p{N} .'-]/gu, "").trim();
-const cleanId = (v: unknown) => String(v ?? "").replace(/[^a-z0-9-]/gi, "").slice(0, 40);
 const TRANSIENT = ["network", "disconnected", "server-error", "socket-error", "socket-closed"];
 /** A closed phone or a lost network can take a minute to show as a closed connection: both sides
  * say "still here" every few seconds, and a player silent for longer than this counts as away. */
@@ -196,11 +197,19 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     broadcastRoster(playersRef.current, ph);
     save();
   }, [broadcastRoster, save]);
+  /** Host: friends the owner removed this session; if they knock again they're told, not let in. */
+  const removed = useRef(new Set<string>());
   const removePlayer = useCallback(
     (id: string) => {
       if (id === "host") return;
-      conns.current.get(id)?.close();
+      removed.current.add(id);
+      const c = conns.current.get(id);
       conns.current.delete(id);
+      try {
+        c?.send({ t: "removed" } satisfies Wire);
+      } catch {}
+      // A moment for the message to arrive before the line closes.
+      setTimeout(() => c?.close(), 400);
       setRoster((l) => l.filter((p) => p.id !== id));
     },
     [setRoster],
@@ -247,6 +256,10 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       if (m.t === "hello") {
         const id = cleanId(m.id);
         if (!id || id === "host") return void c.close();
+        if (removed.current.has(id)) {
+          c.send({ t: "removed" } satisfies Wire);
+          return void later(() => c.close(), 500);
+        }
         const known = playersRef.current.find((p) => p.id === id);
         if (!known && playersRef.current.length >= MAX_PLAYERS) {
           c.send({ t: "full" } satisfies Wire);
@@ -295,6 +308,12 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         });
         return;
       }
+      if (m.t === "removed") {
+        // Stop knocking: "full" is the stage that ends redialling.
+        setStage("full");
+        setErr(`${opts.current.hostName} took you off the table for this game night.`);
+        return;
+      }
       if (m.t === "full") {
         setStage("full");
         setErr(`The table is full (${MAX_PLAYERS} players). Ask ${opts.current.hostName} to make room.`);
@@ -334,7 +353,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         }
       }
       for (const x of list) {
-        if (!x.online || x.host || x.id === me || !x.peer || calls.current.has(x.id) || pending.has(x.id) || me > x.id) continue;
+        if (!x.online || x.host || x.id === me || !x.peer || calls.current.has(x.id) || pending.has(x.id) || !callsFirst(me, x.id)) continue;
         pending.add(x.id);
         const mc = p.call(x.peer, mic.current, { metadata: { id: me, room } });
         mc.on("stream", (st) => {

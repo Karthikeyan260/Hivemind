@@ -7,7 +7,9 @@ import { DotsGame } from "@/components/games/dots-game";
 import { LudoGame } from "@/components/games/ludo-game";
 import { PartyDraw } from "@/components/games/party-draw";
 import { cx } from "@/components/ui";
+import { useVoiceActions } from "@/components/voice/provider";
 import { MAX_PLAYERS, type Party, PartyContext, type PartyGameKind, usePartyNet } from "@/lib/games/party";
+import { here, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
 
 /**
  * Game night: the lobby and the game everyone is playing, for the owner (host) and each friend.
@@ -24,6 +26,60 @@ const GAMES: { id: PartyGameKind; name: string; emoji: string; min: number; max:
 export function PartyTable({ role, room, myName, hostName, onHostAway }: { role: "host" | "guest"; room: string; myName: string; hostName: string; onHostAway?: () => void }) {
   const party = usePartyNet({ role, room, myName, hostName, onHostAway });
   const ph = party.phase;
+  const host = role === "host";
+
+  // Voice: run game night by speaking ("let's play ludo", "back to the lobby", "who's here?", "mute me").
+  useVoiceActions({
+    party_game: {
+      description: "Game night page: switch everyone to a game (the owner only). input: the game: Colour Clash (cards/uno), Ludo, Draw & Guess, Dots & Boxes or Chess. Then the game's own voice actions start it.",
+      run: ({ input }) => {
+        if (!host) return { error: "Only the host picks the game." };
+        const id = spokenGame(String(input ?? ""));
+        const g = GAMES.find((x) => x.id === id);
+        if (!g) return { error: "Say a game: Colour Clash, Ludo, Draw & Guess, Dots & Boxes or Chess." };
+        if (here(party.players).length < g.min) return { error: "Needs at least one friend here first." };
+        party.startGame(g.id);
+        return { opened: g.name, players: here(party.players).length };
+      },
+    },
+    party_lobby: {
+      description: "Game night page: bring everyone back to the lobby to pick the next game (the owner only).",
+      run: () => (host ? (party.backToLobby(), { lobby: true }) : { error: "Only the host can do that." }),
+    },
+    party_players: {
+      description: "Game night page: who's at the table (here or away), how many seats are left, and which game is on.",
+      run: () => ({
+        here: here(party.players).map((p) => p.name),
+        away: party.players.filter((p) => !p.online && !p.host).map((p) => p.name),
+        seats_left: MAX_PLAYERS - party.players.length,
+        game: ph.screen === "game" ? GAMES.find((g) => g.id === ph.game)?.name : "lobby",
+      }),
+    },
+    party_mute: {
+      description: "Game night page: mute or unmute the owner's microphone in the group voice chat. input: 'mute' or 'unmute'.",
+      run: ({ input }) => {
+        const v = party.voice;
+        if (v.noMic) return { error: "The microphone is blocked in the browser." };
+        const want = /unmute|on|open/i.test(String(input ?? "")) ? false : /mute|off|quiet/i.test(String(input ?? "")) ? true : !v.muted;
+        if (want !== v.muted) v.toggleMute();
+        return { muted: want };
+      },
+    },
+    party_remove: {
+      description: "Game night page: remove a friend from the table (the owner only). Only when the owner clearly asks. input: the friend's name.",
+      run: ({ input }) => {
+        if (!host) return { error: "Only the host can do that." };
+        const p = spokenPlayer(
+          party.players.filter((x) => !x.host),
+          String(input ?? ""),
+        );
+        if (!p) return { error: "I couldn't find that name at the table." };
+        party.removePlayer(p.id);
+        return { removed: p.name };
+      },
+    },
+  });
+
   return (
     <PartyContext.Provider value={party}>
       {party.stage === "error" || party.stage === "full" ? (

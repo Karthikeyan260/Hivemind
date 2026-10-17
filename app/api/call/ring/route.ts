@@ -26,7 +26,7 @@ export const POST = handle(async (req: Request) => {
   const r = await claimRing(supabase, room);
   if (!r) return NextResponse.json({ rang: false, screen });
   // The permanent link: the caller types their own name (shown to the owner as given, untrusted).
-  const who = (r.permanent ? name?.replace(/[^\p{L}\p{N} .'-]/gu, "").trim() : r.name) || "Someone";
+  const who = (r.permanent ? name?.replace(/[^\p{L}\p{M}\p{N} .'-]/gu, "").trim() : r.name) || "Someone";
   const q = new URLSearchParams({ host: "1", from: r.from, name: who, ...(r.to ? { to: r.to } : {}) });
   const sent = await notify(supabase, {
     title: `📞 ${who} is calling`,

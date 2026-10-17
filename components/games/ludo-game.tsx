@@ -8,6 +8,7 @@ import { gameKey, recordResult } from "@/lib/games/record";
 import { cellOf, HOME_CELLS, TRACK_CELLS, type Cell } from "@/lib/games/ludo-board";
 import { botChoice, move, movable, newGame, roll, SAFE, type Color, type LudoState } from "@/lib/games/ludo";
 import { type Party, usePartyGame } from "@/lib/games/party";
+import { seatsFor } from "@/lib/games/party-rules";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { sfx } from "@/lib/sfx";
 
@@ -100,7 +101,7 @@ export function LudoGame({
   function start(opt?: { bots?: boolean; quick?: boolean }) {
     const withBots = opt?.bots ?? bots;
     // Game night: the first four in the lobby, topped up to 4 with HIVEMIND bots if wanted.
-    const people = party ? party.players.filter((p) => p.online || p.host).slice(0, 4).map((p) => ({ id: p.id, name: p.name })) : null;
+    const people = party ? seatsFor(party.players, 4) : null;
     if (people) {
       const fill = withBots ? 4 - people.length : people.length < 2 ? 1 : 0;
       const g = newGame([...people, ...Array.from({ length: fill }, (_, i) => ({ id: `bot${i + 1}`, name: i ? `HIVEMIND ${i + 1}` : "HIVEMIND", bot: true }))], (opt?.quick ?? quick) ? 2 : 4);

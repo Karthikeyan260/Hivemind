@@ -29,6 +29,7 @@ import {
   type CardsState,
 } from "@/lib/games/cards";
 import { type Party, usePartyGame } from "@/lib/games/party";
+import { seatsFor } from "@/lib/games/party-rules";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { sfx } from "@/lib/sfx";
 
@@ -160,7 +161,7 @@ export function CardsGame({
   const [picking, setPicking] = useState<number | null>(null);
   function start(withBots = bots) {
     // Game night: everyone in the lobby (up to 6), topped up to 4 with HIVEMIND bots if wanted.
-    const people = party ? party.players.filter((p) => p.online || p.host).slice(0, 6).map((p) => ({ id: p.id, name: p.name })) : null;
+    const people = party ? seatsFor(party.players, 6) : null;
     if (people) {
       const fill = withBots ? Math.max(0, 4 - people.length) : people.length < 2 ? 1 : 0;
       const g = newCardGame([...people, ...Array.from({ length: fill }, (_, i) => ({ id: `bot${i + 1}`, name: i ? `HIVEMIND ${i + 1}` : "HIVEMIND", bot: true }))], rand);

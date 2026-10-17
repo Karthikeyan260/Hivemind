@@ -6,6 +6,7 @@ import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { botLine, drawLine, leaders, lineAt, newDots, scores, type DotsState, type GridSize } from "@/lib/games/dots";
 import { type Party, usePartyGame } from "@/lib/games/party";
+import { seatsFor } from "@/lib/games/party-rules";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { gameKey, recordResult } from "@/lib/games/record";
 import { sfx } from "@/lib/sfx";
@@ -108,7 +109,7 @@ export function DotsGame({
   function start(opt?: { bots?: boolean; size?: GridSize }) {
     const withBots = opt?.bots ?? bots;
     // Game night: the first four in the lobby, plus one HIVEMIND player if wanted (and room).
-    const people = party ? party.players.filter((p) => p.online || p.host).slice(0, 4).map((p) => ({ id: p.id, name: p.name })) : null;
+    const people = party ? seatsFor(party.players, 4) : null;
     if (people) {
       const extra = (withBots && people.length < 4) || people.length < 2 ? [{ id: "bot1", name: "HIVEMIND", bot: true }] : [];
       const g = newDots([...people, ...extra], opt?.size ?? size);

@@ -39,7 +39,7 @@ export const POST = handle(async (req: Request) => {
   if ((await countMarkers(supabase, day, Date.now() - 24 * 3600_000)) >= PER_DAY) throw new HttpError(429, "HIVEMIND can't take more calls on this link today. Please try again tomorrow.");
   await Promise.all([addMarker(supabase, key), addMarker(supabase, day)]);
   if (body.op === "start") {
-    const r = await startScreen(supabase, room, body.name?.replace(/[^\p{L}\p{N} .'-]/gu, "").trim() ?? "");
+    const r = await startScreen(supabase, room, body.name?.replace(/[^\p{L}\p{M}\p{N} .'-]/gu, "").trim() ?? "");
     if (!r) throw new HttpError(409, "Call screening is off.");
     return NextResponse.json(r);
   }

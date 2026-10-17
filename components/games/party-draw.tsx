@@ -2,9 +2,11 @@
 
 import { Bot, Eraser, Trash2, Trophy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AI_EVERY_MS, blanks, COLORS, norm, okStroke, pickWord, ROUND_S, type Stroke } from "@/components/games/draw-game";
+import { AI_EVERY_MS, blanks, COLORS, okStroke, pickWord, ROUND_S, type Stroke } from "@/components/games/draw-game";
 import { cx } from "@/components/ui";
+import { useVoiceActions } from "@/components/voice/provider";
 import { type Party, usePartyGame } from "@/lib/games/party";
+import { DRAWER_POINTS, drawView, guessPoints, here, nextRound, rightGuess, roundDone } from "@/lib/games/party-rules";
 import { sfx } from "@/lib/sfx";
 
 /**
@@ -40,7 +42,7 @@ const okState = (s: unknown): s is Night => {
   const x = s as Night;
   return !!x && Array.isArray(x.order) && x.order.length <= 6 && typeof x.drawer === "string" && Array.isArray(x.strokes) && Array.isArray(x.feed) && typeof x.scores === "object";
 };
-const viewFor = (s: Night, id: string): Night => (s.phase !== "playing" || id === s.drawer || s.guessed.includes(id) ? s : { ...s, word: "" });
+const viewFor = (s: Night, id: string): Night => drawView(s, id);
 const clip = (v: unknown, n: number) => String(v ?? "").slice(0, n);
 
 export function PartyDraw({ party }: { party: Party }) {
@@ -72,12 +74,10 @@ export function PartyDraw({ party }: { party: Party }) {
   /* ── host: rounds ── */
   const round = useCallback(
     (s: Night, n: number): Night => {
-      const online = new Set(party.players.filter((p) => p.online || p.host).map((p) => p.id));
       // The next drawer who's here (skipping anyone who left).
-      let k = n;
-      while (k <= s.total && !online.has(s.order[(k - 1) % s.order.length])) k++;
-      if (k > s.total) return say({ ...s, phase: "over", live: null }, { who: "", text: "Game over!", kind: "info" });
-      const drawer = s.order[(k - 1) % s.order.length];
+      const next = nextRound(s.order, s.total, n, new Set(here(party.players).map((p) => p.id)));
+      if (!next) return say({ ...s, phase: "over", live: null }, { who: "", text: "Game over!", kind: "info" });
+      const { n: k, drawer } = next;
       const word = pickWord(host.current.used);
       host.current.used.add(word);
       host.current.aiTried = [];
@@ -99,7 +99,7 @@ export function PartyDraw({ party }: { party: Party }) {
     [round, update],
   );
   function start(perPlayer: number) {
-    const people = party.players.filter((p) => p.online || p.host).slice(0, 6);
+    const people = here(party.players).slice(0, 6);
     const order = people.map((p) => p.id);
     host.current.used = new Set();
     const s0: Night = {
@@ -138,14 +138,12 @@ export function PartyDraw({ party }: { party: Party }) {
           const text = clip(a.text, 40).trim();
           if (!text) return s;
           const name = s.names[from] ?? "?";
-          if (norm(text) === norm(s.word) || (norm(text).includes(norm(s.word)) && norm(s.word).length > 3)) {
-            const secs = Math.max(0, Math.round((host.current.ends - Date.now()) / 1000));
-            const scores = { ...s.scores, [from]: (s.scores[from] ?? 0) + 50 + secs, [s.drawer]: (s.scores[s.drawer] ?? 0) + 25 };
-            let next = say({ ...s, guessed: [...s.guessed, from], scores }, { who: name, text: "guessed it! 🎉", kind: "ok" });
+          if (rightGuess(text, s.word)) {
+            const secs = (host.current.ends - Date.now()) / 1000;
+            const scores = { ...s.scores, [from]: (s.scores[from] ?? 0) + guessPoints(secs), [s.drawer]: (s.scores[s.drawer] ?? 0) + DRAWER_POINTS };
+            const next = say({ ...s, guessed: [...s.guessed, from], scores }, { who: name, text: "guessed it! 🎉", kind: "ok" });
             // Everyone who's here has it: show the word and move on.
-            const here = new Set(party.players.filter((p) => p.online || p.host).map((p) => p.id));
-            if (s.order.filter((id) => id !== s.drawer && here.has(id)).every((id) => next.guessed.includes(id))) next = reveal(next);
-            return next;
+            return roundDone(next, new Set(here(party.players).map((p) => p.id)), false) ? reveal(next) : next;
           }
           return say(s, { who: name, text, kind: "guess" });
         }
@@ -170,10 +168,7 @@ export function PartyDraw({ party }: { party: Party }) {
     const t = setInterval(() => {
       const cur = sRef.current;
       if (cur?.phase !== "playing") return;
-      const here = new Set(playersRef.current.filter((p) => p.online || p.host).map((p) => p.id));
-      const guessers = cur.order.filter((id) => id !== cur.drawer && here.has(id));
-      const done = Date.now() >= host.current.ends || !here.has(cur.drawer) || (guessers.length > 0 && guessers.every((id) => cur.guessed.includes(id)) && cur.guessed.length > 0);
-      if (done) update((x) => (x.phase === "playing" && x.n === cur.n ? reveal(x) : x));
+      if (roundDone(cur, new Set(here(playersRef.current).map((p) => p.id)), Date.now() >= host.current.ends)) update((x) => (x.phase === "playing" && x.n === cur.n ? reveal(x) : x));
     }, 500);
     return () => clearInterval(t);
   }, [isHost, update, reveal]);
@@ -208,9 +203,9 @@ export function PartyDraw({ party }: { party: Party }) {
         const { guess } = (await r.json()) as { guess: string };
         update((x) => {
           if (x.n !== n || x.phase !== "playing" || x.aiGot || !guess || guess === "???") return x;
-          if (norm(guess) === norm(x.word) || (norm(guess).includes(norm(x.word)) && norm(x.word).length > 3)) {
-            const secs = Math.max(0, Math.round((host.current.ends - Date.now()) / 1000));
-            return say({ ...x, aiGot: true, scores: { ...x.scores, ai: (x.scores.ai ?? 0) + 50 + secs } }, { who: "HIVEMIND", text: "got it! 🤖 (keep going, humans)", kind: "ai" });
+          if (rightGuess(guess, x.word)) {
+            const secs = (host.current.ends - Date.now()) / 1000;
+            return say({ ...x, aiGot: true, scores: { ...x.scores, ai: (x.scores.ai ?? 0) + guessPoints(secs) } }, { who: "HIVEMIND", text: "got it! 🤖 (keep going, humans)", kind: "ai" });
           }
           host.current.aiTried.push(guess);
           return say(x, { who: "HIVEMIND", text: `${guess}?`, kind: "ai" });
@@ -305,7 +300,55 @@ export function PartyDraw({ party }: { party: Party }) {
   }, [okCount]);
 
   const [per, setPer] = useState(2);
-  const here = party.players.filter((p) => p.online || p.host);
+
+  // Voice: start a game, guess the word, or hear how it's going.
+  useVoiceActions({
+    draw_start: {
+      description: "Draw & Guess at game night: start a game (the owner only). input: how many times each player draws (1, 2 or 3).",
+      run: ({ input }) => {
+        if (!isHost) return { error: "Only the host starts the game." };
+        if (s?.phase === "playing" || s?.phase === "between") return { error: "A game is already on." };
+        if (atTable.length < 2) return { error: "Needs at least one friend here." };
+        const k = Number(String(input ?? "").match(/[123]/)?.[0] ?? per);
+        setPer(k);
+        start(k);
+        return { started: true, rounds: atTable.length * k };
+      },
+    },
+    draw_guess: {
+      description: "Draw & Guess at game night: guess the word being drawn. input: the guess, as said.",
+      run: ({ input }) => {
+        const t = String(input ?? "").trim();
+        if (!s || s.phase !== "playing") return { error: "No round is on right now." };
+        if (s.drawer === me) return { error: "You're drawing this round." };
+        if (s.guessed.includes(me)) return { error: "You already got it." };
+        if (!t) return { error: "Say your guess." };
+        send({ type: "guess", text: t });
+        return { guessed: t, note: "The feed shows if it was right." };
+      },
+    },
+    draw_status: {
+      description: "Draw & Guess at game night: the round, who's drawing, seconds left, the blanks (or the word if the owner may see it), who has guessed, and the scores.",
+      run: () =>
+        s
+          ? {
+              round: `${s.n} of ${s.total}`,
+              phase: s.phase,
+              drawing: s.drawer === me ? "you" : s.names[s.drawer],
+              word: s.word || null,
+              blanks: s.len,
+              seconds_left: secs,
+              guessed: s.guessed.map((id) => s.names[id]),
+              scores: Object.fromEntries([...s.order.map((id) => [s.names[id], s.scores[id] ?? 0]), ["HIVEMIND", s.scores.ai ?? 0]]),
+            }
+          : { error: "No game yet." },
+    },
+    draw_clear: {
+      description: "Draw & Guess at game night: wipe the drawing (only while the owner is drawing).",
+      run: () => (drawing ? (send({ type: "clear" }), { cleared: true }) : { error: "You're not drawing right now." }),
+    },
+  });
+  const atTable = here(party.players);
   const board = s
     ? [...s.order.map((id) => ({ id, name: s.names[id] ?? "?", score: s.scores[id] ?? 0, bot: false })), { id: "ai", name: "HIVEMIND", score: s.scores.ai ?? 0, bot: true }].sort((a, b) => b.score - a.score)
     : [];
@@ -321,9 +364,9 @@ export function PartyDraw({ party }: { party: Party }) {
                 {k}×
               </button>
             ))}
-            <span className="text-faint">({here.length} players · {here.length * per} rounds)</span>
+            <span className="text-faint">({atTable.length} players · {atTable.length * per} rounds)</span>
           </div>
-          <button type="button" onClick={() => start(per)} disabled={here.length < 2} className="self-start rounded-full bg-core px-6 py-2.5 text-base font-bold text-core-ink disabled:opacity-50">
+          <button type="button" onClick={() => start(per)} disabled={atTable.length < 2} className="self-start rounded-full bg-core px-6 py-2.5 text-base font-bold text-core-ink disabled:opacity-50">
             {s?.phase === "over" ? "Play again" : "Start Draw & Guess"}
           </button>
         </div>

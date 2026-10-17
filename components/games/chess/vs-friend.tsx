@@ -4,12 +4,13 @@ import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
 import { Flag, Handshake, Mic, MicOff, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { useVoiceActions } from "@/components/voice/provider";
 import { type Party, usePartyGame } from "@/lib/games/party";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { sfx } from "@/lib/sfx";
 import { Board, captured, Taken } from "./board";
 import { gameKey, recordResult } from "@/lib/games/record";
-import { endOf, MoveList, Pick, resultText, TimePicker, tcLabel, type Result, type TimeControl } from "./shared";
+import { endOf, MoveList, Pick, resultText, spokenMove, TimePicker, tcLabel, type Result, type TimeControl } from "./shared";
 import { Action, PlayerBar } from "./vs-bot";
 
 /**
@@ -142,14 +143,17 @@ export function ChessVsFriend({
   }, [isHost, room, s]);
 
   // Host settings for a new game.
-  const [tc, setTc] = useState<TimeControl>({ base: 10, inc: 0 });
-  const [colour, setColour] = useState<"w" | "b" | "random">("random");
+  const [tcPick, setTc] = useState<TimeControl>({ base: 10, inc: 0 });
+  const [colourPick, setColour] = useState<"w" | "b" | "random">("random");
   const friends = party ? party.players.filter((p) => !p.host && p.online) : [];
   const [rival, setRival] = useState("");
   const rivalId = friends.some((f) => f.id === rival) ? rival : (friends[0]?.id ?? "");
-  function start(rematch = false) {
+  /** `o`: settings said by voice, used at once (the pickers' state only changes on the next render). */
+  function start(rematch = false, o: { tc?: TimeControl; colour?: "w" | "b" | "random"; rival?: string } = {}) {
     const prev = stateRef.current;
-    const gid = party ? (rematch && prev?.guestId ? prev.guestId : rivalId) : undefined;
+    const tc = o.tc !== undefined ? o.tc : tcPick;
+    const colour = o.colour ?? colourPick;
+    const gid = party ? (rematch && prev?.guestId ? prev.guestId : (o.rival ?? rivalId)) : undefined;
     const gname = party ? (party.players.find((p) => p.id === gid)?.name ?? "Friend") : other || "Friend";
     const hostWhite = rematch && prev ? prev.white !== "host" : colour === "random" ? Math.random() < 0.5 : colour === "w";
     const t = rematch && prev ? prev.tc : tc;
@@ -236,6 +240,90 @@ export function ChessVsFriend({
   }
   const send = (a: Action) => (isHost ? onAction("host", a) : me ? net.act(a) : undefined);
 
+  // (Voice calls start through a ref: it reads the clock and dice, so it can't be called while rendering.)
+  const startRef = useRef(start);
+  useEffect(() => {
+    startRef.current = start;
+  });
+  // Voice: the owner plays a friend by speaking ("play Priya as white with 5 minutes", "knight to f3", "offer a draw").
+  useVoiceActions({
+    chess_friend_start: {
+      description: "Chess page (vs a friend, or Chess at game night): start a game. input: in words, any of a colour (white, black, random), a clock ('5 min', '3 plus 2', 'no clock') and, at game night, the friend's name to play.",
+      run: ({ input }) => {
+        if (!isHost) return { error: "Only the host starts the game." };
+        const t = String(input ?? "").toLowerCase();
+        const pick = party ? friends.find((f) => t.includes(f.name.toLowerCase())) : undefined;
+        if (party && !pick && !rivalId) return { error: "No friend is here to play yet." };
+        if (!party && !connected) return { error: "Your friend isn't here yet." };
+        const colour = /black/.test(t) ? "b" : /white/.test(t) ? "w" : /random/.test(t) ? "random" : undefined;
+        const clock = t.match(/(\d+)\s*(?:min\w*)?\s*(?:\||plus|\+)\s*(\d+)/) ?? t.match(/(\d+)\s*min/);
+        const tc: TimeControl | undefined = clock ? { base: Number(clock[1]), inc: Number(clock[2] ?? 0) } : /no clock|without/.test(t) ? null : undefined;
+        if (pick) setRival(pick.id);
+        if (colour) setColour(colour);
+        if (tc !== undefined) setTc(tc);
+        startRef.current(false, { tc, colour, rival: pick?.id });
+        return { started: true, against: pick?.name ?? other ?? "your friend" };
+      },
+    },
+    chess_friend_move: {
+      description: "Chess page (vs a friend): make the owner's move. input: the move as said, e.g. 'e4', 'knight to f3', 'e2 to e4', 'castle kingside'. If it asks 'which one', ask the owner.",
+      run: ({ input }) => {
+        if (!s) return { error: "No game yet." };
+        if (!me) return { error: "You're watching this game." };
+        if (s.result) return { error: "The game is over." };
+        if (!live) return { error: "The game is paused until your friend is back." };
+        if (turn !== myColour) return { error: `Wait: it's ${s.names[me === "host" ? "guest" : "host"]}'s turn.` };
+        const r = spokenMove(game, String(input ?? ""));
+        if ("error" in r) return r;
+        if (isHost) move("host", r.san);
+        else net.act({ type: "move", san: r.san });
+        return { played: r.san };
+      },
+    },
+    chess_friend_status: {
+      description: "Chess page (vs a friend): the game in words: who plays which colour, last moves, whose turn, check, clocks, result, any draw offer.",
+      run: () => {
+        // The latest state (a move or offer said a moment ago may not have re-rendered yet).
+        const s = stateRef.current;
+        if (!s) return { error: "No game yet." };
+        const game = new Chess();
+        for (const m of s.history) game.move(m);
+        const turn = game.turn();
+        const nameOf = (c: Color) => (s.white === "host" ? (c === "w" ? s.names.host : s.names.guest) : c === "w" ? s.names.guest : s.names.host);
+        return {
+          white: nameOf("w"),
+          black: nameOf("b"),
+          you: me ? (myColour === "w" ? "white" : "black") : "watching",
+          last_moves: s.history.slice(-4),
+          turn: s.result ? "game over" : nameOf(turn),
+          in_check: game.inCheck(),
+          clocks_seconds: s.clock ? { white: Math.round((clockOf("w") ?? 0) / 1000), black: Math.round((clockOf("b") ?? 0) / 1000) } : null,
+          result: s.result ? `${resultText(s.result, myColour, { [myColour]: "You", [oppColour]: other || "Friend" } as Record<Color, string>).title} (${s.result.reason})` : null,
+          draw_offer: s.drawOffer ? (s.drawOffer === me ? "you offered a draw" : "your opponent offers a draw") : null,
+        };
+      },
+    },
+    chess_friend_draw: {
+      description: "Chess page (vs a friend): offer a draw, or answer the friend's offer. input: 'offer', 'accept' or 'decline'.",
+      run: ({ input }) => {
+        if (!s || s.result || !me) return { error: "No game to draw." };
+        const t = String(input ?? "").toLowerCase();
+        if (s.drawOffer && s.drawOffer !== me) {
+          const yes = /accept|yes|agree|ok/.test(t);
+          send({ type: "draw", answer: yes });
+          return { draw: yes ? "accepted" : "declined" };
+        }
+        if (s.drawOffer === me) return { error: "You already offered a draw." };
+        send({ type: "draw" });
+        return { offered: true };
+      },
+    },
+    chess_friend_resign: {
+      description: "Chess page (vs a friend): resign. Only when the owner clearly says to resign.",
+      run: () => (s && !s.result && me ? (send({ type: "resign" }), { resigned: true }) : { error: "No game to resign." }),
+    },
+  });
+
   // Clock faces: the side to move counts down from the start of its turn.
   const clockOf = (c: Color): number | null => {
     if (!s?.clock) return null;
@@ -302,7 +390,7 @@ export function ChessVsFriend({
           )}
           <div>
             <p className="mb-2 text-sm font-semibold">Time control</p>
-            <TimePicker value={tc} onChange={setTc} />
+            <TimePicker value={tcPick} onChange={setTc} />
           </div>
           <div>
             <p className="mb-2 text-sm font-semibold">You play</p>
@@ -312,7 +400,7 @@ export function ChessVsFriend({
                 { value: "b", label: "♚ Black" },
                 { value: "random", label: "🎲 Random" },
               ]}
-              value={colour}
+              value={colourPick}
               onChange={setColour}
             />
           </div>

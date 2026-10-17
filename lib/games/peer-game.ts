@@ -25,7 +25,7 @@ type Wire<S, A> =
 
 const GIVE_UP_MS = 3 * 60_000;
 const KEEP_MS = 45 * 60_000;
-const cleanName = (v: unknown) => String(v ?? "").slice(0, 20).replace(/[^\p{L}\p{N} .'-]/gu, "").trim();
+const cleanName = (v: unknown) => String(v ?? "").slice(0, 20).replace(/[^\p{L}\p{M}\p{N} .'-]/gu, "").trim();
 const TRANSIENT = ["network", "disconnected", "server-error", "socket-error", "socket-closed"];
 
 type Opts<S, A> = {

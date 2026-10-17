@@ -4,6 +4,7 @@ import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { Bot, Eraser, Mic, MicOff, RotateCcw, Trash2, Trophy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { useVoiceActions } from "@/components/voice/provider";
 import { gameKey, recordResult } from "@/lib/games/record";
 import { checkHost, proveHost } from "@/lib/peer-auth";
 
@@ -115,7 +116,7 @@ type Saved = { at: number; stage: Stage; other: string; guestId?: string; round:
 export const norm = (s: string) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim().replace(/s$/, "");
 export const blanks = (w: string) => w.replace(/[a-z]/gi, "_ ").trim();
 const clip = (v: unknown, n: number) => String(v ?? "").slice(0, n);
-const cleanName = (v: unknown) => clip(v, 20).replace(/[^\p{L}\p{N} .'-]/gu, "").trim();
+const cleanName = (v: unknown) => clip(v, 20).replace(/[^\p{L}\p{M}\p{N} .'-]/gu, "").trim();
 const NO_SCORES: Scores = { host: 0, guest: 0, ai: 0 };
 const totalOf = (n: unknown) => (typeof n === "number" && n >= 1 && n <= 20 ? Math.round(n) : DEFAULT_ROUNDS);
 /** A stroke from the other player: real points in the canvas, a known colour, a sane size. */
@@ -762,9 +763,9 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     return () => clearInterval(t);
   }, [role, stage, tell, pushScores]);
 
-  // Host: a new game with the same friend.
-  function playAgain() {
-    game.current = { n: 0, rounds, word: "", drawer: "host", ends: 0, guessed: false, aiGot: false, aiTried: [], used: new Set(), dirty: false, scores: { ...NO_SCORES } };
+  // Host: a new game with the same friend (`n` rounds when said by voice; else the picker's).
+  function playAgain(n = rounds) {
+    game.current = { n: 0, rounds: n, word: "", drawer: "host", ends: 0, guessed: false, aiGot: false, aiTried: [], used: new Set(), dirty: false, scores: { ...NO_SCORES } };
     if (roundTimer.current) clearTimeout(roundTimer.current);
     roundTimer.current = null;
     setFeed([]);
@@ -812,6 +813,70 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
     mic.current?.getAudioTracks().forEach((t) => (t.enabled = !on));
     setMuted(on);
   }
+
+  // Voice: start, guess the word, hear the score, or wipe the drawing, by speaking.
+  const voice = useRef({ playAgain, nextRound });
+  useEffect(() => {
+    voice.current = { playAgain, nextRound };
+  });
+  useVoiceActions({
+    draw_start: {
+      description: "Draw & Guess page (with a friend): start the game, or play again when it's over (the owner only). input: the number of rounds, if said (1 to 20).",
+      run: ({ input }) => {
+        if (role !== "host") return { error: "Only the host starts the game." };
+        const said = Number(String(input ?? "").match(/\d+/)?.[0]);
+        const n = said >= 1 && said <= 20 ? said : rounds;
+        if (said >= 1 && said <= 20) chooseRounds(n);
+        if (stage === "lobby") {
+          game.current.rounds = n;
+          setStage("playing");
+          voice.current.nextRound();
+          return { started: true, rounds: n };
+        }
+        if (stage === "over" && conn.current?.open) {
+          voice.current.playAgain(n);
+          return { started: true, rounds: n };
+        }
+        return { error: stage === "playing" ? "A game is already on." : "Your friend isn't here yet." };
+      },
+    },
+    draw_guess: {
+      description: "Draw & Guess page (with a friend): guess the word your friend is drawing. input: the guess, as said.",
+      run: ({ input }) => {
+        const text = String(input ?? "").trim();
+        if (stage !== "playing" || !round) return { error: "No round is on right now." };
+        if (round.drawer === me) return { error: "You're drawing this round." };
+        if (!text) return { error: "Say your guess." };
+        if (role === "host") checkGuess(text, "host");
+        else send({ t: "guess", text });
+        return { guessed: text, note: "The feed shows if it was right." };
+      },
+    },
+    draw_status: {
+      description: "Draw & Guess page (with a friend): the round, who's drawing, seconds left, the blanks (or the word if the owner is drawing), and the scores.",
+      run: () =>
+        round
+          ? {
+              round: `${round.n} of ${round.total}`,
+              drawing: round.drawer === me ? "you" : nameOf(round.drawer),
+              word: round.word ?? null,
+              blanks: round.len,
+              seconds_left: stage === "playing" ? left : 0,
+              scores: { [nameOf("host")]: scores.host, [nameOf("guest") || "Guest"]: scores.guest, HIVEMIND: scores.ai },
+              over: stage === "over",
+            }
+          : { error: "No game yet." },
+    },
+    draw_clear: {
+      description: "Draw & Guess page (with a friend): wipe the drawing (only while the owner is drawing).",
+      run: () => {
+        if (!drawing) return { error: "You're not drawing right now." };
+        clearCanvas();
+        send({ t: "clear" });
+        return { cleared: true };
+      },
+    },
+  });
 
   const friend = other || (role === "host" ? "your friend" : hostName);
   const status =
@@ -903,7 +968,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         </button>
       )}
       {role === "host" && stage === "over" && conn.current?.open && (
-        <button type="button" onClick={playAgain} className="inline-flex items-center gap-1.5 self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink">
+        <button type="button" onClick={() => playAgain()} className="inline-flex items-center gap-1.5 self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink">
           <RotateCcw size={14} /> Play again with {friend}
         </button>
       )}
