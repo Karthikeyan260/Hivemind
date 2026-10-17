@@ -29,6 +29,16 @@ export const isReaction = (e: unknown): e is (typeof REACTIONS)[number] => REACT
 /** A friend can send a reaction this often at most (the owner's table drops faster ones). */
 export const REACT_GAP_MS = 350;
 
+/** Chat: plain text, one line, at most 200 characters (control characters and extra spaces dropped). */
+export const CHAT_MAX = 200;
+export const CHAT_GAP_MS = 700;
+export const cleanChat = (v: unknown) =>
+  String(v ?? "")
+    .replace(/[\u0000-\u001f\u007f\u200b\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, CHAT_MAX);
+
 /** Group voice: of two friends, the one with the smaller id calls, so each pair connects once. */
 export const callsFirst = (me: string, other: string) => me < other;
 

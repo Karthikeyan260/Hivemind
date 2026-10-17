@@ -1,6 +1,6 @@
 "use client";
 
-import { Crown, Home, Layers, Mic, MicOff, Users, X } from "lucide-react";
+import { Crown, Home, Layers, MessageCircle, Mic, MicOff, Send, Users, X } from "lucide-react";
 import { CardsGame } from "@/components/games/cards-game";
 import { ChessVsFriend } from "@/components/games/chess/vs-friend";
 import { DotsGame } from "@/components/games/dots-game";
@@ -10,8 +10,8 @@ import { SnakesGame } from "@/components/games/snakes-game";
 import { PartyDraw } from "@/components/games/party-draw";
 import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { useEffect, useState } from "react";
-import { MAX_PLAYERS, type Party, PartyContext, type PartyFloat, type PartyGameKind, usePartyNet } from "@/lib/games/party";
+import { useEffect, useRef, useState } from "react";
+import { MAX_PLAYERS, type Party, PartyContext, type PartyChat, type PartyFloat, type PartyGameKind, usePartyNet } from "@/lib/games/party";
 import { here, REACTIONS, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
 
 /**
@@ -70,6 +70,10 @@ export function PartyTable({ role, room, myName, hostName, onHostAway }: { role:
         return { muted: want };
       },
     },
+    party_chat: {
+      description: "Game night page: send a chat message to everyone at the table. input: the message, word for word.",
+      run: ({ input }) => (party.chat(String(input ?? "")) ? { sent: true } : { error: "Couldn't send that (empty, too fast, or not connected)." }),
+    },
     party_remove: {
       description: "Game night page: remove a friend from the table (the owner only). Only when the owner clearly asks. input: the friend's name.",
       run: ({ input }) => {
@@ -94,7 +98,12 @@ export function PartyTable({ role, room, myName, hostName, onHostAway }: { role:
       ) : (
         <Lobby party={party} />
       )}
-      {(host ? party.stage !== "error" : party.live) && <Reactions party={party} />}
+      {(host ? party.stage !== "error" : party.live) && (
+        <>
+          <Reactions party={party} />
+          <Chat party={party} />
+        </>
+      )}
     </PartyContext.Provider>
   );
 }
@@ -122,6 +131,92 @@ function Reactions({ party }: { party: Party }) {
           </button>
         ))}
       </div>
+    </>
+  );
+}
+
+/** Game night chat: a button with the unread count, a panel to read and type, and a bubble for new messages while it's closed. */
+function Chat({ party }: { party: Party }) {
+  const [list, setList] = useState<PartyChat[]>([]);
+  const [open, setOpen] = useState(false);
+  const [seen, setSeen] = useState(0);
+  const [text, setText] = useState("");
+  const [peek, setPeek] = useState<PartyChat | null>(null);
+  const { onChat } = party;
+  useEffect(() => onChat(setList), [onChat]);
+  const end = useRef<HTMLDivElement>(null);
+  const lastK = list[list.length - 1]?.k ?? 0;
+  // Open: everything is read, and the newest is in view.
+  useEffect(() => {
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reading the chat marks it read
+    setSeen(lastK);
+    end.current?.scrollIntoView({ block: "end" });
+  }, [open, lastK]);
+  // Closed: someone else's new message pops up for a few seconds.
+  const lastMsg = list[list.length - 1];
+  useEffect(() => {
+    if (open || !lastMsg || lastMsg.who === party.me) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new message arrived
+    setPeek(lastMsg);
+    const t = setTimeout(() => setPeek((p) => (p?.k === lastMsg.k ? null : p)), 4500);
+    return () => clearTimeout(t);
+  }, [lastMsg, open, party.me]);
+  const unread = open ? 0 : list.filter((m) => m.k > seen && m.who !== party.me).length;
+  const nameOf = (id: string) => (id === party.me ? "You" : (party.players.find((p) => p.id === id)?.name ?? (id === "host" ? party.hostName : "Friend")));
+  const mine = (id: string) => id === party.me;
+  function send(e: React.FormEvent) {
+    e.preventDefault();
+    if (party.chat(text)) setText("");
+  }
+  const time = (at: number) => (at ? new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "");
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label={open ? "Close the chat" : `Open the chat${unread ? `, ${unread} new` : ""}`}
+        className="fixed top-[calc(58%+7.5rem)] right-1 z-40 flex size-9 items-center justify-center rounded-full border border-line bg-panel/90 text-fg shadow-lg backdrop-blur sm:top-[calc(50%+9.5rem)] sm:right-1.5 sm:size-11"
+      >
+        <MessageCircle size={18} />
+        {unread > 0 && <span className="absolute -top-1 -left-1 flex min-w-5 items-center justify-center rounded-full bg-alert px-1 text-[10px] font-bold text-white">{unread > 9 ? "9+" : unread}</span>}
+      </button>
+
+      {peek && !open && (
+        <button type="button" onClick={() => setOpen(true)} className="fixed right-12 bottom-24 z-40 max-w-[70vw] rounded-2xl rounded-br-sm border border-line bg-panel/95 px-3 py-2 text-left text-sm shadow-xl backdrop-blur sm:right-16 sm:max-w-xs">
+          <span className="block text-[11px] font-semibold text-core">{nameOf(peek.who)}</span>
+          <span className="line-clamp-3 break-words">{peek.text}</span>
+        </button>
+      )}
+
+      {open && (
+        <div role="dialog" aria-label="Game night chat" className="fixed inset-x-2 bottom-2 z-[70] flex h-[60dvh] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl sm:inset-x-auto sm:right-16 sm:bottom-6 sm:h-[28rem] sm:w-80">
+          <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+            <MessageCircle size={15} className="text-core" />
+            <span className="flex-1 text-sm font-semibold">Table chat</span>
+            <button type="button" onClick={() => setOpen(false)} aria-label="Close the chat" className="rounded-full p-1 text-soft hover:text-fg">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="flex-1 space-y-2 overflow-y-auto p-3">
+            {!list.length && <p className="pt-6 text-center text-sm text-faint">No messages yet. Say hi to the table!</p>}
+            {list.map((m) => (
+              <div key={m.k} className={cx("flex flex-col", mine(m.who) ? "items-end" : "items-start")}>
+                {!mine(m.who) && <span className="mb-0.5 px-1 text-[11px] font-semibold text-soft">{nameOf(m.who)}</span>}
+                <span className={cx("max-w-[85%] rounded-2xl px-3 py-1.5 text-sm break-words whitespace-pre-wrap", mine(m.who) ? "rounded-br-sm bg-core text-core-ink" : "rounded-bl-sm border border-line bg-white/[0.07] text-fg")}>{m.text}</span>
+                <span className="mt-0.5 px-1 text-[10px] text-faint">{time(m.at)}</span>
+              </div>
+            ))}
+            <div ref={end} />
+          </div>
+          <form onSubmit={send} className="flex gap-2 border-t border-line p-2">
+            <input value={text} onChange={(e) => setText(e.target.value)} maxLength={200} placeholder="Message the table…" aria-label="Chat message" autoComplete="off" enterKeyHint="send" className="min-w-0 flex-1 rounded-full border border-line bg-sunken px-3 py-2 text-base sm:text-sm" />
+            <button type="submit" disabled={!text.trim()} aria-label="Send" className="flex size-10 shrink-0 items-center justify-center rounded-full bg-core text-core-ink disabled:opacity-40">
+              <Send size={16} />
+            </button>
+          </form>
+        </div>
+      )}
     </>
   );
 }

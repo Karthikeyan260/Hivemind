@@ -3,7 +3,7 @@
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { checkHost, proveHost } from "@/lib/peer-auth";
-import { callsFirst, cleanId, cleanName, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
+import { callsFirst, CHAT_GAP_MS, cleanChat, cleanId, cleanName, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
 
 /**
  * Game night: one link, a lobby, many friends. The owner's browser is the table: friends open the
@@ -34,6 +34,9 @@ type Wire =
   | { t: "full" }
   /** A reaction (😂 🔥…): friend → host, then host → everyone else with who sent it. */
   | { t: "react"; e: string; who?: string }
+  /** A chat message: friend → host, then host → everyone with who sent it; "chats" catches up a friend who joins. */
+  | { t: "chat"; text: string; who?: string; at?: number }
+  | { t: "chats"; list: PartyChat[] }
   /** Host → a friend the owner took off the table: don't come back (until the owner reopens game night). */
   | { t: "removed" }
   | { t: "ping" };
@@ -47,6 +50,8 @@ const PING_MS = 4000;
 const SILENT_MS = 12_000;
 
 export type PartyFloat = { k: number; e: string; who: string; x: number };
+export type PartyChat = { k: number; who: string; text: string; at: number };
+const CHAT_KEEP = 60;
 const FLOAT_MS = 2600;
 
 type Bound = { viewFor?: (s: unknown, playerId: string) => unknown; onAction?: (from: string, a: unknown) => void; accept?: (s: unknown) => boolean };
@@ -76,6 +81,10 @@ export type Party = {
   /** Reactions floating up on this screen right now (each lasts a few seconds). */
   /** Follow the reactions floating up right now; returns the unsubscribe. */
   onFloats: (fn: (f: PartyFloat[]) => void) => () => void;
+  /** Send a chat message to everyone at the table; false if it couldn't go (empty, too fast, not connected). */
+  chat: (text: string) => boolean;
+  /** Follow the chat; returns the unsubscribe. */
+  onChat: (fn: (list: PartyChat[]) => void) => () => void;
   voice: { on: boolean; muted: boolean; noMic: boolean; toggleMute: () => void };
 };
 
@@ -209,6 +218,38 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     fn(floats.current);
     return () => void floatFans.current.delete(fn);
   }, []);
+  // Chat: like reactions, kept out of the Party object so a message doesn't re-render every game.
+  const chats = useRef<PartyChat[]>([]);
+  const chatFans = useRef(new Set<(l: PartyChat[]) => void>());
+  const chatK = useRef(0);
+  const lastChat = useRef(new Map<string, number>());
+  const setChats = useCallback((next: PartyChat[]) => {
+    chats.current = next.slice(-CHAT_KEEP);
+    for (const f of chatFans.current) f(chats.current);
+  }, []);
+  const addChat = useCallback((who: string, text: string, at: number) => setChats([...chats.current, { k: ++chatK.current, who, text, at }]), [setChats]);
+  const onChat = useCallback((fn: (l: PartyChat[]) => void) => {
+    chatFans.current.add(fn);
+    fn(chats.current);
+    return () => void chatFans.current.delete(fn);
+  }, []);
+  const chat = useCallback(
+    (raw: string) => {
+      const text = cleanChat(raw);
+      const now = Date.now();
+      if (!text || now - (lastChat.current.get("me") ?? 0) < CHAT_GAP_MS) return false;
+      if (opts.current.role === "host") for (const id of conns.current.keys()) sendTo(id, { t: "chat", text, who: "host", at: now });
+      else {
+        const c = hostConn.current;
+        if (!c?.open || !verified.current) return false;
+        c.send({ t: "chat", text } satisfies Wire);
+      }
+      lastChat.current.set("me", now);
+      addChat(me, text, now);
+      return true;
+    },
+    [me, sendTo, addChat],
+  );
   const react = useCallback(
     (e: string) => {
       if (!isReaction(e)) return;
@@ -332,6 +373,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         setRoster((l) => (known ? l.map((p) => (p.id === id ? { ...p, name, online: true, peer: peerId } : p)) : [...l, { id, name, online: true, peer: peerId }]));
         const ph = phaseRef.current;
         if (ph.screen === "game" && states.current[ph.game]) sendTo(id, { t: "state", game: ph.game, s: viewFor(ph.game, id) });
+        if (chats.current.length) sendTo(id, { t: "chats", list: chats.current.slice(-30) });
         return;
       }
       if (m.t === "act") {
@@ -348,6 +390,16 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         lastReact.current.set(from, now);
         showReact(m.e, from);
         for (const id of conns.current.keys()) if (id !== from) sendTo(id, { t: "react", e: m.e, who: from });
+      }
+      if (m.t === "chat") {
+        const from = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
+        const text = cleanChat(m.text);
+        if (!from || !text) return;
+        const now = Date.now();
+        if (now - (lastChat.current.get(from) ?? 0) < CHAT_GAP_MS) return;
+        lastChat.current.set(from, now);
+        addChat(from, text, now);
+        for (const id of conns.current.keys()) if (id !== from) sendTo(id, { t: "chat", text, who: from, at: now });
       }
     };
 
@@ -378,6 +430,21 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       }
       if (m.t === "react") {
         if (isReaction(m.e)) showReact(m.e, cleanId(m.who) || "host");
+        return;
+      }
+      if (m.t === "chat") {
+        const text = cleanChat(m.text);
+        if (text) addChat(cleanId(m.who) || "host", text, Number.isFinite(m.at) ? Number(m.at) : Date.now());
+        return;
+      }
+      if (m.t === "chats") {
+        // Catching up after joining: the owner's copy, plus anything sent here meanwhile.
+        const list = (Array.isArray(m.list) ? m.list : [])
+          .slice(-30)
+          .map((x) => ({ k: ++chatK.current, who: cleanId(x?.who) || "host", text: cleanChat(x?.text), at: Number.isFinite(x?.at) ? Number(x.at) : 0 }))
+          .filter((x) => x.text);
+        const seen = new Set(list.map((x) => `${x.who}|${x.at}|${x.text}`));
+        setChats([...list, ...chats.current.filter((x) => !seen.has(`${x.who}|${x.at}|${x.text}`))].sort((a, b) => a.at - b.at));
         return;
       }
       if (m.t === "removed") {
@@ -648,9 +715,11 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       removePlayer,
       react,
       onFloats,
+      chat,
+      onChat,
       voice: { on: voiceOn, muted, noMic, toggleMute },
     }),
-    [o.role, me, o.hostName, players, phase, stage, err, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, onFloats, voiceOn, muted, noMic, toggleMute],
+    [o.role, me, o.hostName, players, phase, stage, err, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, onFloats, chat, onChat, voiceOn, muted, noMic, toggleMute],
   );
 }
 
