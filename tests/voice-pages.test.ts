@@ -33,7 +33,7 @@ describe("voice can open every page", () => {
     const text = Object.values(GROUPS)
       .flatMap((g) => g.guide.map((x) => (typeof x === "function" ? x({ routines: "" }) : x)))
       .join("\n");
-    const named = [...text.matchAll(/navigate (\/[a-z/?=]*)/g)].map((m) => m[1].replace(/[.,)]+$/, "")).filter((p) => p.length > 1 || p === "/");
+    const named = [...text.matchAll(/navigate (\/[a-z0-9/?=]*)/g)].map((m) => m[1].replace(/[.,)]+$/, "")).filter((p) => p.length > 1 || p === "/");
     expect(named.length).toBeGreaterThan(5);
     for (const p of named) expect(VOICE_PAGE_PATHS, `instructions say "navigate ${p}"`).toContain(p);
   });

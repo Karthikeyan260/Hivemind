@@ -30,6 +30,7 @@ export const VOICE_PAGES = [
   { path: "/garden?fest=pongal", what: "Nova's garden dressed for Pongal (kolam, sugarcane, pongal pot)" },
   { path: "/garden?fest=monsoon", what: "Nova's garden in the monsoon (puddles, frogs)" },
   { path: "/garden?fest=today", what: "Nova's garden as it is today (no festival preview)" },
+  { path: "/garden?goodnight=1", what: "Nova's bedtime: night falls, a calm song, Nova says tomorrow's plan and sleeps" },
   { path: "/games", what: "Games: all the games" },
   { path: "/games/paattu", what: "Paattu Quiz: guess the Tamil song's film" },
   { path: "/games/draw", what: "Draw & Guess" },

@@ -12,7 +12,7 @@ export type GardenItem =
 export type Garden = {
   items: GardenItem[];
   butterflies: number;
-  counts: { flowers: number; trees: number; lamps: number; gems: number; butterflies: number };
+  counts: { flowers: number; trees: number; lamps: number; gems: number; butterflies: number; music?: number };
   /** Name of the pet living there. */
   pet: string;
   stage: number;

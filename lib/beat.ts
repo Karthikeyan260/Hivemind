@@ -53,8 +53,16 @@ let cover: [number, number, number] | null = null;
 let lastHue = 0;
 
 export const getColor = () => color;
+/** A colour for a moment (bedtime's warm glow), never saved: null goes back to the owner's own. */
+let temp: BeatColor | null = null;
+export function setTempColor(c: BeatColor | null) {
+  temp = c;
+  paint();
+  window.dispatchEvent(new Event(COLOR_EVENT));
+}
 /** The current light colour as RGB (what the lights show right now). */
 export function currentRgb(): [number, number, number] {
+  if (temp) return rgbOf(temp);
   if (color === "rainbow") return hueRgb(lastHue);
   if (color === "auto") return cover ?? rgbOf(DEFAULT_COLOR);
   return rgbOf(color);

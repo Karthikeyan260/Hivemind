@@ -90,6 +90,17 @@ export function quickPage(raw: string): { href: string; label: string; reply: st
   return null;
 }
 
+/** "Nova, good night" / "good night Nova" / "Nova, sleep time": the bedtime routine in the garden. Needs Nova's name, so a plain "good night" stays a chat or routine. */
+export function quickGoodNight(raw: string, pet = "nova"): boolean {
+  const m = raw
+    .toLowerCase()
+    .replace(/[.!?"',]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const n = pet.toLowerCase();
+  return m.length <= 40 && new RegExp(`^(${n} (good ?night|gn|sleep time|time to sleep|go to sleep|let'?s sleep)|(good ?night|gn) ${n})( da| ma| di)?$`).test(m);
+}
+
 export function quickEffect(raw: string): Quick | null {
   const m = raw
     .toLowerCase()

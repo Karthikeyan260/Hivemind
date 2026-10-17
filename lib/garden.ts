@@ -19,6 +19,11 @@ const DAYS = 183;
 const CHECKINS_PER_TREE = 4;
 const SONGS_PER_BUTTERFLY = 15;
 const MAX_FLOWERS = 180;
+/** Music flowers: one per song listened to (newest first), each artist with its own bed and colour. */
+const MAX_MUSIC = 48;
+const MUSIC_DAYS = 60;
+/** "Raja Raja Chozhan" → "raja-raja-chozhan" (a stable key for ids). */
+const slug = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "song";
 
 const GAME_NAME: Record<string, string> = { chess: "Chess", cards: "Colour Clash", ludo: "Ludo", draw: "Draw & Guess", dots: "Dots & Boxes" };
 const GAME_HUE: Record<string, number> = { chess: 200, cards: 330, ludo: 45, draw: 280, dots: 150 };
@@ -59,13 +64,28 @@ export async function getGarden(supabase: SupabaseClient): Promise<Garden> {
     .filter((g) => g.outcome === "win" && localParts(new Date(g.at)).date >= since)
     .map((g) => ({ kind: "gem" as const, id: `g:${g.key}`, date: localParts(new Date(g.at)).date, label: `💎 Won ${GAME_NAME[g.game] ?? g.game} · ${localParts(new Date(g.at)).date}`, hue: GAME_HUE[g.game] ?? 190 }));
 
+  // A flower for every song played (once per song), in its artist's bed: the garden shows your music taste.
+  const musicSince = addDays(today, -MUSIC_DAYS);
+  const seenSong = new Set<string>();
+  const music: GardenItem[] = [];
+  for (const p of [...plays].sort((a, b) => b.at.localeCompare(a.at))) {
+    const date = localParts(new Date(p.at)).date;
+    if (date < musicSince) break;
+    const artist = (p.artists.split(",")[0] || "Unknown").trim();
+    const key = `${slug(artist)}~${slug(p.title)}`;
+    if (seenSong.has(key)) continue;
+    seenSong.add(key);
+    music.push({ kind: "flower", id: `m:${slug(artist)}:${slug(p.title)}`, date, label: `🎵 ${p.title} · ${artist}`, hue: hueOf(`artist:${slug(artist)}`) });
+    if (music.length >= MAX_MUSIC) break;
+  }
+
   const songs = plays.filter((p) => localParts(new Date(p.at)).date >= since).length;
   const butterflies = Math.min(12, Math.floor(songs / SONGS_PER_BUTTERFLY));
 
   return {
-    items: [...trees, ...lamps, ...gems, ...flowers],
+    items: [...trees, ...lamps, ...gems, ...flowers, ...music],
     butterflies,
-    counts: { flowers: flowers.length, trees: full + (growing ? 1 : 0), lamps: lamps.length, gems: gems.length, butterflies },
+    counts: { flowers: flowers.length, trees: full + (growing ? 1 : 0), lamps: lamps.length, gems: gems.length, butterflies, music: music.length },
     pet: pet?.name ?? "Nova",
     stage: pet?.stage ?? 0,
   };

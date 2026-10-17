@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { runAgent } from "@/lib/agents/orchestrator";
 import { instantAnswer } from "@/lib/agents/instant";
-import { quickEffect, quickGarden, quickPage } from "@/lib/agents/quick";
+import { quickEffect, quickGarden, quickGoodNight, quickPage } from "@/lib/agents/quick";
 import { TOOLS } from "@/lib/agents/tools";
 import { routeAgent } from "@/lib/agents/router";
 import type { Action, AgentEvent, AgentId, RunContext, Source } from "@/lib/agents/types";
@@ -141,10 +141,11 @@ export const POST = handle(async (req: Request) => {
         // A simple screen switch ("lights off", "Nova be quiet"): done at once, no AI needed.
         const quick = quickEffect(message);
         const garden = quick ? null : quickGarden(message);
-        const page = quick || garden ? null : quickPage(message);
+        const bedtime = !quick && !garden && quickGoodNight(message);
+        const page = quick || garden || bedtime ? null : quickPage(message);
         // "Where am I", "weather", "my habits today", "how is Nova": answered from the data, no AI.
         // (English replies: skipped when the owner asked for Tamil, or wrote in Tamil script.)
-        const instant = quick || garden || page || prefs.language === "ta" || tamil ? null : instantAnswer(message);
+        const instant = quick || garden || page || bedtime || prefs.language === "ta" || tamil ? null : instantAnswer(message);
         let instantReply: string | null = null;
         if (instant) {
           ctx.emit({ type: "tool", agent: route.agent, tool: instant.tool, status: "run" });
@@ -155,7 +156,13 @@ export const POST = handle(async (req: Request) => {
           ctx.emit({ type: "tool", agent: route.agent, tool: instant.tool, status: instantReply ? "ok" : "error" });
         }
         try {
-          if (instantReply) {
+          if (bedtime) {
+            // "Nova, good night": the bedtime routine in its garden.
+            actions.push({ label: "🌙 Good night", href: "/garden?goodnight=1", navigate: true });
+            reply = "🌙 Good night! Nova will tell you tomorrow's plan and go to sleep.";
+            send({ type: "delta", text: reply });
+            done = { type: "done", provider: "rules", model: "instant", latency_ms: Date.now() - started };
+          } else if (instantReply) {
             reply = instantReply;
             send({ type: "delta", text: reply });
             done = { type: "done", provider: "rules", model: "instant", latency_ms: Date.now() - started };

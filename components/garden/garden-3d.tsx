@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Creature } from "@/components/pet/creature";
 import { ErrorText } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { useFetch } from "@/lib/client-api";
+import { petSay } from "@/components/pet/talk";
+import * as beat from "@/lib/beat";
+import { MUSIC_EVENT, MUSIC_STATE_EVENT, useFetch } from "@/lib/client-api";
+import type { GoodNight } from "@/lib/goodnight";
 import type { GardenDay } from "@/lib/garden-day";
 import { type Garden, homeSpot, islandSize, layout } from "@/lib/garden-layout";
 import { festivalById, festivalOn } from "@/lib/pet-looks";
@@ -34,7 +37,7 @@ function decorFor(asked: string | null) {
   return { fest: isDecor(asked) ? asked : own && isDecor(today) ? today : null, monsoon: asked === "monsoon" || (own && monsoonMonth()) };
 }
 
-export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?: string | null }) {
+export function Garden3D({ onFail, asked = null, bedtimeAsk = false }: { onFail: () => void; asked?: string | null; bedtimeAsk?: boolean }) {
   const feed = useFetch<{ garden: Garden }>("/api/pet/garden");
   const g = feed.data?.garden;
   const placed = useMemo(() => (g ? layout(g.items) : []), [g]);
@@ -65,6 +68,9 @@ export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?:
   const [hint, setHint] = useState(true);
   // A flower's day (what happened on the date it was planted).
   const [day, setDay] = useState<{ date: string; data?: GardenDay; error?: string } | null>(null);
+  // "Nova, good night": night falls, a calm song, the warm glow, Nova tells tomorrow and goes to sleep.
+  const [bedtime, setBedtime] = useState<{ plan?: GoodNight; line: number; asleep: boolean } | null>(null);
+  const bedtimeRun = useRef(0);
   // Festival / season on the island: today's, or one previewed (?fest=deepavali, or by voice).
   const [fest, setFest] = useState<string | null>(null);
   const [monsoon, setMonsoon] = useState(false);
@@ -74,7 +80,8 @@ export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?:
   const petScreen = useRef<{ x: number; y: number } | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const later = (fn: () => void, ms: number) => timers.current.push(setTimeout(fn, ms));
-  const night = phase === "night";
+  const inBed = !!bedtime;
+  const night = phase === "night" || inBed;
   const wet = sky === "rain" || sky === "thunder";
   const isNight = () => phaseNow() === "night";
 
@@ -276,8 +283,8 @@ export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?:
   }, [gardenKey]);
 
   useEffect(() => {
-    scene.current?.setLook(phase, wet);
-  }, [phase, wet, sceneId]);
+    scene.current?.setLook(inBed ? "night" : phase, inBed ? false : wet);
+  }, [phase, wet, sceneId, inBed]);
   useEffect(() => {
     const d = decorFor(asked);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the link, which can change while the page is open
@@ -296,7 +303,105 @@ export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?:
     return () => clearTimeout(t);
   }, []);
 
+  // The garden dances to whatever is playing: a bounce on every beat, lamps flash on the drop, and the
+  // fireflies take the music lights' colour.
+  useEffect(() => {
+    if (!sceneId) return;
+    const s = () => scene.current;
+    const playing = () => document.documentElement.classList.contains("music-live");
+    const paint = () => s()?.setMusic(playing() ? beat.currentRgb() : null);
+    paint();
+    // Development only: tests send beats without playing a real song (which would log a play).
+    if (process.env.NODE_ENV === "development") (window as unknown as { __hmGarden?: unknown }).__hmGarden = { beat: () => s()?.musicBeat(), drop: () => s()?.musicDrop(), level: (v: number) => s()?.setMusicLevel(v), music: (rgb: [number, number, number] | null) => s()?.setMusic(rgb) };
+    const offBeat = beat.onBeat(() => s()?.musicBeat());
+    // The song's loudness, a few times a second, for the gentle sway and the fireflies.
+    const lv = setInterval(() => playing() && s()?.setMusicLevel(beat.level()), 120);
+    const offDrop = beat.onDrop(() => s()?.musicDrop());
+    const state = () => setTimeout(paint, 50);
+    window.addEventListener(MUSIC_STATE_EVENT, state);
+    window.addEventListener(beat.COLOR_EVENT, paint);
+    return () => {
+      clearInterval(lv);
+      offBeat();
+      offDrop();
+      window.removeEventListener(MUSIC_STATE_EVENT, state);
+      window.removeEventListener(beat.COLOR_EVENT, paint);
+    };
+  }, [sceneId]);
+
+  async function goodNight() {
+    const me = ++bedtimeRun.current;
+    setHint(false);
+    setBedtime({ line: -1, asleep: false });
+    beat.setTempColor("orange");
+    busy.current = Date.now() + 12 * 60 * 60_000;
+    let plan: GoodNight | undefined;
+    try {
+      plan = (await (await fetch("/api/pet/goodnight")).json()) as GoodNight;
+    } catch {
+      plan = { name: "", lines: ["Good night. Sleep well 🌙"], song: "Ilaiyaraaja night melody" };
+    }
+    if (me !== bedtimeRun.current) return;
+    setBedtime({ plan, line: -1, asleep: false });
+    window.dispatchEvent(new CustomEvent(MUSIC_EVENT, { detail: { action: "play", query: plan.song } }));
+    // Softer, for sleeping.
+    later(() => window.dispatchEvent(new CustomEvent(MUSIC_EVENT, { detail: { action: "set_volume", volume: 35 } })), 2500);
+    // Nova comes out to say it, then walks home and falls asleep.
+    if (insideRef.current) enter(false);
+    walkTo({ x: door.x + 30, y: door.y + 30 });
+    let at = 2600;
+    plan.lines.forEach((l, i) => {
+      later(() => {
+        if (me !== bedtimeRun.current) return;
+        setBedtime((b) => (b ? { ...b, line: i } : b));
+        petSay(l);
+      }, at);
+      at += Math.max(3800, l.split(/\s+/).length * 380 + 1200);
+    });
+    later(() => {
+      if (me !== bedtimeRun.current) return;
+      const ms = walkTo(door);
+      later(() => {
+        if (me !== bedtimeRun.current) return;
+        enter(true);
+        setBedtime((b) => (b ? { ...b, line: -1, asleep: true } : b));
+      }, ms + 100);
+    }, at);
+    // A sleep timer: the song stops after 20 minutes.
+    later(() => {
+      if (me === bedtimeRun.current) window.dispatchEvent(new CustomEvent(MUSIC_EVENT, { detail: { action: "pause" } }));
+    }, 20 * 60_000);
+  }
+  function wakeUp() {
+    bedtimeRun.current++;
+    beat.setTempColor(null);
+    setBedtime(null);
+    busy.current = 0;
+    comeOut();
+  }
+  // Leaving the page ends bedtime's warm glow (the owner's own colour comes back).
+  useEffect(() => () => beat.setTempColor(null), []);
+  // ?goodnight=1 (from chat or voice): once the island is ready.
+  const bedtimeStarted = useRef(false);
+  useEffect(() => {
+    if (!bedtimeAsk || !sceneId || bedtimeStarted.current) return;
+    bedtimeStarted.current = true;
+    void goodNight();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the island is ready
+  }, [bedtimeAsk, sceneId]);
+
   useVoiceActions({
+    garden_goodnight: {
+      description: "Nova's garden page: the bedtime routine ('Nova, good night'): night falls, a calm song plays softly, the music lights glow warm, Nova says tomorrow's plan and goes to sleep in its cottage. input: 'start', or 'wake' to end it.",
+      run: ({ input }) => {
+        if (/wake|morning|end|stop|cancel/i.test(String(input))) {
+          wakeUp();
+          return { woke: true };
+        }
+        void goodNight();
+        return { started: true, note: "Say good night warmly in a few words, then stay quiet: Nova tells them tomorrow's plan." };
+      },
+    },
     garden_festival: {
       description: "Nova's garden page: dress the island for a festival or season to preview it. input: 'deepavali' (lamps, rangoli, fireworks), 'karthigai' (oil lamps along the path), 'pongal' (kolam, sugarcane, pongal pot), 'monsoon' (puddles, frogs) or 'today' (back to today's).",
       run: ({ input }) => {
@@ -415,7 +520,7 @@ export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?:
 
         {/* Title. */}
         <div className="pointer-events-none absolute top-5 left-5 sm:top-7 sm:left-8">
-          <p className="font-mono text-[10px] tracking-[0.35em] text-white/60 uppercase">Pocket pet · {PHASE_NAME[phase]}
+          <p className="font-mono text-[10px] tracking-[0.35em] text-white/60 uppercase">Pocket pet · {bedtime ? "🌙 Bedtime" : PHASE_NAME[phase]}
             {fest ? ` · ${DECOR_ICON[fest] ?? ""} ${festivalById(fest)?.name ?? fest}` : monsoon || wet ? ` · ${DECOR_ICON.monsoon} Monsoon` : ""}
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)] sm:text-5xl">{g?.pet ?? "Nova"}&apos;s garden</h1>
@@ -423,13 +528,14 @@ export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?:
         </div>
 
         {/* What has grown: glass cards along the bottom. */}
-        {g && (
+        {g && !bedtime && (
           <div className="absolute inset-x-3 bottom-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:inset-x-6 sm:bottom-6 sm:gap-3">
             {[
               ["🌸", c?.flowers ?? 0, "Flowers", "a day a habit was done"],
               ["🌳", c?.trees ?? 0, "Trees", "4 night check-ins each"],
               ["🏮", c?.lamps ?? 0, "Lamps", "lantern walks"],
               ["💎", c?.gems ?? 0, "Gems", "games won"],
+              ["🎵", c?.music ?? 0, "Music flowers", "a song you listened to"],
               ["🦋", c?.butterflies ?? 0, "Butterflies", "songs you played"],
             ].map(([e, num, what, why]) => (
               <div key={String(what)} className="min-w-[104px] shrink-0 rounded-2xl border border-white/15 bg-white/10 px-3.5 py-2.5 text-white shadow-lg backdrop-blur-xl sm:min-w-[132px] sm:px-4 sm:py-3" title={String(why)}>
@@ -446,6 +552,31 @@ export function Garden3D({ onFail, asked = null }: { onFail: () => void; asked?:
 
         {ready && hint && <div className="pointer-events-none absolute inset-x-0 top-[38%] text-center text-xs text-white/85 drop-shadow transition-opacity sm:top-auto sm:right-8 sm:bottom-8 sm:left-auto sm:text-right">Drag to look around · pinch to zoom · tap anything</div>}
         {day && <DayCard day={day} onClose={() => setDay(null)} />}
+        {ready && g && !bedtime && (
+          <button onClick={() => void goodNight()} className="absolute top-5 right-5 z-10 flex items-center gap-1.5 rounded-full border border-indigo-200/30 bg-[#0d1024]/70 px-3.5 py-2 text-xs font-medium text-indigo-100 shadow-lg backdrop-blur-md transition hover:bg-[#161a3a]/80 sm:top-7 sm:right-8">
+            🌙 Good night
+          </button>
+        )}
+        {bedtime && (
+          <div className="absolute inset-x-3 bottom-3 z-10 sm:inset-x-auto sm:bottom-6 sm:left-1/2 sm:w-[520px] sm:-translate-x-1/2">
+            {!bedtime.asleep ? (
+              <div key={bedtime.line} className="garden-sheet rounded-2xl border border-indigo-200/20 bg-[#0d1024]/80 p-4 text-white shadow-2xl backdrop-blur-xl">
+                <p className="text-[11px] text-indigo-200/80">🌙 {g?.pet ?? "Nova"} · bedtime</p>
+                <p className="mt-1 text-sm leading-snug">{bedtime.plan && bedtime.line >= 0 ? bedtime.plan.lines[bedtime.line] : `${g?.pet ?? "Nova"} is getting sleepy…`}</p>
+              </div>
+            ) : (
+              <div className="garden-sheet flex items-center justify-between gap-3 rounded-2xl border border-indigo-200/20 bg-[#0d1024]/80 p-4 text-white shadow-2xl backdrop-blur-xl">
+                <div>
+                  <p className="text-sm font-medium">💤 {g?.pet ?? "Nova"} is asleep</p>
+                  <p className="text-xs text-white/60">The song stops by itself in 20 minutes. Good night!</p>
+                </div>
+                <button onClick={wakeUp} className="shrink-0 rounded-full border border-white/20 px-3 py-1.5 text-xs hover:bg-white/10">
+                  ☀️ Wake up
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {g && !g.items.length && <div className="pointer-events-none absolute inset-x-0 top-1/3 text-center text-sm text-white/90 drop-shadow">The island is waiting. Finish a habit today to plant the first flower 🌱</div>}
       </div>
     </div>

@@ -16,14 +16,17 @@ function canDraw3D() {
 
 function Garden() {
   // ?fest=deepavali (or pongal, karthigai, monsoon, today) dresses the island; chat links here too.
-  const asked = useSearchParams().get("fest");
+  const params = useSearchParams();
+  const asked = params.get("fest");
+  // ?goodnight=1 starts Nova's bedtime routine (from chat or voice).
+  const bedtime = params.get("goodnight") === "1";
   const [mode, setMode] = useState<"3d" | "flat" | null>(null);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- what the device can draw, checked once
     setMode(canDraw3D() ? "3d" : "flat");
   }, []);
   if (mode === "flat") return <FlatGarden />;
-  if (mode === "3d") return <Garden3D onFail={() => setMode("flat")} asked={asked} />;
+  if (mode === "3d") return <Garden3D onFail={() => setMode("flat")} asked={asked} bedtimeAsk={bedtime} />;
   return null;
 }
 

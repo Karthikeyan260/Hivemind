@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { quickEffect, quickGarden, quickPage } from "@/lib/agents/quick";
+import { quickEffect, quickGarden, quickGoodNight, quickPage } from "@/lib/agents/quick";
 
 const fx = (m: string) => quickEffect(m)?.args ?? null;
 
@@ -70,5 +70,17 @@ describe("open a page from chat (no AI)", () => {
     expect(go("show me the weather in Madurai")).toBeNull();
     expect(go("what's in my garden?")).toBeNull();
     expect(quickGarden("open nova garden")).toBeNull();
+  });
+});
+
+describe("Nova's bedtime from chat (no AI)", () => {
+  it("needs Nova's name", () => {
+    expect(quickGoodNight("Nova, good night")).toBe(true);
+    expect(quickGoodNight("good night nova!")).toBe(true);
+    expect(quickGoodNight("goodnight Nova da")).toBe(true);
+    expect(quickGoodNight("nova sleep time")).toBe(true);
+    expect(quickGoodNight("good night")).toBe(false);
+    expect(quickGoodNight("nova what's good at night in chennai")).toBe(false);
+    expect(quickGoodNight("good night pixel", "pixel")).toBe(true);
   });
 });
