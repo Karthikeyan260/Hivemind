@@ -1008,3 +1008,16 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
   .garden-part-l, .garden-part-r { display: none; }
   .garden-pop { animation-duration: 1ms; }
 }
+
+/* Game night reactions: each one floats up, sways a little, and fades. */
+.party-float { animation: party-float 2.6s ease-out forwards; }
+@keyframes party-float {
+  0% { transform: translate(-50%, 0) scale(0.4); opacity: 0; }
+  12% { transform: translate(-50%, -30px) scale(1.15); opacity: 1; }
+  45% { transform: translate(calc(-50% + 14px), -38vh) scale(1); opacity: 1; }
+  100% { transform: translate(calc(-50% - 10px), -70vh) scale(0.9); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .party-float { animation: party-fade 2.6s ease-out forwards; }
+  @keyframes party-fade { 0%, 70% { opacity: 1; transform: translate(-50%, -20vh); } 100% { opacity: 0; transform: translate(-50%, -20vh); } }
+}

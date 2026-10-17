@@ -36,6 +36,8 @@ export const VOICE_PAGES = [
   { path: "/games/paattu", what: "Paattu Quiz: guess the Tamil song's film" },
   { path: "/games/draw", what: "Draw & Guess" },
   { path: "/games/ludo", what: "Ludo" },
+  { path: "/games/snakes", what: "Snakes and Ladders" },
+  { path: "/games/business", what: "Business (the Indian property game)" },
   { path: "/games/cards", what: "Colour Clash (cards, like Uno)" },
   { path: "/games/chess", what: "Chess" },
   { path: "/games/dots", what: "Dots and Boxes" },

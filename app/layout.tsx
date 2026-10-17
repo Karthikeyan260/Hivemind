@@ -18,6 +18,7 @@ import { LivingSky } from "@/components/fx/living-sky";
 import { BeatLights } from "@/components/fx/beat-lights";
 import { passwordRequired } from "@/lib/session";
 import "./globals.css";
+import { MiniConcert } from "@/components/garden/mini-concert";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <OfflineStatusPill />
           <WebTaskWindow />
           <MusicPlayer />
+          <MiniConcert />
           <VideoPlayer />
           <LocationReporter />
           <MobileNav canLock={passwordRequired()} />

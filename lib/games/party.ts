@@ -3,7 +3,7 @@
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { checkHost, proveHost } from "@/lib/peer-auth";
-import { callsFirst, cleanId, cleanName } from "@/lib/games/party-rules";
+import { callsFirst, cleanId, cleanName, isReaction, REACT_GAP_MS } from "@/lib/games/party-rules";
 
 /**
  * Game night: one link, a lobby, many friends. The owner's browser is the table: friends open the
@@ -16,8 +16,8 @@ import { callsFirst, cleanId, cleanName } from "@/lib/games/party-rules";
  * friend checks the table is really the owner's (lib/peer-auth). Friends keep a stable id, so a
  * reload or a dropped phone rejoins the same seat. Voice: each friend talks with the owner.
  */
-export type PartyGameKind = "cards" | "ludo" | "dots" | "chess" | "draw";
-export const PARTY_GAMES: PartyGameKind[] = ["cards", "ludo", "dots", "chess", "draw"];
+export type PartyGameKind = "cards" | "ludo" | "dots" | "chess" | "draw" | "snakes" | "business";
+export const PARTY_GAMES: PartyGameKind[] = ["cards", "ludo", "dots", "chess", "draw", "snakes", "business"];
 const isGame = (g: unknown): g is PartyGameKind => PARTY_GAMES.includes(g as PartyGameKind);
 /** `peer`: the friend's own connection id, so friends can talk to each other directly (group voice). */
 export type PartyPlayer = { id: string; name: string; online: boolean; host?: boolean; peer?: string };
@@ -32,6 +32,8 @@ type Wire =
   | { t: "state"; game: PartyGameKind; s: unknown }
   | { t: "act"; game: PartyGameKind; a: unknown }
   | { t: "full" }
+  /** A reaction (😂 🔥…): friend → host, then host → everyone else with who sent it. */
+  | { t: "react"; e: string; who?: string }
   /** Host → a friend the owner took off the table: don't come back (until the owner reopens game night). */
   | { t: "removed" }
   | { t: "ping" };
@@ -43,6 +45,9 @@ const TRANSIENT = ["network", "disconnected", "server-error", "socket-error", "s
  * say "still here" every few seconds, and a player silent for longer than this counts as away. */
 const PING_MS = 4000;
 const SILENT_MS = 12_000;
+
+export type PartyFloat = { k: number; e: string; who: string; x: number };
+const FLOAT_MS = 2600;
 
 type Bound = { viewFor?: (s: unknown, playerId: string) => unknown; onAction?: (from: string, a: unknown) => void; accept?: (s: unknown) => boolean };
 
@@ -66,6 +71,10 @@ export type Party = {
   startGame: (game: PartyGameKind) => void;
   backToLobby: () => void;
   removePlayer: (id: string) => void;
+  /** Send a reaction to everyone at the table. */
+  react: (e: string) => void;
+  /** Reactions floating up on this screen right now (each lasts a few seconds). */
+  floats: PartyFloat[];
   voice: { on: boolean; muted: boolean; noMic: boolean; toggleMute: () => void };
 };
 
@@ -166,6 +175,30 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       save();
     },
     [save, sendTo, viewFor],
+  );
+  // Reactions: shown here at once, and passed round the table by the owner's browser.
+  const [floats, setFloats] = useState<PartyFloat[]>([]);
+  const floatK = useRef(0);
+  const lastReact = useRef(new Map<string, number>());
+  const showReact = useCallback((e: string, who: string) => {
+    const k = ++floatK.current;
+    setFloats((l) => [...l.slice(-24), { k, e, who, x: 8 + Math.random() * 84 }]);
+    setTimeout(() => setFloats((l) => l.filter((f) => f.k !== k)), FLOAT_MS);
+  }, []);
+  const react = useCallback(
+    (e: string) => {
+      if (!isReaction(e)) return;
+      const now = Date.now();
+      if (now - (lastReact.current.get("me") ?? 0) < REACT_GAP_MS) return;
+      lastReact.current.set("me", now);
+      showReact(e, me);
+      if (opts.current.role === "host") for (const id of conns.current.keys()) sendTo(id, { t: "react", e, who: "host" });
+      else {
+        const c = hostConn.current;
+        if (c?.open && verified.current) c.send({ t: "react", e } satisfies Wire);
+      }
+    },
+    [me, sendTo, showReact],
   );
   const act = useCallback((game: PartyGameKind, a: unknown) => {
     const c = hostConn.current;
@@ -281,6 +314,16 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         if (!from) return;
         bound.current[m.game]?.onAction?.(from, m.a);
       }
+      if (m.t === "react") {
+        const from = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
+        if (!from || !isReaction(m.e)) return;
+        // Not too fast from any one friend; then everyone else sees it too.
+        const now = Date.now();
+        if (now - (lastReact.current.get(from) ?? 0) < REACT_GAP_MS) return;
+        lastReact.current.set(from, now);
+        showReact(m.e, from);
+        for (const id of conns.current.keys()) if (id !== from) sendTo(id, { t: "react", e: m.e, who: from });
+      }
     };
 
     const onGuestData = (c: DataConnection, m: Wire) => {
@@ -306,6 +349,10 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
             mc.on("stream", (st) => hear("host", mc, st));
           }
         });
+        return;
+      }
+      if (m.t === "react") {
+        if (isReaction(m.e)) showReact(m.e, cleanId(m.who) || "host");
         return;
       }
       if (m.t === "removed") {
@@ -574,9 +621,11 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       startGame,
       backToLobby,
       removePlayer,
+      react,
+      floats,
       voice: { on: voiceOn, muted, noMic, toggleMute },
     }),
-    [o.role, me, o.hostName, players, phase, stage, err, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, voiceOn, muted, noMic, toggleMute],
+    [o.role, me, o.hostName, players, phase, stage, err, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, floats, voiceOn, muted, noMic, toggleMute],
   );
 }
 

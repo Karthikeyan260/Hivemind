@@ -5,7 +5,7 @@ import { readJSON, writeJSON } from "@/lib/private-store";
 
 /** The owner's game record: one line per finished game (the last 500). */
 export const GameResult = z.object({
-  game: z.enum(["chess", "cards", "ludo", "draw", "dots"]),
+  game: z.enum(["chess", "cards", "ludo", "draw", "dots", "snakes", "business"]),
   mode: z.enum(["bot", "friend"]),
   outcome: z.enum(["win", "loss", "draw"]),
   vs: z.string().trim().max(40),

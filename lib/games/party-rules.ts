@@ -20,6 +20,12 @@ export const here = (players: PartyPlayer[]) => players.filter((p) => p.online |
 /** The seats for a game: the first `max` people here, in the order they joined. */
 export const seatsFor = (players: PartyPlayer[], max: number) => here(players).slice(0, max).map((p) => ({ id: p.id, name: p.name }));
 
+/** The reactions anyone at the table can send; anything else on the wire is dropped. */
+export const REACTIONS = ["😂", "🔥", "😮", "👏", "❤️", "🎉"] as const;
+export const isReaction = (e: unknown): e is (typeof REACTIONS)[number] => REACTIONS.includes(e as (typeof REACTIONS)[number]);
+/** A friend can send a reaction this often at most (the owner's table drops faster ones). */
+export const REACT_GAP_MS = 350;
+
 /** Group voice: of two friends, the one with the smaller id calls, so each pair connects once. */
 export const callsFirst = (me: string, other: string) => me < other;
 
@@ -27,6 +33,8 @@ export const callsFirst = (me: string, other: string) => me < other;
 export function spokenGame(said: string): PartyGameKind | null {
   const t = said.toLowerCase();
   if (/\bludo\b/.test(t)) return "ludo";
+  if (/snakes?|ladders?|paramapadham/.test(t)) return "snakes";
+  if (/business|monopoly|property game/.test(t)) return "business";
   if (/\bchess\b/.test(t)) return "chess";
   if (/\bdots?\b|\bboxes\b/.test(t)) return "dots";
   if (/\bdraw(ing)?\b|\bguess\b|pictionary|sketch/.test(t)) return "draw";

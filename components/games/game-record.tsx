@@ -1,12 +1,12 @@
 "use client";
 
-import { Crown, Dices, Grid3x3, Layers, PenLine, Trophy } from "lucide-react";
+import { Building2, Crown, Dices, Grid3x3, Layers, PenLine, Spline, Trophy } from "lucide-react";
 import { cx } from "@/components/ui";
 import { useFetch } from "@/lib/client-api";
 
-type Row = { game: "chess" | "cards" | "ludo" | "draw" | "dots"; mode: "bot" | "friend"; outcome: "win" | "loss" | "draw"; vs: string; level?: string; detail?: string; at: string };
+type Row = { game: "chess" | "cards" | "ludo" | "draw" | "dots" | "snakes" | "business"; mode: "bot" | "friend"; outcome: "win" | "loss" | "draw"; vs: string; level?: string; detail?: string; at: string };
 
-const GAMES = { chess: { title: "Chess", icon: Crown }, cards: { title: "Colour Clash", icon: Layers }, ludo: { title: "Ludo", icon: Dices }, draw: { title: "Draw & Guess", icon: PenLine }, dots: { title: "Dots & Boxes", icon: Grid3x3 } } as const;
+const GAMES = { chess: { title: "Chess", icon: Crown }, cards: { title: "Colour Clash", icon: Layers }, ludo: { title: "Ludo", icon: Dices }, draw: { title: "Draw & Guess", icon: PenLine }, dots: { title: "Dots & Boxes", icon: Grid3x3 }, snakes: { title: "Snakes & Ladders", icon: Spline }, business: { title: "Business", icon: Building2 } } as const;
 const LEVELS = ["beginner", "easy", "medium", "hard"] as const;
 const LABEL: Record<string, string> = { beginner: "Beginner", easy: "Easy", medium: "Medium", hard: "Hard" };
 const TONE = { win: "bg-ok text-black", loss: "bg-alert text-white", draw: "bg-raised text-soft" } as const;

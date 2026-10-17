@@ -59,6 +59,8 @@ const PAGE_WORDS: [RegExp, string, string][] = [
   [/^(a |the )?(game night|party( games?)?|games? with (my )?friends)$/, "/games/party", "🎮 Game night"],
   [/^(a |the )?(game of )?chess$/, "/games/chess", "♟️ Chess"],
   [/^ludo$/, "/games/ludo", "🎲 Ludo"],
+  [/^(snakes?( (and|&) ladders?)?|paramapadham)$/, "/games/snakes", "🐍 Snakes & Ladders"],
+  [/^(business|monopoly)( game)?$/, "/games/business", "🏦 Business"],
   [/^(the )?(paattu( quiz)?|song quiz)$/, "/games/paattu", "🎵 Paattu Quiz"],
   [/^(draw (and|&) guess|drawing)$/, "/games/draw", "✏️ Draw & Guess"],
   [/^(dots( and boxes)?)$/, "/games/dots", "🔲 Dots and Boxes"],

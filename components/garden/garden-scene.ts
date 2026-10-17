@@ -71,7 +71,8 @@ export type FrameInfo = {
   tip: { x: number; y: number } | null;
 };
 export type GardenCallbacks = { onPick: (id: string) => void; onFrame: (f: FrameInfo) => void };
-type Opts = { n: number; phase: Phase; wet: boolean; butterflies: number; lit: boolean };
+/** `mini`: the small live view in a corner while a song plays (low quality, no fly-in, no touching). */
+type Opts = { n: number; phase: Phase; wet: boolean; butterflies: number; lit: boolean; mini?: boolean };
 
 /* ── tiny noise (value noise + fbm), enough for rocks and colour variation ── */
 function hash3(x: number, y: number, z: number) {
@@ -417,7 +418,7 @@ export class GardenScene {
   ) {
     this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.mobile = matchMedia("(pointer: coarse)").matches || Math.min(screen.width, screen.height) < 700;
-    this.quality = this.mobile ? "low" : "high";
+    this.quality = this.mobile || opts.mini ? "low" : "high";
     this.phase = opts.phase;
     this.wet = opts.wet;
     this.lit = opts.lit;
@@ -426,7 +427,7 @@ export class GardenScene {
     this.D = this.R * 0.95;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.quality === "low", powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, this.mobile ? 1.5 : 1.75));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, opts.mini ? 1.25 : this.mobile ? 1.5 : 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.shadowMap.enabled = true;
@@ -474,8 +475,13 @@ export class GardenScene {
     this.controls.maxDistance = Math.max(this.R * 5, r0 * 1.35);
     this.intro.to.set(r0, 1.2, 0.32);
     this.intro.from.set(r0 * 2.3, 1.42, -1.1);
-    this.placeCamera(this.reduced ? this.intro.to : this.intro.from);
-    if (this.reduced) this.finishIntro();
+    this.placeCamera(this.reduced || opts.mini ? this.intro.to : this.intro.from);
+    if (this.reduced || opts.mini) this.finishIntro();
+    // The mini view turns slowly on its own and can't be dragged (a tap opens the full garden).
+    if (opts.mini) {
+      this.controls.enabled = false;
+      this.controls.autoRotate = !this.reduced;
+    }
 
     if (this.quality === "high") this.enableHigh();
     this.bind();

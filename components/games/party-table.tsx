@@ -4,12 +4,14 @@ import { Crown, Home, Layers, Mic, MicOff, Users, X } from "lucide-react";
 import { CardsGame } from "@/components/games/cards-game";
 import { ChessVsFriend } from "@/components/games/chess/vs-friend";
 import { DotsGame } from "@/components/games/dots-game";
+import { BusinessGame } from "@/components/games/business-game";
 import { LudoGame } from "@/components/games/ludo-game";
+import { SnakesGame } from "@/components/games/snakes-game";
 import { PartyDraw } from "@/components/games/party-draw";
 import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { MAX_PLAYERS, type Party, PartyContext, type PartyGameKind, usePartyNet } from "@/lib/games/party";
-import { here, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
+import { here, REACTIONS, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
 
 /**
  * Game night: the lobby and the game everyone is playing, for the owner (host) and each friend.
@@ -21,6 +23,8 @@ const GAMES: { id: PartyGameKind; name: string; emoji: string; min: number; max:
   { id: "draw", name: "Draw & Guess", emoji: "✏️", min: 2, max: 6, about: "Take turns drawing; everyone else (and HIVEMIND) races to guess the word.", ready: true },
   { id: "dots", name: "Dots & Boxes", emoji: "🔲", min: 2, max: 4, about: "Join the dots, close boxes. Up to 4 play; with more, the first four in the lobby play.", ready: true },
   { id: "chess", name: "Chess", emoji: "♟️", min: 2, max: 6, about: "You pick a friend to play; everyone else watches live.", ready: true },
+  { id: "snakes", name: "Snakes & Ladders", emoji: "🐍", min: 1, max: 6, about: "Climb the ladders, dodge the snakes, first to 100 wins. Everyone plays (add HIVEMIND bots if you like).", ready: true },
+  { id: "business", name: "Business", emoji: "🏦", min: 1, max: 6, about: "Buy Indian cities, charge rent, build hotels, bankrupt your friends. Pick a round limit for a quicker game.", ready: true },
 ];
 
 export function PartyTable({ role, room, myName, hostName, onHostAway }: { role: "host" | "guest"; room: string; myName: string; hostName: string; onHostAway?: () => void }) {
@@ -89,7 +93,32 @@ export function PartyTable({ role, room, myName, hostName, onHostAway }: { role:
       ) : (
         <Lobby party={party} />
       )}
+      {(host ? party.stage !== "error" : party.live) && <Reactions party={party} />}
     </PartyContext.Provider>
+  );
+}
+
+/** The reaction buttons (a slim bar at the side) and the reactions floating up from the bottom. */
+function Reactions({ party }: { party: Party }) {
+  const nameOf = (id: string) => (id === party.me ? "You" : (party.players.find((p) => p.id === id)?.name ?? (id === "host" ? party.hostName : "Friend")));
+  return (
+    <>
+      <div className="pointer-events-none fixed inset-0 z-40 overflow-hidden" aria-live="polite">
+        {party.floats.map((f) => (
+          <span key={f.k} className="party-float absolute bottom-16 flex flex-col items-center" style={{ left: `${f.x}%` }}>
+            <span className="text-4xl drop-shadow-lg">{f.e}</span>
+            <span className="mt-0.5 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white">{nameOf(f.who)}</span>
+          </span>
+        ))}
+      </div>
+      <div className="fixed top-[58%] right-1 z-40 flex -translate-y-1/2 flex-col gap-0.5 rounded-full border border-line bg-panel/70 p-0.5 shadow-lg backdrop-blur sm:top-1/2 sm:right-1.5 sm:gap-1 sm:bg-panel/85 sm:p-1" role="toolbar" aria-label="Reactions">
+        {REACTIONS.map((e) => (
+          <button key={e} type="button" onClick={() => party.react(e)} aria-label={`React ${e}`} className="flex size-7 items-center justify-center rounded-full text-base transition-transform hover:scale-125 active:scale-90 sm:size-9 sm:text-xl">
+            {e}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -219,6 +248,10 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
         <LudoGame key={`ludo-${n}`} {...props} />
       ) : game === "dots" ? (
         <DotsGame key={`dots-${n}`} {...props} />
+      ) : game === "snakes" ? (
+        <SnakesGame key={`snakes-${n}`} myName={me?.name ?? "You"} party={party} />
+      ) : game === "business" ? (
+        <BusinessGame key={`business-${n}`} myName={me?.name ?? "You"} party={party} />
       ) : game === "chess" ? (
         <ChessVsFriend key={`chess-${n}`} {...props} />
       ) : (

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { quickPage } from "@/lib/agents/quick";
 import type { PartyPlayer } from "@/lib/games/party";
-import { callsFirst, cleanId, cleanName, drawView, guessPoints, here, nextRound, rightGuess, roundDone, seatsFor, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
+import { callsFirst, cleanId, cleanName, drawView, guessPoints, here, isReaction, nextRound, REACTIONS, rightGuess, roundDone, seatsFor, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
 
 const P = (id: string, name: string, online = true, host = false): PartyPlayer => ({ id, name, online, host });
 const table = [P("host", "Karthikeyan", false, true), P("a", "Arun"), P("p", "Priya", false), P("k", "Kavin"), P("d", "Divya"), P("v", "Kavi")];
@@ -23,6 +23,13 @@ describe("game night: who is at the table", () => {
     expect(callsFirst("a", "b")).toBe(true);
     expect(callsFirst("b", "a")).toBe(false);
   });
+  it("only the six reactions pass; anything else from the wire is dropped", () => {
+    expect(REACTIONS).toHaveLength(6);
+    for (const e of REACTIONS) expect(isReaction(e)).toBe(true);
+    expect(isReaction("💩")).toBe(false);
+    expect(isReaction("<img src=x onerror=alert(1)>")).toBe(false);
+    expect(isReaction(undefined)).toBe(false);
+  });
   it("names and ids from the wire are cleaned", () => {
     expect(cleanName("  <b>Priya</b>!!  ")).toBe("bPriyab");
     expect(cleanName("A very long name that goes on")).toHaveLength(20);
@@ -41,6 +48,10 @@ describe("game night by voice", () => {
     expect(spokenGame("draw and guess")).toBe("draw");
     expect(spokenGame("dots and boxes")).toBe("dots");
     expect(spokenGame("a game of chess")).toBe("chess");
+    expect(spokenGame("snakes and ladders")).toBe("snakes");
+    expect(spokenGame("paramapadham")).toBe("snakes");
+    expect(spokenGame("let's play business")).toBe("business");
+    expect(spokenGame("monopoly")).toBe("business");
     expect(spokenGame("something fun")).toBeNull();
   });
   it("finds a friend by name, preferring the longest match", () => {
@@ -48,6 +59,11 @@ describe("game night by voice", () => {
     expect(spokenPlayer(table, "play against kavin")?.id).toBe("k");
     expect(spokenPlayer(table, "kavi please")?.id).toBe("v");
     expect(spokenPlayer(table, "nobody")).toBeNull();
+  });
+  it("the new games open by voice", () => {
+    expect(quickPage("let's play snakes and ladders")?.href).toBe("/games/snakes");
+    expect(quickPage("open business")?.href).toBe("/games/business");
+    expect(quickPage("play monopoly")?.href).toBe("/games/business");
   });
   it("'open game night' goes straight to the party page", () => {
     expect(quickPage("open game night")?.href).toBe("/games/party");
