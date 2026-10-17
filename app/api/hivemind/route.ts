@@ -28,7 +28,13 @@ const Body = z.object({
   message: z.string().trim().min(1).max(4000),
   conversation_id: z.uuid().nullable().optional(),
   project_id: z.uuid().nullable().optional(),
-  location: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().min(0).max(100_000).optional(), device: z.string().max(60).optional() }).nullable().optional(),
+  // Where the device is, if it sent it. Extra, never required: anything odd (a laptop's rough fix can
+  // be 100+ km "accurate", or come without a number) is dropped instead of failing the whole message.
+  location: z
+    .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), accuracy: z.number().min(0).optional().catch(undefined), device: z.string().max(60).optional().catch(undefined) })
+    .nullable()
+    .optional()
+    .catch(null),
 });
 
 export type StreamEvent =
