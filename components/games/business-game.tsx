@@ -70,7 +70,8 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
     const seat = s.seats[s.turn];
     const away = !!party && !seat.bot && seat.id !== "host" && !party.players.find((p) => p.id === seat.id)?.online;
     if (!seat.bot && !away) return;
-    const t = setTimeout(() => apply((cur) => (cur.seq !== s.seq ? cur : bizAct(cur, seat.id, botAction(cur), luck()))), away ? 2200 : s.phase === "roll" ? 1100 : 900);
+    // Slow enough to follow: the pawn's walk, then time to read what happened (longer after a card).
+    const t = setTimeout(() => apply((cur) => (cur.seq !== s.seq ? cur : bizAct(cur, seat.id, botAction(cur), luck()))), walkMs(s) + (away ? 2600 : s.phase === "roll" ? 1700 : 1500) + (s.card && s.card.seq >= (s.lastRoll?.seq ?? 0) && s.phase !== "roll" ? 1800 : 0));
     return () => clearTimeout(t);
   }, [isHost, s, connected, apply, party]);
 
@@ -105,8 +106,9 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
   const endSeq = s?.seq;
   useEffect(() => {
     if (!nothingToDo) return;
-    const t = setTimeout(() => sendRef.current({ type: "end" }), 1300);
+    const t = setTimeout(() => sendRef.current({ type: "end" }), walkMs(s!) + 2600);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per state
   }, [nothingToDo, endSeq]);
 
   // Voice: the whole game by speaking.
@@ -171,12 +173,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
   const people = party ? here(party.players).length : 1;
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
-      {s && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="font-mono text-xs text-faint">{s.maxRounds ? `Round ${Math.min(s.round, s.maxRounds)} of ${s.maxRounds}` : `Round ${s.round}`}</span>
-          <span className="ml-auto text-xs text-faint">Tap any square to see its card.</span>
-        </div>
-      )}
+      {s && <Goal s={s} />}
       {!s && !isHost && <p className="text-sm text-soft">Connected! {party?.hostName} is setting up Business.</p>}
 
       {isHost && (!s || s.over) && (
@@ -202,7 +199,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
               </Choice>
             ))}
           </div>
-          <p className="text-xs text-faint">With a round limit, the richest (cash + property) wins when the rounds are up.</p>
+          <p className="text-xs text-faint">🏆 With a round limit, the richest when the rounds are up wins (cash + what your cities are worth). With no limit, the last one not bankrupt wins.</p>
           <button type="button" onClick={() => start()} disabled={people + bots < 2} className="inline-flex items-center gap-1.5 self-start rounded-full bg-core px-5 py-2 text-sm font-semibold text-core-ink disabled:opacity-50">
             {s?.over ? <RotateCcw size={14} /> : null} {s?.over ? "Play again" : "Start Business"}
           </button>
@@ -217,6 +214,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
           <div className="flex flex-col gap-3">
             {s.over && <Podium s={s} me={me} />}
             <Players s={s} me={me} onSel={setSel} />
+            <HowTo />
             <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-line bg-panel p-3 text-sm">
               {[...s.log].reverse().map((l, i) => (
                 <p key={i} className={cx(i === 0 ? "text-fg" : "text-soft", /bought|bankrupt|wins|jail/.test(l) && "font-medium")}>
@@ -228,6 +226,43 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
         </div>
       )}
     </div>
+  );
+}
+
+/** How to win, always in view, with how far the game has got. */
+function Goal({ s }: { s: BizState }) {
+  const left = s.seats.filter((x) => !s.out.includes(x.id)).length;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-core/30 bg-core/[0.07] px-3 py-2 text-sm">
+      <span className="font-semibold">🏆 How to win:</span>
+      <span className="text-soft">{s.maxRounds ? `be the richest when round ${s.maxRounds} ends (cash + what your cities are worth), or the last one not bankrupt.` : "be the last one not bankrupt: make everyone else pay rent until they run out."}</span>
+      {s.maxRounds > 0 && (
+        <span className="flex w-full items-center gap-2 text-xs text-faint sm:ml-auto sm:w-48">
+          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
+            <span className="block h-full rounded-full bg-core transition-[width]" style={{ width: `${Math.min(100, ((Math.min(s.round, s.maxRounds) - 1) / s.maxRounds) * 100)}%` }} />
+          </span>
+          Round {Math.min(s.round, s.maxRounds)}/{s.maxRounds}
+        </span>
+      )}
+      {!s.maxRounds && <span className="text-xs text-faint sm:ml-auto">{left} still in · round {s.round}</span>}
+    </div>
+  );
+}
+
+/** The rules in a few lines, folded away. */
+function HowTo() {
+  return (
+    <details className="rounded-xl border border-line bg-panel p-3 text-sm">
+      <summary className="cursor-pointer font-semibold">How to play</summary>
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-soft">
+        <li>Roll, move, and buy the city, transport or utility you land on (or skip it).</li>
+        <li>Anyone who lands on what you own pays you rent. Own a whole colour set and the rent doubles.</li>
+        <li>With a whole set, tap one of its cities to build houses (evenly), then a hotel: rent goes way up.</li>
+        <li>Pass START: +₹1,500. Chance and Treasure cards can give or take money, or move you.</li>
+        <li>Doubles roll again; three doubles, or Go to Jail, puts you in jail: roll doubles or pay ₹500 to get out.</li>
+        <li>Can&apos;t pay? Your houses are sold first; still short and you&apos;re bankrupt.</li>
+      </ul>
+    </details>
   );
 }
 
@@ -261,9 +296,13 @@ function Podium({ s, me }: { s: BizState; me: string }) {
 
 /** Everyone at the table: cash, what they own (as colour chips), jail, bankrupt; whose turn it is. */
 function Players({ s, me, onSel }: { s: BizState; me: string; onSel: (i: number) => void }) {
+  const ranked = [...s.seats].filter((x) => !s.out.includes(x.id)).sort((a, b) => netWorth(s, b.id) - netWorth(s, a.id));
+  const medal = ["🥇", "🥈", "🥉"];
   return (
     <div className="flex flex-col gap-2">
       {s.seats.map((seat, i) => {
+        const rank = ranked.findIndex((x) => x.id === seat.id);
+        const fx = s.money?.find((m) => m.id === seat.id);
         const owned = Object.entries(s.owner)
           .filter(([, w]) => w === seat.id)
           .map(([k]) => Number(k))
@@ -282,8 +321,25 @@ function Players({ s, me, onSel }: { s: BizState; me: string; onSel: (i: number)
                 {s.jail[seat.id] !== undefined && <span className="ml-1 text-xs">🚔</span>}
                 {out && <span className="ml-1 text-xs text-alert">bankrupt</span>}
               </span>
-              <b className={cx("font-mono text-sm tabular-nums", s.cash[seat.id] < 2000 ? "text-alert" : "text-ok")}>{rs(s.cash[seat.id])}</b>
+              <span className="relative text-right">
+                <b className={cx("block font-mono text-base tabular-nums", s.cash[seat.id] < 2000 ? "text-alert" : "text-ok")}>{rs(s.cash[seat.id])}</b>
+                {/* Why it just changed: +₹1,500 or −₹280, floating up. */}
+                {fx && (
+                  <span key={`${s.seq}-${fx.delta}`} className={cx("biz-money absolute -top-1 right-0 rounded-full px-1.5 font-mono text-xs font-bold", fx.delta > 0 ? "bg-ok text-black" : "bg-alert text-white")}>
+                    {fx.delta > 0 ? "+" : "−"}
+                    {rs(Math.abs(fx.delta))}
+                  </span>
+                )}
+              </span>
             </div>
+            {!out && (
+              <div className="mt-1 flex items-center justify-between pl-9 text-[11px] text-soft">
+                <span>
+                  {medal[rank] ?? `#${rank + 1}`} worth <b className="font-mono text-fg">{rs(netWorth(s, seat.id))}</b>
+                </span>
+                <span className="text-faint">on {short(BOARD[s.pos[seat.id]].name)}</span>
+              </div>
+            )}
             {owned.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {owned.map((k) => {
@@ -315,7 +371,7 @@ const PIPS: Record<number, [number, number][]> = {
 };
 function Die({ v, spin }: { v: number; spin: number }) {
   return (
-    <svg key={spin} viewBox="0 0 100 100" className="drop-shadow-md" style={{ width: "8.5cqw", height: "8.5cqw", animation: spin ? "ludo-tumble 0.5s ease-out" : undefined }}>
+    <svg key={spin} viewBox="0 0 100 100" className="drop-shadow-md" style={{ width: "6.6cqw", height: "6.6cqw", animation: spin ? "ludo-tumble 0.6s ease-out" : undefined }}>
       <rect x="4" y="4" width="92" height="92" rx="20" fill="#fff" stroke="#d6d3d1" strokeWidth="3" />
       {PIPS[v].map(([x, y], i) => (
         <circle key={i} cx={x} cy={y} r="9" fill={v === 1 ? "#dc2626" : "#1c1917"} />
@@ -378,9 +434,9 @@ function Middle({ s, me, myTurn, sel, canBuild, send, onSel }: { s: BizState; me
   const buying = myTurn && s.phase === "buy";
   const deed = buying ? s.pos[me] : sel;
   const showDeed = deed !== null && deed !== undefined && ["city", "station", "utility"].includes(BOARD[deed].kind);
-  const last = s.log[s.log.length - 1];
+  const story = (s.story ?? []).slice(-5);
   const btn = "rounded-full font-bold shadow-md transition-transform active:scale-95";
-  const big = { fontSize: "2.1cqw", padding: "1.3cqw 3.2cqw" };
+  const big = { fontSize: "max(12px, 2.3cqw)", padding: "max(7px, 1.3cqw) max(14px, 3.2cqw)" };
   return (
     <div className="relative flex h-full flex-col items-center justify-between overflow-hidden py-[3%]" style={{ background: "radial-gradient(circle at 50% 40%, #e8f5e1 0%, #c9e6c0 70%, #b5d9aa 100%)" }}>
       {/* The two card piles, in the corners of the middle. */}
@@ -391,8 +447,16 @@ function Middle({ s, me, myTurn, sel, canBuild, send, onSel }: { s: BizState; me
         💰
       </div>
 
-      <div className="z-10 -rotate-6 rounded-md bg-[#c81e1e] px-[4%] py-[1%] font-black tracking-[0.15em] text-white shadow-lg" style={{ fontSize: "4.2cqw" }}>
-        BUSINESS
+      <div className="z-10 flex items-center gap-[2.5cqw]">
+        <div className="-rotate-6 rounded-md bg-[#c81e1e] px-[2.2cqw] py-[0.5cqw] font-black tracking-[0.15em] text-white shadow-lg" style={{ fontSize: "3.3cqw" }}>
+          BUSINESS
+        </div>
+        {s.lastRoll && (
+          <div className="flex items-center gap-[1cqw]">
+            <Die v={s.lastRoll.dice[0]} spin={s.lastRoll.seq} />
+            <Die v={s.lastRoll.dice[1]} spin={s.lastRoll.seq} />
+          </div>
+        )}
       </div>
 
       <div className="z-10 flex w-full flex-col items-center gap-[1.5cqw] px-[4%]">
@@ -405,33 +469,37 @@ function Middle({ s, me, myTurn, sel, canBuild, send, onSel }: { s: BizState; me
               </button>
             )}
           </div>
-        ) : card ? (
-          <div className={cx("rounded-lg border-2 border-white p-[2.5%] text-center text-white shadow-xl", card.deck === "chance" ? "bg-[#f97316]" : "bg-[#0ea5e9]")} style={{ width: "48cqw", fontSize: "2cqw" }}>
-            <div className="font-black tracking-widest" style={{ fontSize: "1.6cqw" }}>
-              {card.deck === "chance" ? "❓ CHANCE" : "💰 TREASURE"}
-            </div>
-            <div className="mt-[2%] font-semibold leading-snug">{card.text}</div>
-          </div>
-        ) : s.lastRoll ? (
-          <div className="flex items-center gap-[2cqw]">
-            <Die v={s.lastRoll.dice[0]} spin={s.lastRoll.seq} />
-            <Die v={s.lastRoll.dice[1]} spin={s.lastRoll.seq} />
-          </div>
         ) : (
-          <p className="text-center text-stone-600" style={{ fontSize: "2cqw" }}>
-            Roll the dice to start!
-          </p>
-        )}
-        {!showDeed && last && (
-          <p className="line-clamp-2 max-w-[90%] text-center text-stone-700" style={{ fontSize: "1.8cqw" }}>
-            {last}
-          </p>
+          <>
+            {card && (
+              <div className={cx("biz-card rounded-lg border-2 border-white px-[2.5cqw] py-[1.5cqw] text-center text-white shadow-xl", card.deck === "chance" ? "bg-[#f97316]" : "bg-[#0ea5e9]")} style={{ width: "54cqw", fontSize: "max(11px, 2.5cqw)" }}>
+                <div className="font-black tracking-widest" style={{ fontSize: "max(9px, 1.8cqw)" }}>
+                  {card.deck === "chance" ? "❓ CHANCE CARD" : "💰 TREASURE CARD"}
+                </div>
+                <div className="mt-[0.8cqw] font-semibold leading-snug">{card.text}</div>
+              </div>
+            )}
+            {story.length ? (
+              <ul className="w-[94%] space-y-[0.6cqw] rounded-lg bg-white/70 px-[2.2cqw] py-[1.4cqw] text-stone-800 shadow-sm" style={{ fontSize: "max(10.5px, 2.15cqw)" }}>
+                {story.filter((l) => !(card && /drew (Chance|Treasure)/.test(l))).map((l, i) => (
+                  <li key={i} className="flex gap-[1cqw] leading-snug">
+                    <span className="shrink-0">{iconFor(l)}</span>
+                    <span>{money(l)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-center text-stone-600" style={{ fontSize: "max(11px, 2.2cqw)" }}>
+                Roll the dice to start!
+              </p>
+            )}
+          </>
         )}
       </div>
 
       <div className="z-10 flex flex-col items-center gap-[1.2cqw]">
         {!s.over && (
-          <span className="flex items-center gap-[1cqw] rounded-full bg-white/80 px-[2.5cqw] py-[0.6cqw] font-semibold text-stone-800 shadow" style={{ fontSize: "1.9cqw" }}>
+          <span className="flex items-center gap-[1cqw] rounded-full bg-white/85 px-[2.5cqw] py-[0.6cqw] font-semibold text-stone-800 shadow" style={{ fontSize: "max(11px, 2.1cqw)" }}>
             <span className="inline-block rounded-full" style={{ width: "2cqw", height: "2cqw", background: FILL[turnSeat.color] }} />
             {turnSeat.id === me ? "Your turn" : `${turnSeat.name}'s turn`}
             {myTurn && here && s.phase !== "roll" && <span className="font-normal text-stone-500">· on {here.name}</span>}
@@ -477,7 +545,7 @@ function Middle({ s, me, myTurn, sel, canBuild, send, onSel }: { s: BizState; me
           </div>
         )}
         {myTurn && canBuild.length > 0 && (sel === null || !canBuild.includes(sel)) && !buying && (
-          <p className="text-stone-700" style={{ fontSize: "1.7cqw" }}>
+          <p className="text-stone-700" style={{ fontSize: "max(10px, 1.9cqw)" }}>
             🏠 You own a full colour set: tap one of its cities to build.
           </p>
         )}
@@ -488,7 +556,46 @@ function Middle({ s, me, myTurn, sel, canBuild, send, onSel }: { s: BizState; me
 
 /* ── the board ── */
 
-const STEP_MS = 140;
+const STEP_MS = 280;
+/** How long the last move takes to walk on screen (bots and the auto end wait for it). */
+const walkMs = (s: BizState) => {
+  const L = s.last;
+  if (!L || L.seq !== s.seq) return 0;
+  const n = (L.to - L.from + BOARD.length) % BOARD.length;
+  return n && n <= 12 ? n * STEP_MS : 0;
+};
+/** Short city names for small boards (phones), the way people say them. */
+const SHORT: Record<string, string> = { Coimbatore: "Kovai", Hyderabad: "Hyd", Ahmedabad: "A'bad", Chandigarh: "Chd", Bengaluru: "Blr", Kolkata: "Kolkata", Madurai: "Madurai" };
+const short = (name: string) => SHORT[name] ?? name;
+/** An icon for each kind of thing that happens. */
+function iconFor(line: string) {
+  if (/wins/.test(line)) return "🏆";
+  if (/bankrupt/.test(line)) return "💥";
+  if (/jail/i.test(line)) return "🚔";
+  if (/passed START/.test(line)) return "🏁";
+  if (/rent/.test(line)) return "💸";
+  if (/Tax/.test(line)) return "🧾";
+  if (/bought/.test(line)) return "🏠";
+  if (/built/.test(line)) return "🏗️";
+  if (/sold/.test(line)) return "🔻";
+  if (/rolled/.test(line)) return "🎲";
+  if (/can't afford/.test(line)) return "😕";
+  return "•";
+}
+/** Money in a line, coloured: green when someone gains, red when someone pays. */
+function money(line: string) {
+  const plus = /passed START|collect|dividend|inherit|refund|won |gives you|error in your favour/.test(line);
+  const minus = /pays|paid|fine|fee|Tax|repairs|bought|built/.test(line);
+  return line.split(/(\+?₹[\d,]+)/).map((part, i) =>
+    /₹/.test(part) ? (
+      <b key={i} className={cx("font-mono", plus ? "text-[#15803d]" : minus ? "text-[#b91c1c]" : "")}>
+        {part}
+      </b>
+    ) : (
+      part
+    ),
+  );
+}
 // Corners are bigger than the other squares, as on a real board.
 const CORNER = 1.45;
 const SPAN = CORNER * 2 + 7;
@@ -539,7 +646,7 @@ function Board({ s, me, sel, onSel, children }: { s: BizState; me: string; sel: 
   const fr = `${CORNER}fr repeat(7, 1fr) ${CORNER}fr`;
 
   return (
-    <div className="relative aspect-square w-full max-w-[min(100%,80dvh)] self-center rounded-2xl bg-[#14532d] p-[1.4%] shadow-xl [container-type:inline-size]">
+    <div className="@container relative aspect-square w-full max-w-[min(100%,80dvh)] self-center rounded-2xl bg-[#14532d] p-[1.4%] shadow-xl">
       <div className="relative size-full overflow-hidden rounded-lg bg-[#fffaf0]">
         <div className="absolute inset-0 grid" style={{ gridTemplateColumns: fr, gridTemplateRows: fr }}>
           {BOARD.map((q, i) => {
@@ -583,16 +690,22 @@ function Board({ s, me, sel, onSel, children }: { s: BizState; me: string; sel: 
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col items-center justify-center px-[4%] text-center leading-tight">
                       {q.kind !== "city" && <span style={{ fontSize: "3cqw", lineHeight: 1.05 }}>{q.kind === "station" ? STATION_ICON[q.name] : ICON[q.kind]}</span>}
-                      <span className="font-bold" style={{ fontSize: q.kind === "city" ? (q.name.length > 9 ? "1.18cqw" : q.name.length > 7 ? "1.3cqw" : "1.45cqw") : "1.15cqw" }}>
+                      {/* Full names on a big board; short ones, bigger, on a phone. */}
+                      <span className="hidden font-bold @[34rem]:inline" style={{ fontSize: q.kind === "city" ? (q.name.length > 9 ? "1.18cqw" : q.name.length > 7 ? "1.3cqw" : "1.45cqw") : "1.15cqw" }}>
                         {q.kind === "city" ? q.name.toUpperCase() : q.name}
                       </span>
+                      {q.kind === "city" && (
+                        <span className="font-bold @[34rem]:hidden" style={{ fontSize: short(q.name).length > 6 ? "2.05cqw" : "2.3cqw" }}>
+                          {short(q.name)}
+                        </span>
+                      )}
                       {priced && !owner && (
-                        <span className="mt-[4%] font-mono text-stone-500" style={{ fontSize: "1.2cqw" }}>
+                        <span className="mt-[4%] font-mono text-stone-500" style={{ fontSize: "max(6.5px, 1.2cqw)" }}>
                           {rs(q.price)}
                         </span>
                       )}
                       {q.kind === "tax" && (
-                        <span className="mt-[4%] font-mono text-stone-500" style={{ fontSize: "1.2cqw" }}>
+                        <span className="mt-[4%] font-mono text-stone-500" style={{ fontSize: "max(6.5px, 1.2cqw)" }}>
                           {rs(q.amount)}
                         </span>
                       )}
@@ -617,6 +730,11 @@ function Board({ s, me, sel, onSel, children }: { s: BizState; me: string; sel: 
           const n = together.length;
           const dx = n > 1 ? ((k % 3) - (Math.min(n, 3) - 1) / 2) * 2.6 : 0;
           const dy = n > 3 ? (Math.floor(k / 3) - 0.5) * 2.6 : 0;
+          // Toward the square's outer edge, so the pawn doesn't cover the city's name.
+          const side = at % 8 === 0 ? null : sideOf(at);
+          const push = (CORNER / SPAN) * 100 * 0.24;
+          const ox = side === "l" ? -push : side === "r" ? push : 0;
+          const oy = side === "b" ? push * 0.85 : side === "t" ? -push * 0.85 : 0;
           const isTurn = seat.id === turnId && !s.over;
           return (
             <span
@@ -624,8 +742,8 @@ function Board({ s, me, sel, onSel, children }: { s: BizState; me: string; sel: 
               aria-hidden
               className={cx("pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white font-black text-white shadow-[0_2px_4px_rgba(0,0,0,.45)]", isTurn && "z-20 biz-pawn-turn")}
               style={{
-                left: `calc(${pct(c)}% + ${dx}%)`,
-                top: `calc(${pct(r)}% + ${dy}%)`,
+                left: `calc(${pct(c)}% + ${dx + ox}%)`,
+                top: `calc(${pct(r)}% + ${dy + oy}%)`,
                 width: "3.6cqw",
                 height: "3.6cqw",
                 fontSize: "1.7cqw",

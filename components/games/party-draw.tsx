@@ -229,6 +229,8 @@ export function PartyDraw({ party }: { party: Party }) {
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);
   }, []);
+  // The owner's copy holds the word all the time; show them only what a friend in their seat would see.
+  const shownWord = s ? drawView(s, me).word : "";
   const secs = s?.phase === "playing" && now ? Math.max(0, Math.ceil((ends - now) / 1000)) : 0;
 
   /* ── drawing ── */
@@ -335,7 +337,7 @@ export function PartyDraw({ party }: { party: Party }) {
               round: `${s.n} of ${s.total}`,
               phase: s.phase,
               drawing: s.drawer === me ? "you" : s.names[s.drawer],
-              word: s.word || null,
+              word: shownWord || null,
               blanks: s.len,
               seconds_left: secs,
               guessed: s.guessed.map((id) => s.names[id]),
@@ -384,7 +386,7 @@ export function PartyDraw({ party }: { party: Party }) {
                   <span className="text-soft">
                     Round {s.n}/{s.total} · {s.drawer === me ? "you draw" : `${s.names[s.drawer]} draws`}
                   </span>
-                  <span className="mx-auto font-mono text-base tracking-widest">{s.word ? <span className={s.drawer === me ? "text-core" : "text-ok"}>{s.drawer === me && s.phase === "playing" ? `Draw: ${s.word}` : s.word}</span> : s.len}</span>
+                  <span className="mx-auto font-mono text-base tracking-widest">{shownWord ? <span className={s.drawer === me ? "text-core" : "text-ok"}>{s.drawer === me && s.phase === "playing" ? `Draw: ${shownWord}` : shownWord}</span> : s.len}</span>
                   <span className={cx("font-mono tabular-nums", secs <= 10 ? "text-alert" : "text-soft")}>{s.phase === "playing" ? `${secs}s` : "…"}</span>
                 </>
               )}

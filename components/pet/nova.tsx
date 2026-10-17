@@ -70,7 +70,8 @@ export function Nova() {
   // On its garden page it is already there, at home on its island: no second one floating about.
   const path = usePathname();
   // At home on its garden page; and never on a friend's page (a game or call link): Nova is the owner's.
-  const atHome = path === "/garden" || isPublicPage(path);
+  // Nor during a game (it would sit on the board).
+  const atHome = path === "/garden" || isPublicPage(path) || (path.startsWith("/games/") && path !== "/games");
   const [pet, setPet] = useState<Pet | null>(null);
   const [music, setMusic] = useState(false);
   // Asked to dance (by voice or tap) with no music on: a short dance on its own.

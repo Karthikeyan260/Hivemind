@@ -96,6 +96,12 @@ export type BizState = {
   card?: { text: string; deck: "chance" | "treasure"; seq: number };
   last?: { seat: string; from: number; to: number; seq: number };
   lastRoll?: { seat: string; dice: [number, number]; seq: number };
+  /** Everything that happened since the current player's roll, in words (shown in the middle of the board). */
+  story?: string[];
+  /** Whose cash changed in the last action, and by how much (the +₹ / −₹ that float up). */
+  money?: { id: string; delta: number }[];
+  /** Lines ever logged (so the story knows which are new). */
+  told?: number;
   seq: number;
 };
 
@@ -189,7 +195,7 @@ export function newBusiness(players: { id: string; name: string; bot?: boolean }
 }
 
 const rs = (n: number) => `₹${n.toLocaleString("en-IN")}`;
-const note = (s: BizState, line: string): BizState => ({ ...s, log: [...s.log.slice(-29), line] });
+const note = (s: BizState, line: string): BizState => ({ ...s, log: [...s.log.slice(-29), line], told: (s.told ?? 0) + 1 });
 const nameOf = (s: BizState, id: string) => s.seats.find((x) => x.id === id)?.name ?? "?";
 
 /** `id` pays `amount` to `to` (or the bank). Short of cash: houses go back at half price; still short: bankrupt. */
@@ -315,6 +321,17 @@ function nextTurn(s: BizState): BizState {
 
 /** One player's request, checked against the rules (only the current player, only what fits the moment). */
 export function bizAct(s: BizState, id: string, a: BizAction, luck: BizLuck = { d1: 1, d2: 1, pick: 0 }): BizState {
+  const n = step(s, id, a, luck);
+  if (n === s) return s;
+  // The turn's story: a roll starts it afresh; what follows (buying, building) adds to it.
+  const k = Math.min(n.log.length, (n.told ?? 0) - (s.told ?? 0));
+  const fresh = k > 0 ? n.log.slice(-k) : [];
+  const story = a.type === "roll" || a.type === "payJail" ? fresh : [...(s.story ?? []), ...fresh].slice(-8);
+  const money = n.seats.map((x) => ({ id: x.id, delta: (n.cash[x.id] ?? 0) - (s.cash[x.id] ?? 0) })).filter((m) => m.delta);
+  return { ...n, story: a.type === "end" && !fresh.length ? s.story : story, money };
+}
+
+function step(s: BizState, id: string, a: BizAction, luck: BizLuck): BizState {
   if (s.over || turnId(s) !== id || s.out.includes(id)) return s;
   const seq = s.seq + 1;
   const name = nameOf(s, id);

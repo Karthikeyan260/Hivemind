@@ -75,7 +75,8 @@ export function SnakesGame({ myName, party = null }: { myName: string; /** Game 
     const away = !!party && !seat.bot && seat.id !== "host" && !party.players.find((p) => p.id === seat.id)?.online;
     if (!seat.bot && !away) return;
     // Long enough to watch the last move play out.
-    const t = setTimeout(() => apply((cur) => (cur.seq !== s.seq ? cur : rollSnakes(cur, seat.id, dice()))), away ? 2500 : 1500);
+    // After the last move has played out on screen, and a moment to see it.
+    const t = setTimeout(() => apply((cur) => (cur.seq !== s.seq ? cur : rollSnakes(cur, seat.id, dice()))), moveMs(s) + (away ? 2600 : 1400));
     return () => clearTimeout(t);
   }, [isHost, s, connected, apply, party]);
 
@@ -144,7 +145,11 @@ export function SnakesGame({ myName, party = null }: { myName: string; /** Game 
           ))}
         </div>
       )}
-      {s && !s.over && <p className={cx("text-sm", myTurn ? "font-medium text-core" : "text-soft")}>{myTurn ? "Your turn: roll the dice!" : `${turnSeat?.name}'s turn…`}</p>}
+      {s && (
+        <p className="rounded-xl border border-core/30 bg-core/[0.07] px-3 py-2 text-sm">
+          <b>🏆 How to win:</b> <span className="text-soft">be first to land exactly on 100. A ladder 🪜 takes you up, a snake 🐍 sends you down, a 6 rolls again (three 6s in a row lose the turn).</span>
+        </p>
+      )}
       {!s && !isHost && <p className="text-sm text-soft">Connected! {party?.hostName} is setting up Snakes &amp; Ladders.</p>}
 
       {isHost && (!s || s.over) && (
@@ -167,12 +172,15 @@ export function SnakesGame({ myName, party = null }: { myName: string; /** Game 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
           <Board s={s} me={me} />
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-center gap-4 rounded-xl border border-line bg-panel p-4">
+            {/* On a phone this bar stays at the bottom of the screen, so Roll is always in reach. */}
+            <div className="sticky bottom-[calc(var(--tabbar-h,0px)+0.5rem)] z-30 flex items-center justify-between gap-3 rounded-xl border border-line bg-panel/95 p-3 shadow-lg backdrop-blur lg:static lg:justify-center lg:gap-4 lg:p-4 lg:shadow-none">
               <Dice s={s} />
+              <span className={cx("min-w-0 flex-1 text-sm lg:hidden", myTurn ? "font-semibold text-core" : "text-soft")}>{s.over ? "Game over" : myTurn ? "Your turn!" : `${turnSeat?.name}'s turn…`}</span>
               <button type="button" onClick={doRoll} disabled={!canRoll} className={cx("rounded-full px-6 py-3 text-base font-semibold transition-opacity disabled:opacity-30", canRoll ? "animate-pulse bg-core text-core-ink" : "bg-raised text-soft")}>
-                Roll
+                🎲 Roll
               </button>
             </div>
+            {!s.over && <p className={cx("hidden text-center text-sm lg:block", myTurn ? "font-semibold text-core" : "text-soft")}>{myTurn ? "Your turn: roll the dice!" : `${turnSeat?.name}'s turn…`}</p>}
             {s.over && <Podium s={s} me={me} />}
             <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-line bg-panel p-3 text-sm">
               {[...s.log].reverse().map((l, i) => (
@@ -245,8 +253,14 @@ const center = (n: number) => {
   const { r, c } = cellOfSquare(n);
   return { x: c * 10 + 5, y: r * 10 + 5 };
 };
-const STEP_MS = 170;
-const SLIDE_MS = 700;
+const STEP_MS = 300;
+const SLIDE_MS = 1100;
+/** How long the last move takes on screen: the walk, then the climb or the slide. */
+const moveMs = (s: SnakesState) => {
+  const L = s.last;
+  if (!L || L.seq !== s.seq) return 0;
+  return (L.walk - L.from) * STEP_MS + (L.via ? SLIDE_MS + 300 : 0);
+};
 
 /** A ladder: two rails and rungs, from foot to top. */
 function Ladder({ from, to }: { from: number; to: number }) {
@@ -310,6 +324,7 @@ const TILE = ["#fff6dc", "#ffe4b8"];
 function Board({ s, me }: { s: SnakesState; me: string }) {
   // The last move played out: square by square, then up the ladder or down the snake.
   const [anim, setAnim] = useState<{ seat: string; at: { x: number; y: number }; slide: boolean } | null>(null);
+  const [banner, setBanner] = useState<{ seq: number; text: string; kind: "ladder" | "snake" | "win" } | null>(null);
   const seen = useRef(s.last?.seq ?? -1);
   const game = useRef(s);
   useEffect(() => {
@@ -337,15 +352,23 @@ function Board({ s, me }: { s: SnakesState; me: string }) {
           if (L.via === "ladder") sfx.done();
           else sfx.error();
           setAnim({ seat: L.seat, at: center(L.to), slide: true });
+          const who = game.current.seats.find((x) => x.id === L.seat);
+          const name = L.seat === me ? "You" : (who?.name ?? "");
+          setBanner({ seq: L.seq, kind: L.via!, text: L.via === "ladder" ? `🪜 ${name} climbed a ladder! ${L.walk} → ${L.to}` : `🐍 ${name} got bitten! ${L.walk} → ${L.to}` });
         }, after + 120),
       );
     }
+    if (L.to === GOAL) {
+      const who = game.current.seats.find((x) => x.id === L.seat);
+      timers.push(setTimeout(() => setBanner({ seq: L.seq, kind: "win", text: `🏆 ${L.seat === me ? "You win" : `${who?.name ?? ""} wins`}!` }), after + (L.via ? SLIDE_MS + 200 : 100)));
+    }
+    timers.push(setTimeout(() => setBanner((b) => (b?.seq === L.seq && b.kind !== "win" ? null : b)), after + (L.via ? SLIDE_MS + 2200 : 0)));
     timers.push(setTimeout(() => setAnim(null), after + (L.via ? SLIDE_MS + 200 : 60)));
     return () => {
       timers.forEach(clearTimeout);
       setAnim(null);
     };
-  }, [lastSeq]);
+  }, [lastSeq, me]);
 
   // Tokens: several on one square sit side by side.
   const bySquare = new Map<number, string[]>();
@@ -382,6 +405,13 @@ function Board({ s, me }: { s: SnakesState; me: string }) {
             <Snake key={`s${a}`} from={Number(a)} to={b} i={i} />
           ))}
         </svg>
+        {banner && (banner.kind !== "win" || s.over) && (
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 z-30 flex -translate-y-1/2 justify-center px-3">
+            <span key={banner.seq} className={cx("snakes-banner rounded-2xl px-4 py-2 text-center text-base font-black text-white shadow-2xl sm:text-xl", banner.kind === "ladder" ? "bg-[#15803d]" : banner.kind === "snake" ? "bg-[#b91c1c]" : "bg-[#b45309]")}>
+              {banner.text}
+            </span>
+          </div>
+        )}
         {s.seats.map((seat) => {
           const moving = anim?.seat === seat.id;
           const p = s.pos[seat.id];
