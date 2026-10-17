@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOARD, botAction, bizAct, buildable, houseCost, JAIL, netWorth, newBusiness, PASS_START, rentOf, ringCell, START_CASH, type BizState } from "@/lib/games/business";
+import { BOARD, botAction, bizAct, buildable, canMortgage, houseCost, JAIL, netWorth, newBusiness, PASS_START, rentOf, ringCell, START_CASH, unmortgageCost, type BizState } from "@/lib/games/business";
 
 const two = () => newBusiness([{ id: "host", name: "Karthikeyan" }, { id: "bot1", name: "HIVEMIND", bot: true }]);
 const roll = (s: BizState, id: string, d1: number, d2: number, pick = 0) => bizAct(s, id, { type: "roll" }, { d1, d2, pick });
@@ -164,5 +164,49 @@ describe("Business: a turn", () => {
     }
     expect(s.over).toBe(true);
     for (const x of s.seats) expect(s.cash[x.id]).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("Business: the Rest House pot and mortgages", () => {
+  it("tax goes into the pot and landing on Rest House pays it out", () => {
+    let s = two();
+    s = { ...s, pos: { ...s.pos, host: 2 } };
+    s = roll(s, "host", 1, 1); // 2 -> 4 Income Tax
+    expect(BOARD[s.pos.host].kind).toBe("tax");
+    expect(s.pot).toBe(1500);
+    s = { ...s, pos: { ...s.pos, bot1: 14 }, turn: 1, phase: "roll", doubles: 0, again: false, dice: null };
+    s = roll(s, "bot1", 1, 1); // 14 -> 16 Rest House
+    expect(s.pot).toBe(0);
+    expect(s.cash.bot1).toBe(START_CASH + 1500);
+  });
+  it("mortgage gives half the price, charges no rent, and lifting costs 10% extra", () => {
+    let s = two();
+    s = { ...s, owner: { 3: "host" } };
+    expect(canMortgage(s, "host", 3)).toBe(true);
+    s = bizAct(s, "host", { type: "mortgage", sq: 3 });
+    expect(s.mort?.[3]).toBe(true);
+    expect(s.cash.host).toBe(START_CASH + 300);
+    expect(rentOf(s, 3, 7)).toBe(0);
+    expect(bizAct(s, "host", { type: "mortgage", sq: 3 })).toBe(s);
+    s = bizAct(s, "host", { type: "unmortgage", sq: 3 });
+    expect(s.mort?.[3]).toBeUndefined();
+    expect(unmortgageCost(3)).toBe(330);
+    expect(s.cash.host).toBe(START_CASH + 300 - 330);
+  });
+  it("no mortgage with houses on the colour group, and no building on a mortgaged group", () => {
+    let s = two();
+    s = { ...s, owner: { 1: "host", 3: "host" }, houses: { 1: 1 } };
+    expect(canMortgage(s, "host", 3)).toBe(false);
+    s = { ...s, houses: {}, mort: { 1: true } };
+    expect(buildable(s, "host")).toEqual([]);
+  });
+  it("a bill is paid by mortgaging before going bankrupt", () => {
+    const base = two();
+    const broke = roll({ ...base, cash: { ...base.cash, host: 100 }, pos: { ...base.pos, host: 2 } }, "host", 1, 1); // Income Tax ₹1,500, nothing to sell
+    expect(broke.out).toContain("host");
+    const rich = roll({ ...base, owner: { 30: "host", 31: "host" }, cash: { ...base.cash, host: 100 }, pos: { ...base.pos, host: 2 } }, "host", 1, 1);
+    expect(rich.out).not.toContain("host");
+    expect(rich.mort?.[31]).toBe(true);
+    expect(rich.cash.host).toBeGreaterThanOrEqual(0);
   });
 });

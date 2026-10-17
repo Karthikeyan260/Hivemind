@@ -4,7 +4,7 @@ import { Bot, Crown, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { BOARD, botAction, bizAct, buildable, houseCost, JAIL_FINE, netWorth, newBusiness, rentTable, ringCell, type BizAction, type BizColor, type BizState, type Group } from "@/lib/games/business";
+import { BOARD, botAction, bizAct, buildable, canMortgage, houseCost, JAIL_FINE, liftable, mortgageValue, netWorth, newBusiness, rentTable, ringCell, unmortgageCost, type BizAction, type BizColor, type BizState, type Group } from "@/lib/games/business";
 import { type Party, usePartyGame } from "@/lib/games/party";
 import { here, seatsFor } from "@/lib/games/party-rules";
 import { usePeerGame } from "@/lib/games/peer-game";
@@ -102,7 +102,9 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
   const myBuild = s && myTurn && s.phase !== "buy" ? buildable(s, me) : [];
   // Nothing left to do this turn (no houses to build): it ends by itself, a beat after landing so the
   // move and any rent or card can be seen. Only with houses to build is there a "Done" to tap.
-  const nothingToDo = myTurn && s?.phase === "end" && !myBuild.length;
+  // Having one of your own properties open (to mortgage it) or a mortgage you can lift also holds the turn open.
+  const holding = !!s && ((sel !== null && s.owner[sel] === me) || liftable(s, me).length > 0);
+  const nothingToDo = myTurn && s?.phase === "end" && !myBuild.length && !holding;
   const endSeq = s?.seq;
   useEffect(() => {
     if (!nothingToDo) return;
@@ -110,6 +112,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per state
   }, [nothingToDo, endSeq]);
+  const manualEnd = myTurn && s?.phase === "end" && !nothingToDo;
 
   // Voice: the whole game by speaking.
   const cityNamed = (t: string) => BOARD.findIndex((q) => q.kind === "city" && t.toLowerCase().includes(q.name.toLowerCase()));
@@ -145,6 +148,19 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
         if (!myBuild.includes(i)) return { error: `Can't build on ${BOARD[i].name} now (needs the whole colour group, even building, and the cash).`, can_build_on: myBuild.map((k) => BOARD[k].name) };
         send({ type: "build", sq: i });
         return { built_on: BOARD[i].name };
+      },
+    },
+    business_mortgage: {
+      description: "Business page: mortgage one of the owner's properties for cash, or lift a mortgage. input: 'mortgage <property>' or 'lift <property>' (e.g. 'mortgage Kochi').",
+      run: ({ input }) => {
+        const t = String(input ?? "").toLowerCase();
+        const i = BOARD.findIndex((q, k) => (q.kind === "city" || q.kind === "station" || q.kind === "utility") && t.includes(q.name.toLowerCase()) && s?.owner[k] === me);
+        if (!s || !myTurn || s.phase === "buy") return { error: "Not now (your turn, and not while deciding to buy)." };
+        if (i < 0) return { error: "Say one of your properties' names." };
+        const lift = /lift|unmortgage|redeem|release/.test(t);
+        if (lift ? !s.mort?.[i] || s.cash[me] < unmortgageCost(i) : !canMortgage(s, me, i)) return { error: lift ? `Can't lift ${BOARD[i].name}: not mortgaged, or not enough cash (${rs(unmortgageCost(i))}).` : `Can't mortgage ${BOARD[i].name}: already mortgaged, or houses on its colour group.` };
+        send({ type: lift ? "unmortgage" : "mortgage", sq: i });
+        return lift ? { lifted: BOARD[i].name } : { mortgaged: BOARD[i].name, got: mortgageValue(i) };
       },
     },
     business_jail: {
@@ -209,7 +225,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
       {s && (
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
           <Board s={s} me={me} sel={sel} onSel={setSel}>
-            <Middle s={s} me={me} myTurn={myTurn} sel={sel} canBuild={myBuild} send={send} onSel={setSel} />
+            <Middle s={s} me={me} myTurn={myTurn} sel={sel} canBuild={myBuild} manualEnd={manualEnd} send={send} onSel={setSel} />
           </Board>
           <div className="flex flex-col gap-3">
             {s.over && <Podium s={s} me={me} />}
@@ -245,6 +261,9 @@ function Goal({ s }: { s: BizState }) {
         </span>
       )}
       {!s.maxRounds && <span className="text-xs text-faint sm:ml-auto">{left} still in · round {s.round}</span>}
+      <span className="rounded-full bg-[#16a34a]/15 px-2 py-0.5 text-xs font-semibold text-[#16a34a]" title="Taxes, fines and bail go here. Land on Rest House to win it.">
+        🛖 Rest House pot <b className="font-mono">{rs(s.pot ?? 0)}</b>
+      </span>
     </div>
   );
 }
@@ -260,7 +279,9 @@ function HowTo() {
         <li>With a whole set, tap one of its cities to build houses (evenly), then a hotel: rent goes way up.</li>
         <li>Pass START: +₹1,500. Chance and Treasure cards can give or take money, or move you.</li>
         <li>Doubles roll again; three doubles, or Go to Jail, puts you in jail: roll doubles or pay ₹500 to get out.</li>
-        <li>Can&apos;t pay? Your houses are sold first; still short and you&apos;re bankrupt.</li>
+        <li>Taxes, fines and bail fill the 🛖 Rest House pot: land on Rest House and it&apos;s all yours.</li>
+        <li>Need cash? Tap one of your properties and mortgage it for half its price (no rent while mortgaged; lifting it costs the loan + 10%).</li>
+        <li>Can&apos;t pay? Your houses are sold first, then properties are mortgaged; still short and you&apos;re bankrupt.</li>
       </ul>
     </details>
   );
@@ -346,7 +367,7 @@ function Players({ s, me, onSel }: { s: BizState; me: string; onSel: (i: number)
                   const q = BOARD[k];
                   const h = s.houses[k] ?? 0;
                   return (
-                    <button key={k} type="button" onClick={() => onSel(k)} title={q.name} className="flex h-5 items-center gap-0.5 rounded px-1.5 text-[10px] font-semibold text-white shadow-sm hover:brightness-110" style={{ background: q.kind === "city" ? GROUP[q.group] : "#64748b" }}>
+                    <button key={k} type="button" onClick={() => onSel(k)} title={s.mort?.[k] ? `${q.name} (mortgaged)` : q.name} className={cx("flex h-5 items-center gap-0.5 rounded px-1.5 text-[10px] font-semibold text-white shadow-sm hover:brightness-110", s.mort?.[k] && "line-through opacity-45")} style={{ background: q.kind === "city" ? GROUP[q.group] : "#64748b" }}>
                       {q.kind === "city" ? q.name.slice(0, 3) : q.kind === "station" ? STATION_ICON[q.name] : "💡"}
                       {h > 0 && <span>{h === 5 ? "🏨" : `×${h}`}</span>}
                     </button>
@@ -413,6 +434,7 @@ function Deed({ s, sq, me }: { s: BizState; sq: number; me: string }) {
                 <span className="inline-block size-[1.6cqw] rounded-full" style={{ background: FILL[who.color] }} />
                 {who.id === me ? "You" : who.name}
                 {h > 0 && ` · ${h === 5 ? "hotel" : `${h} house${h > 1 ? "s" : ""}`}`}
+                {s.mort?.[sq] && " · mortgaged"}
               </>
             ) : (
               rs(q.price)
@@ -425,7 +447,7 @@ function Deed({ s, sq, me }: { s: BizState; sq: number; me: string }) {
 }
 
 /** The middle of the board: the logo, the dice, whose turn, a card drawn, and what can be done now. */
-function Middle({ s, me, myTurn, sel, canBuild, send, onSel }: { s: BizState; me: string; myTurn: boolean; sel: number | null; canBuild: number[]; send: (a: BizAction) => void; onSel: (i: number | null) => void }) {
+function Middle({ s, me, myTurn, sel, canBuild, manualEnd, send, onSel }: { s: BizState; me: string; myTurn: boolean; sel: number | null; canBuild: number[]; manualEnd: boolean; send: (a: BizAction) => void; onSel: (i: number | null) => void }) {
   // Someone watching (joined after the game began) has no square.
   const here = s.pos[me] !== undefined ? BOARD[s.pos[me]] : null;
   const price = here && (here.kind === "city" || here.kind === "station" || here.kind === "utility") ? here.price : 0;
@@ -527,9 +549,9 @@ function Middle({ s, me, myTurn, sel, canBuild, send, onSel }: { s: BizState; me
                 </button>
               </>
             )}
-            {s.phase === "end" && canBuild.length > 0 && (
+            {manualEnd && (
               <button type="button" onClick={() => send({ type: "end" })} className={cx(btn, "bg-core text-core-ink")} style={big}>
-                {canBuild.length ? (s.again ? "Done · roll again" : "Done") : s.again ? "🎲 Doubles: roll again" : "…"}
+                {s.again ? "Done · roll again" : "Done"}
               </button>
             )}
             {sel !== null && canBuild.includes(sel) && !buying && (
@@ -540,6 +562,16 @@ function Middle({ s, me, myTurn, sel, canBuild, send, onSel }: { s: BizState; me
             {sel !== null && s.owner[sel] === me && (s.houses[sel] ?? 0) > 0 && !buying && (
               <button type="button" onClick={() => send({ type: "sell", sq: sel })} className={cx(btn, "border-2 border-stone-700 bg-white text-stone-800")} style={big}>
                 Sell a house
+              </button>
+            )}
+            {sel !== null && !buying && canMortgage(s, me, sel) && (
+              <button type="button" onClick={() => send({ type: "mortgage", sq: sel })} className={cx(btn, "border-2 border-stone-700 bg-white text-stone-800")} style={big}>
+                Mortgage +{rs(mortgageValue(sel))}
+              </button>
+            )}
+            {sel !== null && !buying && s.owner[sel] === me && s.mort?.[sel] && (
+              <button type="button" onClick={() => send({ type: "unmortgage", sq: sel })} disabled={s.cash[me] < unmortgageCost(sel)} className={cx(btn, "bg-[#16a34a] text-white disabled:opacity-50")} style={big}>
+                Lift mortgage −{rs(unmortgageCost(sel))}
               </button>
             )}
           </div>
@@ -573,6 +605,8 @@ function iconFor(line: string) {
   if (/bankrupt/.test(line)) return "💥";
   if (/jail/i.test(line)) return "🚔";
   if (/passed START/.test(line)) return "🏁";
+  if (/Rest House pot/.test(line)) return "🛖";
+  if (/mortgage/.test(line)) return "🏦";
   if (/rent/.test(line)) return "💸";
   if (/Tax/.test(line)) return "🧾";
   if (/bought/.test(line)) return "🏠";
@@ -584,8 +618,8 @@ function iconFor(line: string) {
 }
 /** Money in a line, coloured: green when someone gains, red when someone pays. */
 function money(line: string) {
-  const plus = /passed START|collect|dividend|inherit|refund|won |gives you|error in your favour/.test(line);
-  const minus = /pays|paid|fine|fee|Tax|repairs|bought|built/.test(line);
+  const plus = /passed START|collect|dividend|inherit|refund|won |gives you|error in your favour|mortgaged .* for/.test(line) && !/no rent/.test(line);
+  const minus = /pays|paid|fine|fee|Tax|repairs|bought|built|lifted/.test(line);
   return line.split(/(\+?₹[\d,]+)/).map((part, i) =>
     /₹/.test(part) ? (
       <b key={i} className={cx("font-mono", plus ? "text-[#15803d]" : minus ? "text-[#b91c1c]" : "")}>
@@ -606,7 +640,7 @@ const sideOf = (i: number): Side => (i < 8 ? "b" : i < 16 ? "l" : i < 24 ? "t" :
 const CORNER_LOOK: Record<number, { bg: string; icon: string; label: string; sub?: string }> = {
   0: { bg: "linear-gradient(135deg,#fde68a,#fbbf24)", icon: "🏁", label: "START", sub: `Collect ₹1,500` },
   8: { bg: "repeating-linear-gradient(45deg,#fed7aa 0 6px,#fdba74 6px 12px)", icon: "🚔", label: "JAIL", sub: "Just visiting" },
-  16: { bg: "linear-gradient(135deg,#bbf7d0,#86efac)", icon: "🛖", label: "REST HOUSE", sub: "Free stop" },
+  16: { bg: "linear-gradient(135deg,#bbf7d0,#86efac)", icon: "🛖", label: "REST HOUSE", sub: "Win the pot" },
   24: { bg: "linear-gradient(135deg,#fecaca,#f87171)", icon: "👮", label: "GO TO JAIL" },
 };
 
@@ -711,6 +745,7 @@ function Board({ s, me, sel, onSel, children }: { s: BizState; me: string; sel: 
                       )}
                     </span>
                     {/* Owned: the owner's colour along the outer edge. */}
+                    {s.mort?.[i] && owner && <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-stone-500/55 font-black tracking-wider text-white" style={{ fontSize: "1.1cqw" }}>MORTGAGED</span>}
                     {owner && <span className="absolute" style={{ background: FILL[owner.color], ...(side === "b" ? { left: 0, right: 0, bottom: 0, height: "11%" } : side === "t" ? { left: 0, right: 0, top: 0, height: "11%" } : side === "l" ? { top: 0, bottom: 0, left: 0, width: "9%" } : { top: 0, bottom: 0, right: 0, width: "9%" }) }} />}
                   </>
                 )}
