@@ -4,7 +4,7 @@ import { Bot, Crown, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { BOARD, botAction, bizAct, buildable, houseCost, JAIL_FINE, netWorth, newBusiness, rentOf, ringCell, type BizAction, type BizColor, type BizState, type Group } from "@/lib/games/business";
+import { BOARD, botAction, bizAct, buildable, houseCost, JAIL_FINE, netWorth, newBusiness, rentTable, ringCell, type BizAction, type BizColor, type BizState, type Group } from "@/lib/games/business";
 import { type Party, usePartyGame } from "@/lib/games/party";
 import { here, seatsFor } from "@/lib/games/party-rules";
 import { usePeerGame } from "@/lib/games/peer-game";
@@ -92,9 +92,22 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
     if (isHost) apply((cur) => bizAct(cur, me, a, luck()));
     else act(a);
   }
+  const sendRef = useRef(send);
+  useEffect(() => {
+    sendRef.current = send;
+  });
   const [sel, setSel] = useState<number | null>(null);
   const turnSeat = s && !s.over ? s.seats[s.turn] : null;
   const myBuild = s && myTurn && s.phase !== "buy" ? buildable(s, me) : [];
+  // Nothing left to do this turn (no houses to build): it ends by itself, a beat after landing so the
+  // move and any rent or card can be seen. Only with houses to build is there a "Done" to tap.
+  const nothingToDo = myTurn && s?.phase === "end" && !myBuild.length;
+  const endSeq = s?.seq;
+  useEffect(() => {
+    if (!nothingToDo) return;
+    const t = setTimeout(() => sendRef.current({ type: "end" }), 1300);
+    return () => clearTimeout(t);
+  }, [nothingToDo, endSeq]);
 
   // Voice: the whole game by speaking.
   const cityNamed = (t: string) => BOARD.findIndex((q) => q.kind === "city" && t.toLowerCase().includes(q.name.toLowerCase()));
@@ -159,17 +172,9 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
       {s && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          {s.seats.map((seat, i) => (
-            <span key={seat.id} className={cx("flex items-center gap-1.5 rounded-full border px-3 py-1", s.turn === i && !s.over ? "border-core bg-core/10" : "border-line", s.out.includes(seat.id) && "opacity-50 line-through")}>
-              <span className="size-3 rounded-full" style={{ background: FILL[seat.color] }} />
-              {seat.bot && <Bot size={12} className="text-data" />}
-              <span className="max-w-24 truncate">{seat.id === me ? "You" : seat.name}</span>
-              <b className="font-mono text-xs tabular-nums">{rs(s.cash[seat.id])}</b>
-              {s.jail[seat.id] !== undefined && <span title="In jail">🚔</span>}
-            </span>
-          ))}
-          <span className="ml-auto font-mono text-xs text-faint">{s.maxRounds ? `Round ${Math.min(s.round, s.maxRounds)}/${s.maxRounds}` : `Round ${s.round}`}</span>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-mono text-xs text-faint">{s.maxRounds ? `Round ${Math.min(s.round, s.maxRounds)} of ${s.maxRounds}` : `Round ${s.round}`}</span>
+          <span className="ml-auto text-xs text-faint">Tap any square to see its card.</span>
         </div>
       )}
       {!s && !isHost && <p className="text-sm text-soft">Connected! {party?.hostName} is setting up Business.</p>}
@@ -207,12 +212,12 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
       {s && (
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
           <Board s={s} me={me} sel={sel} onSel={setSel}>
-            <Middle s={s} me={me} myTurn={myTurn} sel={sel} canBuild={myBuild} send={send} turnName={turnSeat?.id === me ? "Your" : `${turnSeat?.name ?? ""}'s`} />
+            <Middle s={s} me={me} myTurn={myTurn} sel={sel} canBuild={myBuild} send={send} onSel={setSel} />
           </Board>
           <div className="flex flex-col gap-3">
             {s.over && <Podium s={s} me={me} />}
-            <Mine s={s} me={me} onSel={setSel} />
-            <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-line bg-panel p-3 text-sm">
+            <Players s={s} me={me} onSel={setSel} />
+            <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-line bg-panel p-3 text-sm">
               {[...s.log].reverse().map((l, i) => (
                 <p key={i} className={cx(i === 0 ? "text-fg" : "text-soft", /bought|bankrupt|wins|jail/.test(l) && "font-medium")}>
                   {l}
@@ -237,37 +242,65 @@ function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; c
 function Podium({ s, me }: { s: BizState; me: string }) {
   const order = [...s.seats].sort((a, b) => (a.id === s.winner ? -1 : b.id === s.winner ? 1 : netWorth(s, b.id) - netWorth(s, a.id)));
   return (
-    <div className="rounded-xl bg-raised p-3 text-center">
-      <Crown size={22} className="mx-auto text-core" />
-      <div className="mt-1 font-semibold">{s.winner === me ? "You win! 🎉" : `${order[0]?.name} wins!`}</div>
-      <div className="text-xs text-soft">{order.map((x, i) => `${i + 1}. ${x.name} ${s.out.includes(x.id) ? "(bankrupt)" : rs(netWorth(s, x.id))}`).join(" · ")}</div>
+    <div className="rounded-xl border border-core/40 bg-core/10 p-3 text-center">
+      <Crown size={24} className="mx-auto text-core" />
+      <div className="mt-1 text-lg font-bold">{s.winner === me ? "You win! 🎉" : `${order[0]?.name} wins!`}</div>
+      <ol className="mt-2 space-y-0.5 text-sm">
+        {order.map((x, i) => (
+          <li key={x.id} className="flex justify-between gap-2 text-soft">
+            <span>
+              {i + 1}. {x.name}
+            </span>
+            <span className="font-mono">{s.out.includes(x.id) ? "bankrupt" : rs(netWorth(s, x.id))}</span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
 
-/** The owner's properties, by colour group (tap one to see it on the board). */
-function Mine({ s, me, onSel }: { s: BizState; me: string; onSel: (i: number) => void }) {
-  const mine = Object.entries(s.owner)
-    .filter(([, w]) => w === me)
-    .map(([k]) => Number(k))
-    .sort((a, b) => a - b);
-  if (!mine.length) return null;
+/** Everyone at the table: cash, what they own (as colour chips), jail, bankrupt; whose turn it is. */
+function Players({ s, me, onSel }: { s: BizState; me: string; onSel: (i: number) => void }) {
   return (
-    <div className="rounded-xl border border-line bg-panel p-3 text-sm">
-      <p className="mb-2 font-mono text-[10.5px] uppercase tracking-wider text-faint">Your properties · worth {rs(netWorth(s, me))}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {mine.map((i) => {
-          const q = BOARD[i];
-          const h = s.houses[i] ?? 0;
-          return (
-            <button key={i} type="button" onClick={() => onSel(i)} className="flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs hover:border-core">
-              <span className="size-2.5 rounded-sm" style={{ background: q.kind === "city" ? GROUP[q.group] : "#888" }} />
-              {q.name}
-              {h > 0 && <span className="text-[10px]">{h === 5 ? "🏨" : "🏠".repeat(h)}</span>}
-            </button>
-          );
-        })}
-      </div>
+    <div className="flex flex-col gap-2">
+      {s.seats.map((seat, i) => {
+        const owned = Object.entries(s.owner)
+          .filter(([, w]) => w === seat.id)
+          .map(([k]) => Number(k))
+          .sort((a, b) => a - b);
+        const turn = s.turn === i && !s.over;
+        const out = s.out.includes(seat.id);
+        return (
+          <div key={seat.id} className={cx("rounded-xl border bg-panel p-2.5 transition-colors", turn ? "border-core shadow-[0_0_0_1px_var(--color-core)]" : "border-line", out && "opacity-45")}>
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full border-2 border-white text-xs font-black text-white shadow" style={{ background: FILL[seat.color] }}>
+                {seat.name.slice(0, 1).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                {seat.bot && <Bot size={12} className="mr-1 inline text-data" />}
+                {seat.id === me ? "You" : seat.name}
+                {s.jail[seat.id] !== undefined && <span className="ml-1 text-xs">🚔</span>}
+                {out && <span className="ml-1 text-xs text-alert">bankrupt</span>}
+              </span>
+              <b className={cx("font-mono text-sm tabular-nums", s.cash[seat.id] < 2000 ? "text-alert" : "text-ok")}>{rs(s.cash[seat.id])}</b>
+            </div>
+            {owned.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {owned.map((k) => {
+                  const q = BOARD[k];
+                  const h = s.houses[k] ?? 0;
+                  return (
+                    <button key={k} type="button" onClick={() => onSel(k)} title={q.name} className="flex h-5 items-center gap-0.5 rounded px-1.5 text-[10px] font-semibold text-white shadow-sm hover:brightness-110" style={{ background: q.kind === "city" ? GROUP[q.group] : "#64748b" }}>
+                      {q.kind === "city" ? q.name.slice(0, 3) : q.kind === "station" ? STATION_ICON[q.name] : "💡"}
+                      {h > 0 && <span>{h === 5 ? "🏨" : `×${h}`}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -280,95 +313,198 @@ const PIPS: Record<number, [number, number][]> = {
   5: [[25, 25], [75, 25], [50, 50], [25, 75], [75, 75]],
   6: [[28, 22], [72, 22], [28, 50], [72, 50], [28, 78], [72, 78]],
 };
-function Die({ v }: { v: number }) {
+function Die({ v, spin }: { v: number; spin: number }) {
   return (
-    <svg viewBox="0 0 100 100" className="size-9 sm:size-11">
-      <rect x="4" y="4" width="92" height="92" rx="18" fill="#fff" stroke="#c9a96e" strokeWidth="5" />
+    <svg key={spin} viewBox="0 0 100 100" className="drop-shadow-md" style={{ width: "8.5cqw", height: "8.5cqw", animation: spin ? "ludo-tumble 0.5s ease-out" : undefined }}>
+      <rect x="4" y="4" width="92" height="92" rx="20" fill="#fff" stroke="#d6d3d1" strokeWidth="3" />
       {PIPS[v].map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r="9" fill="#111" />
+        <circle key={i} cx={x} cy={y} r="9" fill={v === 1 ? "#dc2626" : "#1c1917"} />
       ))}
     </svg>
   );
 }
 
-/** The middle of the board: dice, whose turn, the card drawn, and the buttons for what can be done now. */
-function Middle({ s, me, myTurn, sel, canBuild, send, turnName }: { s: BizState; me: string; myTurn: boolean; sel: number | null; canBuild: number[]; send: (a: BizAction) => void; turnName: string }) {
-  // Someone watching (joined after the game began) has no square.
-  const here = s.pos[me] !== undefined ? BOARD[s.pos[me]] : null;
-  const price = here && (here.kind === "city" || here.kind === "station" || here.kind === "utility") ? here.price : 0;
-  const card = s.card && s.card.seq >= (s.lastRoll?.seq ?? 0) ? s.card : null;
-  const q = sel !== null ? BOARD[sel] : null;
-  const btn = "rounded-full px-3 py-1.5 text-xs font-semibold sm:px-4 sm:text-sm";
+/** A property's title deed: the colour, the price, every rent, the house cost, and who owns it. */
+function Deed({ s, sq, me }: { s: BizState; sq: number; me: string }) {
+  const q = BOARD[sq];
+  if (q.kind !== "city" && q.kind !== "station" && q.kind !== "utility") return null;
+  const who = s.owner[sq] ? s.seats.find((x) => x.id === s.owner[sq]) : null;
+  const h = s.houses[sq] ?? 0;
+  const head = q.kind === "city" ? GROUP[q.group] : "#334155";
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-1.5 p-1 text-center sm:gap-2">
-      <p className="font-black tracking-[0.2em] text-[#7a5520] text-[10px] sm:text-sm">BUSINESS</p>
-      {s.lastRoll && (
-        <div className="flex gap-1.5">
-          <Die v={s.lastRoll.dice[0]} />
-          <Die v={s.lastRoll.dice[1]} />
+    <div className="overflow-hidden rounded-md border border-stone-300 bg-white text-stone-800 shadow-xl" style={{ width: "44cqw", fontSize: "1.75cqw" }}>
+      <div className="px-[3%] py-[2.5%] text-center text-white" style={{ background: head }}>
+        <div className="tracking-[0.2em] opacity-90" style={{ fontSize: "1.3cqw" }}>
+          {q.kind === "city" ? "TITLE DEED" : q.kind === "station" ? "TRANSPORT" : "UTILITY"}
         </div>
-      )}
-      {card && (
-        <p className={cx("max-w-[95%] rounded-md px-2 py-1 text-[10px] leading-tight text-white sm:text-xs", card.deck === "chance" ? "bg-[#f97316]" : "bg-[#0ea5e9]")}>
-          {card.deck === "chance" ? "❓ Chance" : "💰 Treasure"}: {card.text}
-        </p>
-      )}
-      {!s.over && <p className="text-[11px] font-medium text-[#3b2a12] sm:text-sm">{turnName} turn</p>}
-      {myTurn && (
-        <div className="flex flex-wrap justify-center gap-1.5">
-          {s.phase === "roll" && s.jail[me] !== undefined && s.cash[me] >= JAIL_FINE && (
-            <button type="button" onClick={() => send({ type: "payJail" })} className={cx(btn, "border border-[#7a5520] text-[#7a5520]")}>
-              Pay {rs(JAIL_FINE)}
-            </button>
-          )}
-          {s.phase === "roll" && (
-            <button type="button" onClick={() => send({ type: "roll" })} className={cx(btn, "animate-pulse bg-core text-core-ink")}>
-              {s.jail[me] !== undefined ? "Roll for doubles" : "Roll"}
-            </button>
-          )}
-          {s.phase === "buy" && (
-            <>
-              <button type="button" onClick={() => send({ type: "buy" })} className={cx(btn, "bg-ok text-black")}>
-                Buy {here?.name} {rs(price)}
-              </button>
-              <button type="button" onClick={() => send({ type: "skip" })} className={cx(btn, "border border-[#7a5520] text-[#7a5520]")}>
-                Skip
-              </button>
-            </>
-          )}
-          {s.phase === "end" && (
-            <button type="button" onClick={() => send({ type: "end" })} className={cx(btn, "bg-core text-core-ink")}>
-              {s.again ? "Doubles: roll again" : "End turn"}
-            </button>
-          )}
+        <div className="font-black uppercase leading-tight" style={{ fontSize: "2.7cqw" }}>
+          {q.kind === "station" ? `${STATION_ICON[q.name]} ` : q.kind === "utility" ? "💡 " : ""}
+          {q.name}
         </div>
-      )}
-      {q && sel !== null && (q.kind === "city" || q.kind === "station" || q.kind === "utility") && (
-        <div className="w-[92%] rounded-md border border-[#c9a96e] bg-white/70 p-1.5 text-[10px] text-[#3b2a12] sm:text-xs">
-          <b>{q.name}</b> · {rs(q.price)} · {s.owner[sel] ? `owned by ${s.owner[sel] === me ? "you" : s.seats.find((x) => x.id === s.owner[sel])?.name}` : "for sale"}
-          {s.owner[sel] && <> · rent now {q.kind === "utility" ? "dice × 40/100" : rs(rentOf(s, sel, 7))}</>}
-          {q.kind === "city" && <> · house {rs(houseCost(sel))}</>}
-          {canBuild.includes(sel) && (
-            <button type="button" onClick={() => send({ type: "build", sq: sel })} className="ml-1 rounded-full bg-ok px-2 py-0.5 font-semibold text-black">
-              Build {(s.houses[sel] ?? 0) === 4 ? "hotel" : "house"}
-            </button>
-          )}
-          {myTurn && s.owner[sel] === me && (s.houses[sel] ?? 0) > 0 && (
-            <button type="button" onClick={() => send({ type: "sell", sq: sel })} className="ml-1 rounded-full border border-[#7a5520] px-2 py-0.5">
-              Sell house
-            </button>
-          )}
+      </div>
+      <div className="space-y-[1.2%] px-[5%] py-[3%]">
+        {rentTable(sq).map((r, i) => (
+          <div key={r.label} className={cx("flex justify-between gap-2", q.kind === "city" && i === h + (h ? 1 : 0) && who && "font-bold text-stone-950", r.label.startsWith("Each") && "mt-[2%] border-t border-stone-200 pt-[2%]")}>
+            <span>{r.label}</span>
+            <span className="font-mono">{r.amount}</span>
+          </div>
+        ))}
+        <div className="flex justify-between gap-2 border-t border-stone-200 pt-[2%] font-semibold">
+          <span>{who ? "Owner" : "Price"}</span>
+          <span className="flex items-center gap-1">
+            {who ? (
+              <>
+                <span className="inline-block size-[1.6cqw] rounded-full" style={{ background: FILL[who.color] }} />
+                {who.id === me ? "You" : who.name}
+                {h > 0 && ` · ${h === 5 ? "hotel" : `${h} house${h > 1 ? "s" : ""}`}`}
+              </>
+            ) : (
+              rs(q.price)
+            )}
+          </span>
         </div>
-      )}
-      {myTurn && canBuild.length > 0 && sel === null && <p className="text-[10px] text-[#3b2a12] sm:text-xs">🏠 You can build: tap a city of yours.</p>}
+      </div>
     </div>
   );
 }
 
-const STEP_MS = 120;
+/** The middle of the board: the logo, the dice, whose turn, a card drawn, and what can be done now. */
+function Middle({ s, me, myTurn, sel, canBuild, send, onSel }: { s: BizState; me: string; myTurn: boolean; sel: number | null; canBuild: number[]; send: (a: BizAction) => void; onSel: (i: number | null) => void }) {
+  // Someone watching (joined after the game began) has no square.
+  const here = s.pos[me] !== undefined ? BOARD[s.pos[me]] : null;
+  const price = here && (here.kind === "city" || here.kind === "station" || here.kind === "utility") ? here.price : 0;
+  const card = s.card && s.card.seq >= (s.lastRoll?.seq ?? 0) ? s.card : null;
+  const turnSeat = s.seats[s.turn];
+  const buying = myTurn && s.phase === "buy";
+  const deed = buying ? s.pos[me] : sel;
+  const showDeed = deed !== null && deed !== undefined && ["city", "station", "utility"].includes(BOARD[deed].kind);
+  const last = s.log[s.log.length - 1];
+  const btn = "rounded-full font-bold shadow-md transition-transform active:scale-95";
+  const big = { fontSize: "2.1cqw", padding: "1.3cqw 3.2cqw" };
+  return (
+    <div className="relative flex h-full flex-col items-center justify-between overflow-hidden py-[3%]" style={{ background: "radial-gradient(circle at 50% 40%, #e8f5e1 0%, #c9e6c0 70%, #b5d9aa 100%)" }}>
+      {/* The two card piles, in the corners of the middle. */}
+      <div className="absolute left-[6%] top-[8%] flex -rotate-12 items-center justify-center rounded-md border-2 border-white bg-[#f97316] font-black text-white shadow-lg" style={{ width: "11cqw", height: "15cqw", fontSize: "5cqw" }} aria-hidden>
+        ?
+      </div>
+      <div className="absolute right-[6%] bottom-[8%] flex rotate-12 items-center justify-center rounded-md border-2 border-white bg-[#0ea5e9] text-white shadow-lg" style={{ width: "11cqw", height: "15cqw", fontSize: "5cqw" }} aria-hidden>
+        💰
+      </div>
+
+      <div className="z-10 -rotate-6 rounded-md bg-[#c81e1e] px-[4%] py-[1%] font-black tracking-[0.15em] text-white shadow-lg" style={{ fontSize: "4.2cqw" }}>
+        BUSINESS
+      </div>
+
+      <div className="z-10 flex w-full flex-col items-center gap-[1.5cqw] px-[4%]">
+        {showDeed ? (
+          <div className="relative">
+            <Deed s={s} sq={deed!} me={me} />
+            {!buying && (
+              <button type="button" onClick={() => onSel(null)} aria-label="Close" className="absolute -top-[1.5cqw] -right-[1.5cqw] flex size-[4cqw] items-center justify-center rounded-full bg-stone-800 text-white" style={{ fontSize: "2cqw" }}>
+                ✕
+              </button>
+            )}
+          </div>
+        ) : card ? (
+          <div className={cx("rounded-lg border-2 border-white p-[2.5%] text-center text-white shadow-xl", card.deck === "chance" ? "bg-[#f97316]" : "bg-[#0ea5e9]")} style={{ width: "48cqw", fontSize: "2cqw" }}>
+            <div className="font-black tracking-widest" style={{ fontSize: "1.6cqw" }}>
+              {card.deck === "chance" ? "❓ CHANCE" : "💰 TREASURE"}
+            </div>
+            <div className="mt-[2%] font-semibold leading-snug">{card.text}</div>
+          </div>
+        ) : s.lastRoll ? (
+          <div className="flex items-center gap-[2cqw]">
+            <Die v={s.lastRoll.dice[0]} spin={s.lastRoll.seq} />
+            <Die v={s.lastRoll.dice[1]} spin={s.lastRoll.seq} />
+          </div>
+        ) : (
+          <p className="text-center text-stone-600" style={{ fontSize: "2cqw" }}>
+            Roll the dice to start!
+          </p>
+        )}
+        {!showDeed && last && (
+          <p className="line-clamp-2 max-w-[90%] text-center text-stone-700" style={{ fontSize: "1.8cqw" }}>
+            {last}
+          </p>
+        )}
+      </div>
+
+      <div className="z-10 flex flex-col items-center gap-[1.2cqw]">
+        {!s.over && (
+          <span className="flex items-center gap-[1cqw] rounded-full bg-white/80 px-[2.5cqw] py-[0.6cqw] font-semibold text-stone-800 shadow" style={{ fontSize: "1.9cqw" }}>
+            <span className="inline-block rounded-full" style={{ width: "2cqw", height: "2cqw", background: FILL[turnSeat.color] }} />
+            {turnSeat.id === me ? "Your turn" : `${turnSeat.name}'s turn`}
+            {myTurn && here && s.phase !== "roll" && <span className="font-normal text-stone-500">· on {here.name}</span>}
+          </span>
+        )}
+        {myTurn && (
+          <div className="flex flex-wrap justify-center gap-[1.5cqw]">
+            {s.phase === "roll" && s.jail[me] !== undefined && s.cash[me] >= JAIL_FINE && (
+              <button type="button" onClick={() => send({ type: "payJail" })} className={cx(btn, "border-2 border-stone-700 bg-white text-stone-800")} style={big}>
+                Pay {rs(JAIL_FINE)}
+              </button>
+            )}
+            {s.phase === "roll" && (
+              <button type="button" onClick={() => send({ type: "roll" })} className={cx(btn, "animate-pulse bg-core text-core-ink")} style={big}>
+                🎲 {s.jail[me] !== undefined ? "Roll for doubles" : "Roll"}
+              </button>
+            )}
+            {s.phase === "buy" && here && (
+              <>
+                <button type="button" onClick={() => send({ type: "buy" })} disabled={s.cash[me] < price} className={cx(btn, "bg-[#16a34a] text-white disabled:opacity-50")} style={big}>
+                  Buy {rs(price)}
+                </button>
+                <button type="button" onClick={() => send({ type: "skip" })} className={cx(btn, "border-2 border-stone-700 bg-white text-stone-800")} style={big}>
+                  Skip
+                </button>
+              </>
+            )}
+            {s.phase === "end" && canBuild.length > 0 && (
+              <button type="button" onClick={() => send({ type: "end" })} className={cx(btn, "bg-core text-core-ink")} style={big}>
+                {canBuild.length ? (s.again ? "Done · roll again" : "Done") : s.again ? "🎲 Doubles: roll again" : "…"}
+              </button>
+            )}
+            {sel !== null && canBuild.includes(sel) && !buying && (
+              <button type="button" onClick={() => send({ type: "build", sq: sel })} className={cx(btn, "bg-[#16a34a] text-white")} style={big}>
+                🏠 Build {(s.houses[sel] ?? 0) === 4 ? "hotel" : "house"} {rs(houseCost(sel))}
+              </button>
+            )}
+            {sel !== null && s.owner[sel] === me && (s.houses[sel] ?? 0) > 0 && !buying && (
+              <button type="button" onClick={() => send({ type: "sell", sq: sel })} className={cx(btn, "border-2 border-stone-700 bg-white text-stone-800")} style={big}>
+                Sell a house
+              </button>
+            )}
+          </div>
+        )}
+        {myTurn && canBuild.length > 0 && (sel === null || !canBuild.includes(sel)) && !buying && (
+          <p className="text-stone-700" style={{ fontSize: "1.7cqw" }}>
+            🏠 You own a full colour set: tap one of its cities to build.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── the board ── */
+
+const STEP_MS = 140;
+// Corners are bigger than the other squares, as on a real board.
+const CORNER = 1.45;
+const SPAN = CORNER * 2 + 7;
+const mid = (k: number) => (k === 0 ? CORNER / 2 : k === 8 ? SPAN - CORNER / 2 : CORNER + (k - 1) + 0.5);
+const pct = (k: number) => (mid(k) / SPAN) * 100;
+type Side = "b" | "l" | "t" | "r";
+const sideOf = (i: number): Side => (i < 8 ? "b" : i < 16 ? "l" : i < 24 ? "t" : "r");
+const CORNER_LOOK: Record<number, { bg: string; icon: string; label: string; sub?: string }> = {
+  0: { bg: "linear-gradient(135deg,#fde68a,#fbbf24)", icon: "🏁", label: "START", sub: `Collect ₹1,500` },
+  8: { bg: "repeating-linear-gradient(45deg,#fed7aa 0 6px,#fdba74 6px 12px)", icon: "🚔", label: "JAIL", sub: "Just visiting" },
+  16: { bg: "linear-gradient(135deg,#bbf7d0,#86efac)", icon: "🛖", label: "REST HOUSE", sub: "Free stop" },
+  24: { bg: "linear-gradient(135deg,#fecaca,#f87171)", icon: "👮", label: "GO TO JAIL" },
+};
 
 function Board({ s, me, sel, onSel, children }: { s: BizState; me: string; sel: number | null; onSel: (i: number | null) => void; children: React.ReactNode }) {
-  // The last move played out square by square (a long jump, like to jail, just goes there).
+  // The last move, played out square by square (a long jump, like to jail, just goes there).
   const [walk, setWalk] = useState<{ seat: string; at: number } | null>(null);
   const seen = useRef(s.last?.seq ?? -1);
   const game = useRef(s);
@@ -399,46 +535,108 @@ function Board({ s, me, sel, onSel, children }: { s: BizState; me: string; sel: 
 
   const posOf = (id: string) => (walk?.seat === id ? walk.at : s.pos[id]);
   const turnId = s.seats[s.turn]?.id;
+  const live = s.seats.filter((x) => !s.out.includes(x.id));
+  const fr = `${CORNER}fr repeat(7, 1fr) ${CORNER}fr`;
+
   return (
-    <div className="relative aspect-square w-full max-w-[min(100%,76dvh)] self-center overflow-hidden rounded-xl border-2 border-[#c9a96e] bg-[#fdf3dc] shadow-sm">
-      <div className="absolute inset-0 grid" style={{ gridTemplateColumns: "repeat(9, 1fr)", gridTemplateRows: "repeat(9, 1fr)" }}>
-        {BOARD.map((q, i) => {
-          const { r, c } = ringCell(i);
-          const owner = s.owner[i] ? s.seats.find((x) => x.id === s.owner[i]) : null;
-          const h = s.houses[i] ?? 0;
-          const tokens = s.seats.filter((x) => !s.out.includes(x.id) && posOf(x.id) === i);
-          const corner = i % 8 === 0;
+    <div className="relative aspect-square w-full max-w-[min(100%,80dvh)] self-center rounded-2xl bg-[#14532d] p-[1.4%] shadow-xl [container-type:inline-size]">
+      <div className="relative size-full overflow-hidden rounded-lg bg-[#fffaf0]">
+        <div className="absolute inset-0 grid" style={{ gridTemplateColumns: fr, gridTemplateRows: fr }}>
+          {BOARD.map((q, i) => {
+            const { r, c } = ringCell(i);
+            const owner = s.owner[i] ? s.seats.find((x) => x.id === s.owner[i]) : null;
+            const h = s.houses[i] ?? 0;
+            const side = sideOf(i);
+            const vertical = side === "b" || side === "t";
+            const corner = i % 8 === 0;
+            const look = CORNER_LOOK[i];
+            const band = q.kind === "city" ? GROUP[q.group] : null;
+            const priced = q.kind === "city" || q.kind === "station" || q.kind === "utility";
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onSel(sel === i ? null : i)}
+                aria-label={`${q.name}${owner ? `, owned by ${owner.id === me ? "you" : owner.name}` : priced ? `, for sale` : ""}`}
+                className={cx("relative flex overflow-hidden border-[0.5px] border-[#c8b48a] text-stone-800 transition-[filter] hover:brightness-95", sel === i && "z-10 outline outline-[3px] outline-core")}
+                style={{
+                  gridRow: r + 1,
+                  gridColumn: c + 1,
+                  background: look?.bg ?? "#fffaf0",
+                  flexDirection: corner ? "column" : side === "b" ? "column" : side === "t" ? "column-reverse" : side === "l" ? "row-reverse" : "row",
+                }}
+              >
+                {corner && look ? (
+                  <span className="flex size-full flex-col items-center justify-center gap-[3%] text-center">
+                    <span style={{ fontSize: "4.6cqw", lineHeight: 1 }}>{look.icon}</span>
+                    <span className="font-black leading-none tracking-wide" style={{ fontSize: "1.55cqw" }}>
+                      {look.label}
+                    </span>
+                    {look.sub && <span style={{ fontSize: "1.15cqw" }}>{look.sub}</span>}
+                  </span>
+                ) : (
+                  <>
+                    {/* The colour band, on the edge facing the middle; houses sit on it. */}
+                    <span className="flex shrink-0 items-center justify-center gap-[6%]" style={{ background: band ?? "transparent", [vertical ? "height" : "width"]: band ? "24%" : "0", flexDirection: vertical ? "row" : "column" }}>
+                      {h > 0 && h < 5 && Array.from({ length: h }, (_, k) => <span key={k} className="rounded-[1px] bg-[#16a34a] ring-1 ring-white" style={{ width: "1.2cqw", height: "1.2cqw" }} />)}
+                      {h === 5 && <span className="rounded-[2px] bg-[#dc2626] ring-1 ring-white" style={{ width: "2.6cqw", height: "1.4cqw" }} />}
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col items-center justify-center px-[4%] text-center leading-tight">
+                      {q.kind !== "city" && <span style={{ fontSize: "3cqw", lineHeight: 1.05 }}>{q.kind === "station" ? STATION_ICON[q.name] : ICON[q.kind]}</span>}
+                      <span className="font-bold" style={{ fontSize: q.kind === "city" ? (q.name.length > 9 ? "1.18cqw" : q.name.length > 7 ? "1.3cqw" : "1.45cqw") : "1.15cqw" }}>
+                        {q.kind === "city" ? q.name.toUpperCase() : q.name}
+                      </span>
+                      {priced && !owner && (
+                        <span className="mt-[4%] font-mono text-stone-500" style={{ fontSize: "1.2cqw" }}>
+                          {rs(q.price)}
+                        </span>
+                      )}
+                      {q.kind === "tax" && (
+                        <span className="mt-[4%] font-mono text-stone-500" style={{ fontSize: "1.2cqw" }}>
+                          {rs(q.amount)}
+                        </span>
+                      )}
+                    </span>
+                    {/* Owned: the owner's colour along the outer edge. */}
+                    {owner && <span className="absolute" style={{ background: FILL[owner.color], ...(side === "b" ? { left: 0, right: 0, bottom: 0, height: "11%" } : side === "t" ? { left: 0, right: 0, top: 0, height: "11%" } : side === "l" ? { top: 0, bottom: 0, left: 0, width: "9%" } : { top: 0, bottom: 0, right: 0, width: "9%" }) }} />}
+                  </>
+                )}
+              </button>
+            );
+          })}
+          <div className="overflow-hidden border-[0.5px] border-[#c8b48a]" style={{ gridRow: "2 / 9", gridColumn: "2 / 9" }}>
+            {children}
+          </div>
+        </div>
+        {/* The pawns: they glide from square to square. */}
+        {live.map((seat) => {
+          const at = posOf(seat.id);
+          const { r, c } = ringCell(at);
+          const together = live.filter((x) => posOf(x.id) === at);
+          const k = together.indexOf(seat);
+          const n = together.length;
+          const dx = n > 1 ? ((k % 3) - (Math.min(n, 3) - 1) / 2) * 2.6 : 0;
+          const dy = n > 3 ? (Math.floor(k / 3) - 0.5) * 2.6 : 0;
+          const isTurn = seat.id === turnId && !s.over;
           return (
-            <button
-              key={i}
-              type="button"
-              onClick={() => onSel(sel === i ? null : i)}
-              aria-label={`${q.name}${owner ? `, owned by ${owner.id === me ? "you" : owner.name}` : ""}`}
-              className={cx("relative flex flex-col items-center justify-start overflow-hidden border-[0.5px] border-[#d9bf8c] text-[#3b2a12]", sel === i && "z-10 ring-2 ring-core")}
-              style={{ gridRow: r + 1, gridColumn: c + 1, background: corner ? "#f6e3b4" : "#fffaf0", boxShadow: owner ? `inset 0 0 0 2px ${FILL[owner.color]}` : undefined }}
+            <span
+              key={seat.id}
+              aria-hidden
+              className={cx("pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white font-black text-white shadow-[0_2px_4px_rgba(0,0,0,.45)]", isTurn && "z-20 biz-pawn-turn")}
+              style={{
+                left: `calc(${pct(c)}% + ${dx}%)`,
+                top: `calc(${pct(r)}% + ${dy}%)`,
+                width: "3.6cqw",
+                height: "3.6cqw",
+                fontSize: "1.7cqw",
+                background: `radial-gradient(circle at 35% 30%, #ffffffaa, ${FILL[seat.color]} 50%)`,
+                transition: `left ${STEP_MS - 20}ms ease-out, top ${STEP_MS - 20}ms ease-out`,
+              }}
             >
-              {q.kind === "city" && <span className="h-[18%] w-full shrink-0" style={{ background: GROUP[q.group] }} />}
-              {q.kind === "city" ? (
-                <span className="mt-[6%] px-px text-[clamp(5px,1.25vw,9px)] leading-none font-semibold">{q.name}</span>
-              ) : (
-                <span className={cx("leading-none", corner ? "mt-[10%] text-[clamp(12px,3vw,24px)]" : "mt-[8%] text-[clamp(10px,2.4vw,18px)]")}>{q.kind === "station" ? STATION_ICON[q.name] : ICON[q.kind]}</span>
-              )}
-              {q.kind !== "city" && <span className="px-px text-[clamp(5px,1.1vw,8px)] leading-tight">{q.name}</span>}
-              {(q.kind === "city" || q.kind === "station" || q.kind === "utility") && !owner && <span className="mt-auto mb-[4%] text-[clamp(5px,1.1vw,8px)] leading-none text-[#7a5520]">{rs(q.price)}</span>}
-              {h > 0 && <span className="mt-auto mb-[3%] text-[clamp(5px,1.2vw,9px)] leading-none">{h === 5 ? "🏨" : "🏠".repeat(h)}</span>}
-              {tokens.length > 0 && (
-                <span className="absolute inset-x-0 bottom-[22%] flex flex-wrap justify-center gap-px">
-                  {tokens.map((x) => (
-                    <span key={x.id} title={x.name} className={cx("size-2.5 rounded-full border border-white shadow sm:size-3.5", x.id === turnId && !s.over && "ring-1 ring-black")} style={{ background: FILL[x.color] }} />
-                  ))}
-                </span>
-              )}
-            </button>
+              {seat.id === me ? "★" : seat.name.slice(0, 1).toUpperCase()}
+            </span>
           );
         })}
-        <div className="flex flex-col" style={{ gridRow: "2 / 9", gridColumn: "2 / 9" }}>
-          {children}
-        </div>
       </div>
     </div>
   );

@@ -135,6 +135,28 @@ export function rentOf(s: BizState, sq: number, diceTotal: number): number {
   return 0;
 }
 
+/** The title deed's rent lines for a square (what the property card shows). */
+export function rentTable(sq: number): { label: string; amount: string }[] {
+  const q = BOARD[sq];
+  const rs = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+  if (q.kind === "city") {
+    const base = Math.round((q.price * 0.08) / 10) * 10;
+    return [
+      { label: "Rent", amount: rs(base) },
+      { label: "With the colour set", amount: rs(base * 2) },
+      ...[1, 2, 3, 4].map((h) => ({ label: `With ${h} house${h > 1 ? "s" : ""}`, amount: rs(base * HOUSE_X[h]) })),
+      { label: "With a hotel", amount: rs(base * HOUSE_X[5]) },
+      { label: "Each house costs", amount: rs(houseCost(sq)) },
+    ];
+  }
+  if (q.kind === "station") return [1, 2, 3, 4].map((n) => ({ label: `Own ${n} transport${n > 1 ? "s" : ""}`, amount: rs(250 * 2 ** (n - 1)) }));
+  if (q.kind === "utility") return [
+    { label: "Own 1 utility", amount: "40 × dice" },
+    { label: "Own both", amount: "100 × dice" },
+  ];
+  return [];
+}
+
 /** Cash plus what everything owned is worth (price, and houses at cost). */
 export function netWorth(s: BizState, id: string) {
   let w = s.cash[id] ?? 0;
