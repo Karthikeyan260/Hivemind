@@ -3,7 +3,7 @@
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { checkHost, proveHost } from "@/lib/peer-auth";
-import { callsFirst, cleanId, cleanName, isReaction, REACT_GAP_MS } from "@/lib/games/party-rules";
+import { callsFirst, cleanId, cleanName, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
 
 /**
  * Game night: one link, a lobby, many friends. The owner's browser is the table: friends open the
@@ -74,7 +74,8 @@ export type Party = {
   /** Send a reaction to everyone at the table. */
   react: (e: string) => void;
   /** Reactions floating up on this screen right now (each lasts a few seconds). */
-  floats: PartyFloat[];
+  /** Follow the reactions floating up right now; returns the unsubscribe. */
+  onFloats: (fn: (f: PartyFloat[]) => void) => () => void;
   voice: { on: boolean; muted: boolean; noMic: boolean; toggleMute: () => void };
 };
 
@@ -177,26 +178,50 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     [save, sendTo, viewFor],
   );
   // Reactions: shown here at once, and passed round the table by the owner's browser.
-  const [floats, setFloats] = useState<PartyFloat[]>([]);
+  // Kept out of the Party object: a reaction mustn't re-render (and restart the bot timers of) every game.
+  const floats = useRef<PartyFloat[]>([]);
+  const floatFans = useRef(new Set<(f: PartyFloat[]) => void>());
+  const floatTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const floatK = useRef(0);
   const lastReact = useRef(new Map<string, number>());
-  const showReact = useCallback((e: string, who: string) => {
-    const k = ++floatK.current;
-    setFloats((l) => [...l.slice(-24), { k, e, who, x: 8 + Math.random() * 84 }]);
-    setTimeout(() => setFloats((l) => l.filter((f) => f.k !== k)), FLOAT_MS);
+  const setFloats = useCallback((next: PartyFloat[]) => {
+    floats.current = next;
+    for (const f of floatFans.current) f(next);
+  }, []);
+  const showReact = useCallback(
+    (e: string, who: string) => {
+      const k = ++floatK.current;
+      setFloats([...floats.current.slice(-24), { k, e, who, x: 8 + Math.random() * 84 }]);
+      const t = setTimeout(() => {
+        floatTimers.current.delete(t);
+        setFloats(floats.current.filter((f) => f.k !== k));
+      }, FLOAT_MS);
+      floatTimers.current.add(t);
+    },
+    [setFloats],
+  );
+  useEffect(() => {
+    const timers = floatTimers.current;
+    return () => timers.forEach(clearTimeout);
+  }, []);
+  const onFloats = useCallback((fn: (f: PartyFloat[]) => void) => {
+    floatFans.current.add(fn);
+    fn(floats.current);
+    return () => void floatFans.current.delete(fn);
   }, []);
   const react = useCallback(
     (e: string) => {
       if (!isReaction(e)) return;
       const now = Date.now();
       if (now - (lastReact.current.get("me") ?? 0) < REACT_GAP_MS) return;
-      lastReact.current.set("me", now);
-      showReact(e, me);
       if (opts.current.role === "host") for (const id of conns.current.keys()) sendTo(id, { t: "react", e, who: "host" });
       else {
         const c = hostConn.current;
-        if (c?.open && verified.current) c.send({ t: "react", e } satisfies Wire);
+        if (!c?.open || !verified.current) return;
+        c.send({ t: "react", e } satisfies Wire);
       }
+      lastReact.current.set("me", now);
+      showReact(e, me);
     },
     [me, sendTo, showReact],
   );
@@ -288,7 +313,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       }
       if (m.t === "hello") {
         const id = cleanId(m.id);
-        if (!id || id === "host") return void c.close();
+        if (!id || reservedId(id)) return void c.close();
         if (removed.current.has(id)) {
           c.send({ t: "removed" } satisfies Wire);
           return void later(() => c.close(), 500);
@@ -622,10 +647,10 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       backToLobby,
       removePlayer,
       react,
-      floats,
+      onFloats,
       voice: { on: voiceOn, muted, noMic, toggleMute },
     }),
-    [o.role, me, o.hostName, players, phase, stage, err, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, floats, voiceOn, muted, noMic, toggleMute],
+    [o.role, me, o.hostName, players, phase, stage, err, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, onFloats, voiceOn, muted, noMic, toggleMute],
   );
 }
 

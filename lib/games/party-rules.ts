@@ -14,6 +14,9 @@ export const cleanId = (v: unknown) =>
     .replace(/[^a-z0-9-]/gi, "")
     .slice(0, 40);
 
+/** Ids the games keep for themselves (the owner, HIVEMIND's bots, Draw & Guess's AI): no friend may use one. */
+export const reservedId = (id: string) => id === "host" || id === "ai" || /^bot\d*$/i.test(id);
+
 /** Everyone at the table now: friends who are connected, and the owner. */
 export const here = (players: PartyPlayer[]) => players.filter((p) => p.online || p.host);
 

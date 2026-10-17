@@ -110,7 +110,12 @@ function MiniScene() {
       offs.push(beat.onDrop(() => s.musicDrop()));
       const lv = setInterval(() => s.setMusicLevel(beat.level()), 120);
       offs.push(() => clearInterval(lv));
-      const state = () => setTimeout(paint, 50);
+      let late: ReturnType<typeof setTimeout> | undefined;
+      const state = () => {
+        clearTimeout(late);
+        late = setTimeout(paint, 50);
+      };
+      offs.push(() => clearTimeout(late));
       window.addEventListener(MUSIC_STATE_EVENT, state);
       window.addEventListener(beat.COLOR_EVENT, paint);
       offs.push(() => window.removeEventListener(MUSIC_STATE_EVENT, state));

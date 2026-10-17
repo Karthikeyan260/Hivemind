@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { quickPage } from "@/lib/agents/quick";
 import type { PartyPlayer } from "@/lib/games/party";
-import { callsFirst, cleanId, cleanName, drawView, guessPoints, here, isReaction, nextRound, REACTIONS, rightGuess, roundDone, seatsFor, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
+import { callsFirst, cleanId, reservedId, cleanName, drawView, guessPoints, here, isReaction, nextRound, REACTIONS, rightGuess, roundDone, seatsFor, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
 
 const P = (id: string, name: string, online = true, host = false): PartyPlayer => ({ id, name, online, host });
 const table = [P("host", "Karthikeyan", false, true), P("a", "Arun"), P("p", "Priya", false), P("k", "Kavin"), P("d", "Divya"), P("v", "Kavi")];
@@ -18,6 +18,10 @@ describe("game night: who is at the table", () => {
       { id: "d", name: "Divya" },
     ]);
     expect(seatsFor(table, 6)).toHaveLength(5);
+  });
+  it("a friend can't take an id the games keep for the owner or HIVEMIND's bots", () => {
+    for (const id of ["host", "ai", "bot", "bot1", "BOT3"]) expect(reservedId(id)).toBe(true);
+    for (const id of ["b0t1", "bot1x", "a1b2c3", "robot1"]) expect(reservedId(id)).toBe(false);
   });
   it("group voice: exactly one of each pair calls", () => {
     expect(callsFirst("a", "b")).toBe(true);

@@ -116,7 +116,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
     },
     business_buy: {
       description: "Business page: buy the property the owner just landed on.",
-      run: () => (myTurn && s!.phase === "buy" ? (send({ type: "buy" }), { bought: BOARD[s!.pos[me]].name }) : { error: "Nothing to buy right now." }),
+      run: () => (myTurn && s!.phase === "buy" ? (send({ type: "buy" }), { bought: BOARD[s!.pos[me]]?.name }) : { error: "Nothing to buy right now." }),
     },
     business_skip: {
       description: "Business page: don't buy the property just landed on.",
@@ -145,7 +145,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
       run: () =>
         s
           ? {
-              players: s.seats.map((x) => ({ name: x.id === me ? "you" : x.name, cash: s.cash[x.id], square: BOARD[s.pos[x.id]].name, properties: Object.entries(s.owner).filter(([, w]) => w === x.id).map(([k]) => BOARD[Number(k)].name), in_jail: s.jail[x.id] !== undefined, out: s.out.includes(x.id) })),
+              players: s.seats.map((x) => ({ name: x.id === me ? "you" : x.name, cash: s.cash[x.id], square: BOARD[s.pos[x.id]]?.name, properties: Object.entries(s.owner).filter(([, w]) => w === x.id).map(([k]) => BOARD[Number(k)].name), in_jail: s.jail[x.id] !== undefined, out: s.out.includes(x.id) })),
               turn: s.over ? "game over" : turnSeat?.id === me ? `yours: ${s.phase}` : turnSeat?.name,
               round: s.maxRounds ? `${s.round} of ${s.maxRounds}` : s.round,
               last: s.log.slice(-3),
@@ -293,8 +293,9 @@ function Die({ v }: { v: number }) {
 
 /** The middle of the board: dice, whose turn, the card drawn, and the buttons for what can be done now. */
 function Middle({ s, me, myTurn, sel, canBuild, send, turnName }: { s: BizState; me: string; myTurn: boolean; sel: number | null; canBuild: number[]; send: (a: BizAction) => void; turnName: string }) {
-  const here = BOARD[s.pos[me]];
-  const price = here.kind === "city" || here.kind === "station" || here.kind === "utility" ? here.price : 0;
+  // Someone watching (joined after the game began) has no square.
+  const here = s.pos[me] !== undefined ? BOARD[s.pos[me]] : null;
+  const price = here && (here.kind === "city" || here.kind === "station" || here.kind === "utility") ? here.price : 0;
   const card = s.card && s.card.seq >= (s.lastRoll?.seq ?? 0) ? s.card : null;
   const q = sel !== null ? BOARD[sel] : null;
   const btn = "rounded-full px-3 py-1.5 text-xs font-semibold sm:px-4 sm:text-sm";
@@ -328,7 +329,7 @@ function Middle({ s, me, myTurn, sel, canBuild, send, turnName }: { s: BizState;
           {s.phase === "buy" && (
             <>
               <button type="button" onClick={() => send({ type: "buy" })} className={cx(btn, "bg-ok text-black")}>
-                Buy {here.name} {rs(price)}
+                Buy {here?.name} {rs(price)}
               </button>
               <button type="button" onClick={() => send({ type: "skip" })} className={cx(btn, "border border-[#7a5520] text-[#7a5520]")}>
                 Skip

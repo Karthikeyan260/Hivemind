@@ -10,7 +10,8 @@ import { SnakesGame } from "@/components/games/snakes-game";
 import { PartyDraw } from "@/components/games/party-draw";
 import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { MAX_PLAYERS, type Party, PartyContext, type PartyGameKind, usePartyNet } from "@/lib/games/party";
+import { useEffect, useState } from "react";
+import { MAX_PLAYERS, type Party, PartyContext, type PartyFloat, type PartyGameKind, usePartyNet } from "@/lib/games/party";
 import { here, REACTIONS, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
 
 /**
@@ -100,11 +101,14 @@ export function PartyTable({ role, room, myName, hostName, onHostAway }: { role:
 
 /** The reaction buttons (a slim bar at the side) and the reactions floating up from the bottom. */
 function Reactions({ party }: { party: Party }) {
+  const [floats, setFloats] = useState<PartyFloat[]>([]);
+  const { onFloats } = party;
+  useEffect(() => onFloats(setFloats), [onFloats]);
   const nameOf = (id: string) => (id === party.me ? "You" : (party.players.find((p) => p.id === id)?.name ?? (id === "host" ? party.hostName : "Friend")));
   return (
     <>
       <div className="pointer-events-none fixed inset-0 z-40 overflow-hidden" aria-live="polite">
-        {party.floats.map((f) => (
+        {floats.map((f) => (
           <span key={f.k} className="party-float absolute bottom-16 flex flex-col items-center" style={{ left: `${f.x}%` }}>
             <span className="text-4xl drop-shadow-lg">{f.e}</span>
             <span className="mt-0.5 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white">{nameOf(f.who)}</span>
