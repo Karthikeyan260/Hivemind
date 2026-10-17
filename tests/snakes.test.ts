@@ -44,9 +44,11 @@ describe("Snakes & Ladders rules", () => {
     expect(s.winner).toBe("host");
     expect(rollSnakes(s, "bot1", 2)).toBe(s); // game over: nothing moves
   });
-  it("the ladder to 100 wins too", () => {
-    const s = rollSnakes(at(two(), "host", 76), "host", 4); // 80 → 100
-    expect(s.winner).toBe("host");
+  it("no ladder reaches 100: the last stretch has to be rolled", () => {
+    expect(Object.values(LADDERS).every((top) => top < GOAL)).toBe(true);
+    const s = rollSnakes(at(two(), "host", 76), "host", 4); // 80 → 97
+    expect(s.pos.host).toBe(97);
+    expect(s.winner).toBeNull();
   });
   it("standings: the winner, then whoever is furthest", () => {
     let s = newSnakes([{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name: "C" }]);
