@@ -131,6 +131,24 @@ const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 
 const unindexed = (g: THREE.BufferGeometry) => (g.index ? g.toNonIndexed() : g);
 
 /** A soft round puff, drawn once into a canvas (clouds, mist, smoke, glows). */
+/** A music note (white with a dark rim, so it reads on a sunny sky too); the sprite tints it. */
+function noteTexture(glyph: string) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  g.font = "bold 100px 'Segoe UI Symbol', 'Noto Music', 'Apple Symbols', serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.lineWidth = 10;
+  g.strokeStyle = "rgba(20,10,30,0.55)";
+  g.strokeText(glyph, 64, 70);
+  g.fillStyle = "#ffffff";
+  g.fillText(glyph, 64, 70);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function puffTexture(kind: "cloud" | "glow") {
   const c = document.createElement("canvas");
   c.width = c.height = 128;
@@ -320,6 +338,29 @@ export class GardenScene {
   private musicLevel = 0;
   private dropFlash = 0;
   private musicRgb: THREE.Color | null = null;
+  /** Daylight (1) or dark (0): by day the music's light is painted on, since added light vanishes in the sun. */
+  private uMusicDay = { value: 1 };
+  /** Eases to 1 while a song plays: the daytime confetti fades in and out with it. */
+  private uMusicOn = { value: 0 };
+  private confetti: THREE.Points | null = null;
+  /** Each beat's kick (jumps up on the beat, falls away fast): what flowers, trees and lamps bounce to. */
+  private uKick = { value: 0 };
+  /** Eases to 1 while a song plays (day or night): colours and the stage lights fade in and out with it. */
+  private uMusicMix = { value: 0 };
+  private trees: { g: THREE.Group; base: THREE.Vector3; ph: number }[] = [];
+  private beams: { g: THREE.Group; ph: number; mat: THREE.ShaderMaterial }[] = [];
+  /** Butterflies' own clock, which runs faster while a song plays (a plain multiplier on time would jump). */
+  private flyT = 0;
+  private flapT = 0;
+  private musicWas = false;
+  private haloMats: THREE.SpriteMaterial[] = [];
+  /** The disco ball over the island, and how far its light spots have turned. */
+  private ball: THREE.Group | null = null;
+  private uBallRot = { value: 0 };
+  /** Music notes floating up from the flowers and the cottage. */
+  private notes: { sp: THREE.Sprite; t0: number; from: THREE.Vector3; ph: number }[] = [];
+  private noteFrom: THREE.Vector3[] = [];
+  private lastNote = -99;
   private sun = new THREE.DirectionalLight();
   private hemi = new THREE.HemisphereLight();
   private skyMesh: Sky | null = null;
@@ -587,16 +628,19 @@ void main() {`);
         depthWrite: false,
         side: THREE.DoubleSide,
         blending: THREE.AdditiveBlending,
-        uniforms: { uTime: this.uTime },
+        uniforms: { uTime: this.uTime, uMusicCol: this.uMusicCol, uMix: this.uMusicMix, uBeat: this.uBeat, uKick: this.uKick },
         vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }`,
-        fragmentShader: `uniform float uTime; varying vec2 vUv;
+        fragmentShader: `uniform float uTime; uniform vec3 uMusicCol; uniform float uMix; uniform float uBeat; uniform float uKick; varying vec2 vUv;
           void main(){
             float x = vUv.x * 18.0;
             float wave = sin(x * 0.7 + uTime * 0.25) * 0.08 + sin(x * 1.9 - uTime * 0.4) * 0.04;
             float band = smoothstep(0.0, 0.25, vUv.y - 0.35 + wave) * smoothstep(1.0, 0.45, vUv.y + wave);
             float rays = 0.55 + 0.45 * sin(x * 9.0 + sin(uTime * 0.3 + x) * 2.0);
             vec3 c = mix(vec3(0.25, 1.0, 0.6), vec3(0.6, 0.35, 1.0), smoothstep(0.55, 1.0, vUv.y));
-            gl_FragColor = vec4(c * 0.55, band * rays * 0.55);
+            // While a song plays, the lights take its colour and pulse with it.
+            c = mix(c, uMusicCol * 1.2, uMix * 0.75);
+            float pulse = 1.0 + uMix * (uBeat * 0.9 + uKick * 0.9);
+            gl_FragColor = vec4(c * 0.55, band * rays * 0.55 * pulse);
           }`,
       }),
     );
@@ -653,6 +697,7 @@ void main() {`);
     aur.visible = night && !wet;
     for (const o of this.nightOnly) o.visible = night;
     for (const o of this.dayOnly) o.visible = !night && !wet;
+    this.uMusicDay.value = night ? 0 : 1;
     for (const m of this.cloudMats) {
       m.color.set(wet ? (night ? "#1c2436" : "#aab4c0") : L.cloud).multiplyScalar(night ? 1 : 1.8);
     }
@@ -663,9 +708,14 @@ void main() {`);
     if (u) u.value = exposure;
 
     // Glows: lamps, windows, crystals and gems light up after dark.
-    for (const m of this.lampMats) m.emissiveIntensity = night ? 4 : wet ? 1.4 : 0.8;
+    for (const m of this.lampMats) m.emissiveIntensity = m.userData.base0 = night ? 4 : wet ? 1.4 : 0.8;
     for (const l of this.lampLights) l.visible = night || wet;
-    for (const m of this.crystalMats) m.emissiveIntensity = night ? 2.6 : 0.35;
+    for (const m of this.crystalMats) m.emissiveIntensity = m.userData.base0 = night ? 2.6 : 0.35;
+    // The stage lights: added light glows at night; by day they're drawn as a soft coloured haze instead.
+    for (const b of this.beams) {
+      b.mat.blending = night ? THREE.AdditiveBlending : THREE.NormalBlending;
+      b.mat.needsUpdate = true;
+    }
     for (const m of this.gemMats) m.emissiveIntensity = night ? 0.9 : 0.15;
     this.setLit(this.lit);
 
@@ -952,6 +1002,9 @@ void main() {`);
         uniform float uTime;
         uniform vec2 uRip[4];
         uniform vec3 uMusicCol;
+        uniform float uMusicDay;
+        uniform float uMusicMix;
+        uniform float uBallRot;
         varying float vH;
         varying vec3 vTint;
         varying vec3 vN;
@@ -978,6 +1031,18 @@ void main() {`);
           }
           // Only the tips catch the light: a shimmer running through the grass, not a painted floor.
           col += uMusicCol * ring * vH * vH * 0.55;
+          // By day added light is lost in the sunshine: paint the ring in the music's colour instead.
+          col = mix(col, uMusicCol * 1.1, clamp(ring * vH * uMusicDay * 0.8, 0.0, 0.8));
+          // The disco ball's light spots, turning slowly across the island.
+          if (uMusicMix > 0.01) {
+            float ca = cos(uBallRot), sa = sin(uBallRot);
+            vec2 q = mat2(ca, -sa, sa, ca) * vWorld.xz * 1.15;
+            vec2 cell = floor(q);
+            float on = step(0.55, fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453));
+            float spot = on * smoothstep(0.26, 0.1, length(fract(q) - 0.5));
+            vec3 sc = mix(uMusicCol, vec3(1.0), fract(cell.x * 0.37 + cell.y * 0.61) * 0.35);
+            col = mix(col, sc * mix(0.8, 1.15, uMusicDay), spot * uMusicMix * (0.3 + 0.3 * vH));
+          }
           gl_FragColor = vec4(col, 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -988,6 +1053,9 @@ void main() {`);
     this.grassMat.uniforms.uBeat = this.uBeat;
     this.grassMat.uniforms.uRip = this.uRip;
     this.grassMat.uniforms.uMusicCol = this.uMusicCol;
+    this.grassMat.uniforms.uMusicDay = this.uMusicDay;
+    this.grassMat.uniforms.uMusicMix = this.uMusicMix;
+    this.grassMat.uniforms.uBallRot = this.uBallRot;
     this.grassMat.uniforms.uPet = this.uPet;
 
     const mesh = new THREE.InstancedMesh(blade, this.grassMat, want);
@@ -1029,12 +1097,13 @@ void main() {`);
   }
 
   /** Grass, flowers and trees sway in the same wind: patch a standard material to bend with it. */
-  private windy<T extends THREE.Material>(mat: T, amount: number) {
+  private windy<T extends THREE.Material>(mat: T, amount: number, dance = 0) {
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uTime = this.uTime;
       sh.uniforms.uBeat = this.uBeat;
+      sh.uniforms.uKick = this.uKick;
       sh.vertexShader =
-        `uniform float uTime;\n${WIND_GLSL}\n` +
+        `uniform float uTime;\nuniform float uKick;\n${WIND_GLSL}\n` +
         sh.vertexShader.replace(
           "#include <begin_vertex>",
           `#include <begin_vertex>
@@ -1045,11 +1114,16 @@ void main() {`);
           #endif
           float hh = max(position.y, 0.0);
           float ww = windAt(rootW, uTime) * ${amount.toFixed(3)};
-          transformed.xz += ${WIND_DIR} * ww * hh * hh;`,
+          transformed.xz += ${WIND_DIR} * ww * hh * hh;
+          // Music: each flower dances in its own rhythm, and hops up a little on every beat.
+          float dz = ${dance.toFixed(2)};
+          transformed.x += sin(uTime * 5.0 + rootW.x * 3.1 + rootW.z * 1.7) * uBeat * 0.7 * dz * hh * hh;
+          transformed.z += cos(uTime * 4.3 + rootW.z * 2.3) * uBeat * 0.4 * dz * hh * hh;
+          transformed.y += uKick * 0.22 * dz * hh;`,
         );
     };
     // Each strength compiles its own program (the default cache key would merge them).
-    mat.customProgramCacheKey = () => `garden-wind-${amount}`;
+    mat.customProgramCacheKey = () => `garden-wind-${amount}-${dance}`;
     return mat;
   }
 
@@ -1214,16 +1288,21 @@ void main() {`);
       vertexShader: `varying vec3 vW; #include <fog_pars_vertex>
         void main(){ vec4 wp = modelMatrix * vec4(position,1.); vW = wp.xyz; vec4 mvPosition = viewMatrix * wp; gl_Position = projectionMatrix * mvPosition; #include <fog_vertex>
  }`.replace(/ #/g, "\n#"),
-      fragmentShader: `uniform float uTime; uniform vec3 uSky; uniform vec3 uSunDir; uniform vec3 uSunCol; varying vec3 vW; #include <fog_pars_fragment>
+      fragmentShader: `uniform float uTime; uniform vec3 uSky; uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uMusicCol; uniform float uMusicMix; uniform float uKick; uniform vec2 uPondC; varying vec3 vW; #include <fog_pars_fragment>
         void main(){
           vec2 p = vW.xz * 3.0;
-          vec3 nrm = normalize(vec3(sin(p.x * 1.7 + uTime * 1.3) * 0.08 + sin(p.y * 2.3 - uTime) * 0.06, 1.0, cos(p.y * 1.9 + uTime * 1.1) * 0.08));
+          // With a song: rings run out from the middle on every beat.
+          float pd = length(vW.xz - uPondC);
+          float wave = sin(pd * 22.0 - uTime * 7.0) * uMusicMix * (0.04 + uKick * 0.12);
+          vec3 nrm = normalize(vec3(sin(p.x * 1.7 + uTime * 1.3) * 0.08 + sin(p.y * 2.3 - uTime) * 0.06 + wave, 1.0, cos(p.y * 1.9 + uTime * 1.1) * 0.08 + wave));
           vec3 v = normalize(cameraPosition - vW);
           float fres = pow(1.0 - max(dot(v, nrm), 0.0), 3.0);
           vec3 deep = vec3(0.008, 0.045, 0.06);
           vec3 col = mix(deep, mix(uSky, vec3(0.3, 0.5, 0.7) * length(uSky), 0.55), 0.2 + fres * 0.7);
           vec3 h = normalize(v + uSunDir);
           col += uSunCol * pow(max(dot(nrm, h), 0.0), 120.0) * 3.0;
+          // ...and the water glows in the song's colour, brighter on the beat.
+          col = mix(col, uMusicCol * 1.2, uMusicMix * (0.18 + uKick * 0.35) * (0.6 + 0.4 * sin(pd * 22.0 - uTime * 7.0)));
           gl_FragColor = vec4(col, 0.92);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -1231,6 +1310,10 @@ void main() {`);
         }`.replace(/ #/g, "\n#"),
     });
     water.uniforms.uTime = this.uTime;
+    water.uniforms.uMusicCol = this.uMusicCol;
+    water.uniforms.uMusicMix = this.uMusicMix;
+    water.uniforms.uKick = this.uKick;
+    water.uniforms.uPondC = { value: new THREE.Vector2(c.x, c.z) };
     this.animatedMats.push(water);
     this.waterMats.push(water);
     // The pond sits in a small hollow, ringed by stones, with lily pads and reeds.
@@ -1441,11 +1524,11 @@ void main() {`);
     centreGeo.scale(1, 0.6, 1);
     centreGeo.translate(0, 0.305, 0);
 
-    const stems = new THREE.InstancedMesh(stemGeo, this.windy(new THREE.MeshStandardMaterial({ color: "#3f7f30", roughness: 0.8 }), 0.9), Math.max(1, flowers.length));
-    const centres = new THREE.InstancedMesh(centreGeo, this.windy(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.7 }), 0.9), Math.max(1, flowers.length));
+    const stems = new THREE.InstancedMesh(stemGeo, this.windy(new THREE.MeshStandardMaterial({ color: "#3f7f30", roughness: 0.8 }), 0.9, 1), Math.max(1, flowers.length));
+    const centres = new THREE.InstancedMesh(centreGeo, this.windy(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.7 }), 0.9, 1), Math.max(1, flowers.length));
     const byKind = [0, 1, 2, 3].map((k) => flowers.filter((f) => kindOf(f.id) === k));
     const headMeshes = byKind.map((list, k) => {
-      const mesh = new THREE.InstancedMesh(heads[k], this.windy(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.55, side: THREE.DoubleSide }), 0.9), Math.max(1, list.length));
+      const mesh = new THREE.InstancedMesh(heads[k], this.windy(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.55, side: THREE.DoubleSide }), 0.9, 1), Math.max(1, list.length));
       mesh.count = list.length;
       this.flowerHeads.push({ mesh, ids: list.map((f) => f.id) });
       return mesh;
@@ -1459,6 +1542,7 @@ void main() {`);
     flowers.forEach((f, i) => {
       if (f.kind !== "flower") return;
       const p = this.toWorld(f.x, f.y);
+      if (this.noteFrom.length < 40) this.noteFrom.push(p.clone().add(new THREE.Vector3(0, 0.7, 0)));
       const s = (0.85 + hash01(f.id, 3) * 0.4) * 1.9;
       q.setFromEuler(new THREE.Euler((hash01(f.id, 5) - 0.5) * 0.25, hash01(f.id, 6) * Math.PI * 2, (hash01(f.id, 7) - 0.5) * 0.25));
       sv.setScalar(s);
@@ -1591,6 +1675,7 @@ void main() {`);
     g.rotation.y = hash01(it.id, 4) * Math.PI * 2;
     g.userData.id = it.id;
     this.pickables.push(g);
+    this.trees.push({ g, base: g.scale.clone(), ph: hash01(it.id, 21) * 6 });
     return g;
   }
 
@@ -1610,6 +1695,7 @@ void main() {`);
     halo.position.y = 0.93;
     halo.scale.setScalar(0.9);
     halo.raycast = () => {};
+    this.haloMats.push(halo.material);
     this.nightOnly.push(halo);
     g.add(halo);
     const cap = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.08, 4), iron);
@@ -1709,6 +1795,58 @@ void main() {`);
     };
     this.nightOnly.push(make(this.quality === "high" ? 140 : 70, "#d9ff8a", 9, 1.0, 1.6, 0.5, 1));
     this.dayOnly.push(make(this.quality === "high" ? 160 : 70, "#fff2c8", 3.5, 1.25, 3, 0.25, 0.3));
+
+    // Daytime music: bright petals in the music lights' colours float up and bounce with the beat.
+    // Plain (not added) colour, so they show against the sunny sky; fireflies do this job at night.
+    const n = this.quality === "high" ? 220 : 110;
+    const pos = new Float32Array(n * 3);
+    const seed = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = hash3(i, 11, 12) * Math.PI * 2;
+      const r = Math.sqrt(hash3(i, 13, 14)) * R * 1.05;
+      pos.set([Math.cos(a) * r, hash3(i, 15, 16), Math.sin(a) * r], i * 3);
+      seed[i] = hash3(i, 17, 18);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: { uTime: this.uTime, uBeat: this.uBeat, uKick: this.uKick, uOn: this.uMusicOn, uColor: this.uMusicCol, uSize: { value: 9 * this.renderer.getPixelRatio() } },
+      vertexShader: `attribute float seed; uniform float uTime; uniform float uSize; uniform float uBeat; uniform float uKick; varying float vS;
+        void main(){
+          vec3 p = position;
+          float t = uTime * (0.35 + seed * 0.25) + seed * 40.0;
+          // Rise from the grass to about 3.5 high, then start again at the bottom.
+          p.y = 0.15 + fract(position.y + uTime * (0.05 + seed * 0.04)) * 3.5;
+          p.x += sin(t) * 0.5;
+          p.z += cos(t * 0.8) * 0.5;
+          vS = seed;
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          gl_PointSize = uSize * (0.6 + seed * 0.8) * (10.0 / -mv.z) * (1.0 + uBeat * 0.8 + uKick * 0.7);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `uniform vec3 uColor; uniform float uOn; uniform float uTime; varying float vS;
+        void main(){
+          // A small spinning petal: an ellipse that turns over time.
+          vec2 q = gl_PointCoord - 0.5;
+          float a = uTime * (1.0 + vS * 2.0) + vS * 20.0;
+          q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
+          float d = length(q * vec2(1.0, 1.9));
+          if (d > 0.5) discard;
+          // Shades around the music colour (some lighter, some deeper), with a soft rim so each petal reads.
+          vec3 c = mix(uColor * 0.75, mix(uColor, vec3(1.0), 0.45), fract(vS * 7.0));
+          c *= mix(1.0, 0.8, smoothstep(0.3, 0.5, d));
+          gl_FragColor = vec4(c, uOn * 0.95);
+          #include <colorspace_fragment>
+        }`,
+    });
+    this.animatedMats.push(mat);
+    this.confetti = new THREE.Points(geo, mat);
+    this.confetti.frustumCulled = false;
+    this.confetti.visible = false;
+    this.island.add(this.confetti);
   }
 
   private buildClouds() {
@@ -1995,8 +2133,9 @@ void main() {`);
   }
 
   /** Deepavali: bursts of colour over the island. */
-  private buildFireworks() {
-    this.fireworks = true;
+  private buildFireworks(auto = true) {
+    this.fireworks = auto;
+    if (this.bursts.length) return;
     const N = 160;
     for (let b = 0; b < 4; b++) {
       const geo = new THREE.BufferGeometry();
@@ -2042,25 +2181,8 @@ void main() {`);
         fr.o.scale.set(2.4, 2.4 * (1 + Math.sin(k * Math.PI) * 0.25), 2.4);
       }
     }
-    if (!this.fireworks) return;
-    if (t > this.nextBurst) {
-      const b = this.bursts.find((x) => !x.on);
-      if (b) {
-        const a = Math.random() * Math.PI * 2;
-        b.origin.set(Math.cos(a) * this.R * (0.3 + Math.random() * 0.6), this.R * (0.35 + Math.random() * 0.4), Math.sin(a) * this.R * (0.3 + Math.random() * 0.5) - this.R * 0.35);
-        const speed = this.R * (0.35 + Math.random() * 0.2);
-        for (let i = 0; i < b.vel.length / 3; i++) {
-          const u = Math.random() * 2 - 1;
-          const th = Math.random() * Math.PI * 2;
-          const r = Math.sqrt(1 - u * u);
-          const s = speed * (0.75 + Math.random() * 0.25);
-          b.vel.set([Math.cos(th) * r * s, u * s, Math.sin(th) * r * s], i * 3);
-        }
-        (b.pts.material as THREE.ShaderMaterial).uniforms.uColor.value.setHSL(Math.random(), 0.95, 0.6);
-        b.t0 = t;
-        b.on = true;
-        b.pts.visible = true;
-      }
+    if (this.fireworks && t > this.nextBurst) {
+      this.launchBurst(t);
       this.nextBurst = t + 0.9 + Math.random() * 1.8;
     }
     for (const b of this.bursts) {
@@ -2079,6 +2201,204 @@ void main() {`);
       }
     }
     void dt;
+  }
+
+  /** One burst of sparks over the island: a random colour, or the one given (a song's drop). */
+  private launchBurst(t: number, color?: THREE.Color) {
+    const b = this.bursts.find((x) => !x.on);
+    if (!b) return;
+    const a = Math.random() * Math.PI * 2;
+    b.origin.set(Math.cos(a) * this.R * (0.3 + Math.random() * 0.6), this.R * (0.35 + Math.random() * 0.4), Math.sin(a) * this.R * (0.3 + Math.random() * 0.5) - this.R * 0.35);
+    const speed = this.R * (0.35 + Math.random() * 0.2);
+    for (let i = 0; i < b.vel.length / 3; i++) {
+      const u = Math.random() * 2 - 1;
+      const th = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(1 - u * u);
+      const s = speed * (0.75 + Math.random() * 0.25);
+      b.vel.set([Math.cos(th) * r * s, u * s, Math.sin(th) * r * s], i * 3);
+    }
+    const c = (b.pts.material as THREE.ShaderMaterial).uniforms.uColor.value as THREE.Color;
+    if (color) c.copy(color);
+    else c.setHSL(Math.random(), 0.95, 0.6);
+    b.t0 = t;
+    b.on = true;
+    b.pts.visible = true;
+  }
+
+  /** The stage lights for a song: four coloured beams from the island's edge, sweeping the sky. */
+  private buildBeams() {
+    if (this.beams.length) return;
+    const H = this.R * 2.6;
+    const geo = new THREE.CylinderGeometry(this.R * 0.28, 0.05, H, 24, 1, true);
+    geo.translate(0, H / 2, 0);
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI * 0.25 + (i / 4) * Math.PI * 2;
+      const x = Math.cos(a) * this.R * 0.8;
+      const z = Math.sin(a) * this.R * 0.8;
+      const mat = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: this.phase === "night" ? THREE.AdditiveBlending : THREE.NormalBlending,
+        uniforms: { uColor: { value: new THREE.Color() }, uA: { value: 0 } },
+        vertexShader: `varying float vY; varying float vEdge;
+          void main(){
+            vY = uv.y;
+            vec4 w = modelMatrix * vec4(position, 1.0);
+            vec3 n = normalize(mat3(modelMatrix) * normal);
+            vEdge = abs(dot(n, normalize(cameraPosition - w.xyz)));
+            gl_Position = projectionMatrix * viewMatrix * w;
+          }`,
+        fragmentShader: `uniform vec3 uColor; uniform float uA; varying float vY; varying float vEdge;
+          void main(){
+            // Brightest at the lamp, fading up into the sky; soft at the sides of the beam.
+            float a = pow(1.0 - vY, 1.6) * smoothstep(0.0, 0.7, vEdge) * uA;
+            gl_FragColor = vec4(uColor, a);
+          }`,
+      });
+      const cone = new THREE.Mesh(geo, mat);
+      cone.raycast = () => {};
+      cone.frustumCulled = false;
+      const g = new THREE.Group();
+      g.position.set(x, this.heightAt(x, z) + 0.05, z);
+      g.add(cone);
+      g.visible = false;
+      this.island.add(g);
+      this.beams.push({ g, ph: i * 1.7, mat });
+    }
+  }
+
+  /** A mirror ball hanging over the island while a song plays. */
+  private buildBall() {
+    if (this.ball) return;
+    const g = new THREE.Group();
+    const mirror = new THREE.MeshStandardMaterial({ color: "#d9dde6", metalness: 1, roughness: 0.12, flatShading: true, emissive: "#ffffff", emissiveIntensity: 0.05 });
+    const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 2), mirror);
+    ball.userData.mirror = mirror;
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 3, 4), new THREE.MeshBasicMaterial({ color: "#2b2b33" }));
+    cord.position.y = 1.5 + 0.34;
+    this.glowTex ??= puffTexture("glow");
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: "#ffffff", transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.scale.setScalar(1.6);
+    glow.raycast = () => {};
+    g.add(ball, cord, glow);
+    g.userData = { ball, glow, mirror };
+    const x = 0;
+    const z = this.R * 0.12;
+    g.position.set(x, this.heightAt(x, z) + 3.3, z);
+    g.visible = false;
+    this.island.add(g);
+    this.ball = g;
+  }
+
+  /** A note floats up from a flower or the cottage. */
+  private spawnNote(t: number) {
+    if (t - this.lastNote < 0.22 || this.reduced) return;
+    this.lastNote = t;
+    if (!this.notes.length) {
+      const tex = ["♪", "♫", "♩", "♬"].map(noteTexture);
+      for (let i = 0; i < 16; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex[i % tex.length], color: "#ffffff", transparent: true, opacity: 0, depthWrite: false }));
+        sp.visible = false;
+        sp.raycast = () => {};
+        this.island.add(sp);
+        this.notes.push({ sp, t0: -99, from: new THREE.Vector3(), ph: i * 1.3 });
+      }
+    }
+    const n = this.notes.find((x) => t - x.t0 > 3.2);
+    if (!n) return;
+    const from = this.noteFrom.length && Math.random() < 0.75 ? this.noteFrom[Math.floor(Math.random() * this.noteFrom.length)] : this.toWorld(homeSpot(this.opts.n).x, homeSpot(this.opts.n).y).add(new THREE.Vector3((Math.random() - 0.5) * 1.2, 1.6, (Math.random() - 0.5) * 0.6));
+    n.from.copy(from);
+    n.t0 = t;
+    n.sp.visible = true;
+    // A shade around the music colour.
+    const hsl = { h: 0, s: 0, l: 0 };
+    this.uMusicCol.value.getHSL(hsl);
+    (n.sp.material as THREE.SpriteMaterial).color.setHSL((hsl.h + (Math.random() - 0.5) * 0.12 + 1) % 1, Math.max(0.7, hsl.s), this.phase === "night" ? 0.7 : 0.55);
+  }
+
+  /** Each frame while a song plays (and as it fades out): the garden moves and glows with the music. */
+  private updateMusic(t: number) {
+    const night = this.phase === "night";
+    const mix = this.uMusicMix.value;
+    const kick = this.uKick.value;
+    const beat = this.uBeat.value;
+    const col = this.uMusicCol.value;
+    // Trees bop: a stretch up on each beat and a slow sway.
+    for (const tr of this.trees) {
+      const k = this.reduced ? 0 : kick * mix;
+      tr.g.scale.set(tr.base.x * (1 - k * 0.03), tr.base.y * (1 + k * 0.07), tr.base.z * (1 - k * 0.03));
+      tr.g.rotation.z = this.reduced ? 0 : Math.sin(t * 2.4 + tr.ph) * beat * mix * 0.05;
+    }
+    // Lamps and crystals: the song's colour, flashing on the beat (and big on the drop).
+    const f = this.dropFlash;
+    for (const m of this.lampMats) {
+      if (!m.userData.orig) m.userData.orig = m.emissive.clone();
+      m.emissive.copy(m.userData.orig).lerp(col, mix * 0.85);
+      m.emissiveIntensity = (m.userData.base0 ?? 1) + f * 2.5 + kick * mix * (night ? 3 : 2.2);
+    }
+    for (const m of this.crystalMats) m.emissiveIntensity = (m.userData.base0 ?? 0.35) + f * 1.8 + kick * mix * 1.2;
+    for (const m of this.haloMats) {
+      if (!m.userData.orig) m.userData.orig = m.color.clone();
+      m.color.copy(m.userData.orig).lerp(col, mix * 0.85);
+      m.opacity = 0.55 + kick * mix * 0.35;
+    }
+    for (const l of this.lampLights) {
+      if (!l.userData.orig) l.userData.orig = l.color.clone();
+      l.color.copy(l.userData.orig).lerp(col, mix * 0.85);
+      l.intensity = 1.3 + Math.sin(t * 7 + l.id) * 0.08 + kick * mix * 2.5;
+    }
+    // The cottage windows pulse in the song's colour.
+    for (const m of this.windowMats) {
+      if (!m.userData.orig) m.userData.orig = m.emissive.clone();
+      m.emissive.copy(m.userData.orig).lerp(col, mix * 0.6);
+      m.emissiveIntensity = (this.lit ? (night ? 3.2 : 1.6) : 0) + mix * (0.4 + kick * (night ? 2 : 1.4));
+    }
+    // The stage lights sweep the sky.
+    if (mix > 0.01 && !this.beams.length) this.buildBeams();
+    const hsl = { h: 0, s: 0, l: 0 };
+    col.getHSL(hsl);
+    for (const b of this.beams) {
+      b.g.visible = mix > 0.01;
+      if (!b.g.visible) continue;
+      const sw = this.reduced ? 0 : 1;
+      // Leaning outwards, swinging slowly.
+      const out = Math.atan2(b.g.position.z, b.g.position.x);
+      b.g.rotation.set(Math.sin(out) * 0.3 + Math.sin(t * 0.6 + b.ph) * 0.45 * sw, 0, -Math.cos(out) * 0.3 + Math.cos(t * 0.45 + b.ph * 1.3) * 0.45 * sw);
+      // Each beam a little apart in hue around the music colour.
+      b.mat.uniforms.uColor.value.setHSL((hsl.h + (b.ph / 1.7 - 1.5) * 0.06 + 1) % 1, Math.max(0.6, hsl.s), night ? 0.6 : 0.5);
+      b.mat.uniforms.uA.value = mix * (night ? 0.32 : 0.38) * (0.55 + beat * 0.3 + kick * 0.5);
+    }
+    // The disco ball drops in from above, spins, and throws its spots across the grass.
+    if (mix > 0.01 && !this.ball) this.buildBall();
+    if (this.ball) {
+      const b = this.ball;
+      b.visible = mix > 0.01;
+      const u = b.userData as { ball: THREE.Mesh; glow: THREE.Sprite; mirror: THREE.MeshStandardMaterial };
+      const z = this.R * 0.12;
+      b.position.y = this.heightAt(0, z) + 3.3 + (1 - mix) * 4;
+      if (!this.reduced) u.ball.rotation.y = t * 0.9;
+      this.uBallRot.value = this.reduced ? 0 : t * 0.35;
+      u.mirror.emissive.copy(col).lerp(new THREE.Color(1, 1, 1), 0.5);
+      u.mirror.emissiveIntensity = (night ? 0.08 : 0.15) + kick * mix * (night ? 0.5 : 0.8);
+      const gm = u.glow.material as THREE.SpriteMaterial;
+      gm.color.copy(col);
+      gm.opacity = mix * (night ? 0.28 : 0.2) * (0.7 + kick * 0.6);
+    }
+    // Notes rise and sway, fading in and out.
+    if (mix > 0.2 && Math.random() < 0.02) this.spawnNote(t);
+    for (const n of this.notes) {
+      const k = (t - n.t0) / 3.2;
+      if (k > 1 || k < 0) {
+        n.sp.visible = false;
+        continue;
+      }
+      n.sp.position.set(n.from.x + Math.sin(k * 6 + n.ph) * 0.25, n.from.y + k * 1.8, n.from.z + Math.cos(k * 5 + n.ph) * 0.15);
+      n.sp.scale.setScalar(0.45 * (1 + kick * 0.35));
+      (n.sp.material as THREE.SpriteMaterial).opacity = Math.min(1, k * 6) * Math.min(1, (1 - k) * 3) * mix;
+    }
+    // A faster turn round the island while it plays.
+    this.controls.autoRotateSpeed = 0.35 * (1 + mix * (this.reduced ? 0 : 1.2));
   }
 
   /* ── quality ── */
@@ -2282,6 +2602,8 @@ void main() {`);
     // Not more than about three rings a second, or they blur into one glow.
     if (strength <= 1 && t - this.lastRip < 0.32) return;
     this.lastRip = t;
+    if (!this.reduced) this.uKick.value = Math.max(this.uKick.value, Math.min(1, strength));
+    if (this.musicRgb) this.spawnNote(t);
     this.uRip.value[this.ripNext].set(t, strength);
     this.ripNext = (this.ripNext + 1) % this.uRip.value.length;
   }
@@ -2289,6 +2611,14 @@ void main() {`);
   musicDrop() {
     this.dropFlash = 1;
     this.musicBeat(1.7);
+    // Sparks over the island in the song's colours.
+    if (!this.musicRgb || this.reduced) return;
+    this.buildFireworks(this.fireworks);
+    const t = this.clock.elapsedTime;
+    const hsl = { h: 0, s: 0, l: 0 };
+    this.musicRgb.getHSL(hsl);
+    this.launchBurst(t, new THREE.Color().setHSL(hsl.h, 0.95, 0.62));
+    this.launchBurst(t, new THREE.Color().setHSL((hsl.h + 0.12) % 1, 0.95, 0.62));
   }
   /** How loud the song is right now (0..1): the sway and the fireflies follow it, smoothly. */
   setMusicLevel(v: number) {
@@ -2411,34 +2741,34 @@ void main() {`);
     // Bobbing gems and far islands.
     for (const b of this.bobbers) {
       b.o.position.y = b.y + Math.sin(t * b.sp + b.ph) * (b.spin && b.spin < 0.1 ? this.R * 0.04 : 0.04);
-      if (b.spin) b.o.rotation.y += dt * b.spin;
+      if (b.spin) b.o.rotation.y += dt * b.spin * (1 + this.uBeat.value * 4);
     }
     this.updateDecor(t, dt);
     // Ease towards the song's loudness (quick to rise, slow to settle): no jolts.
     const want = this.musicRgb ? Math.min(1, this.musicLevel * 1.4) : 0;
     this.uBeat.value += (want - this.uBeat.value) * Math.min(1, dt * (want > this.uBeat.value ? 4 : 1.5));
-    if (this.dropFlash > 0.01) {
-      this.dropFlash *= Math.exp(-dt * 1.6);
-      const f = this.dropFlash;
-      for (const m of this.lampMats) m.emissiveIntensity = (m.userData.base ?? (m.userData.base = m.emissiveIntensity)) + f * 2.5;
-      for (const m of this.crystalMats) m.emissiveIntensity = (m.userData.base ?? (m.userData.base = m.emissiveIntensity)) + f * 1.8;
-      if (this.dropFlash <= 0.01) {
-        for (const m of [...this.lampMats, ...this.crystalMats]) {
-          m.emissiveIntensity = m.userData.base;
-          delete m.userData.base;
-        }
-      }
-    }
+    const on = this.musicRgb && this.phase !== "night" ? 1 : 0;
+    this.uMusicOn.value += (on - this.uMusicOn.value) * Math.min(1, dt * 1.5);
+    if (this.confetti) this.confetti.visible = this.uMusicOn.value > 0.01;
+    this.uMusicMix.value += ((this.musicRgb ? 1 : 0) - this.uMusicMix.value) * Math.min(1, dt * 1.5);
+    this.uKick.value *= Math.exp(-dt * 5);
+    this.dropFlash = this.dropFlash > 0.01 ? this.dropFlash * Math.exp(-dt * 1.6) : 0;
+    // Only while music plays or fades out (one last frame puts everything back); otherwise no cost.
+    const musicNow = this.uMusicMix.value > 0.001 || this.dropFlash > 0 || this.uKick.value > 0.001;
+    if (musicNow || this.musicWas) this.updateMusic(t);
+    this.musicWas = musicNow;
     // Butterflies on wandering loops, flapping.
+    this.flyT += dt * (1 + this.uBeat.value * 1.5);
+    this.flapT += dt * (1 + this.uBeat.value * 0.8);
     for (const b of this.butterflies) {
-      const a = t * b.sp + b.ph;
+      const a = this.flyT * b.sp + b.ph;
       const x = Math.cos(a) * b.rad + Math.sin(a * 2.3) * 0.5;
       const z = Math.sin(a * 1.3) * b.rad * 0.8;
       const y = this.heightAt(x, z) + b.h + Math.sin(a * 3.1) * 0.2;
       const prev = b.g.position.clone();
       b.g.position.set(x, y, z);
       b.g.lookAt(prev.lerp(b.g.position, 2));
-      const flap = Math.sin(t * 22 + b.ph) * 1.1;
+      const flap = Math.sin(this.flapT * 22 + b.ph) * 1.1;
       b.l.rotation.z = flap;
       b.r.rotation.z = -flap;
     }
@@ -2458,7 +2788,7 @@ void main() {`);
     for (const m of this.mist) m.position.y = m.userData.base + Math.sin(t * 0.8 + m.userData.ph) * 0.06;
     // Clouds turn slowly round the island.
     this.clouds.rotation.y = t * 0.006;
-    for (const l of this.lampLights) l.intensity = 1.3 + Math.sin(t * 7 + l.id) * 0.08;
+    if (!this.musicWas) for (const l of this.lampLights) l.intensity = 1.3 + Math.sin(t * 7 + l.id) * 0.08;
 
     // Tell the page where the pet and the label are on screen.
     const w = this.canvas.clientWidth;
