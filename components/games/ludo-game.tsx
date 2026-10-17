@@ -7,6 +7,7 @@ import { useVoiceActions } from "@/components/voice/provider";
 import { gameKey, recordResult } from "@/lib/games/record";
 import { cellOf, HOME_CELLS, TRACK_CELLS, type Cell } from "@/lib/games/ludo-board";
 import { botChoice, move, movable, newGame, roll, SAFE, type Color, type LudoState } from "@/lib/games/ludo";
+import { type Party, usePartyGame } from "@/lib/games/party";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { sfx } from "@/lib/sfx";
 
@@ -35,8 +36,27 @@ const okState = (s: unknown): s is LudoState => {
   return !!x && Array.isArray(x.seats) && x.seats.length >= 2 && x.seats.length <= 4 && typeof x.tokens === "object" && Number.isInteger(x.turn) && Array.isArray(x.log);
 };
 
-export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, solo = false }: { role: "host" | "guest"; room: string; myName: string; hostName?: string; onHostAway?: () => void; /** Just the owner against HIVEMIND's bots, on this device. */ solo?: boolean }) {
-  const me = role; // seat id
+export function LudoGame({
+  role,
+  room,
+  myName,
+  hostName = "Host",
+  onHostAway,
+  solo = false,
+  party = null,
+}: {
+  role: "host" | "guest";
+  room: string;
+  myName: string;
+  hostName?: string;
+  onHostAway?: () => void;
+  /** Just the owner against HIVEMIND's bots, on this device. */
+  solo?: boolean;
+  /** Game night: the seats are the people in the lobby (up to 4), over the party's connection. */
+  party?: Party | null;
+}) {
+  const isHost = party ? party.role === "host" : role === "host";
+  const me = party ? party.me : role; // seat id
   const sRef = useRef<LudoState | null>(null);
   const publishRef = useRef<(s: LudoState) => void>(() => {});
   /** Host: apply a change to the game and send it. */
@@ -49,7 +69,9 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
       publishRef.current(next);
     }
   }, []);
-  const { stage, err, other, state, publish, act, forget, voiceOn, muted, toggleMute, noMic, knocked, audioRef, connected } = usePeerGame<LudoState, Action>({
+  /** Host: a seat's request (checked by the rules: only that seat's own turn counts). */
+  const onSeat = (seat: string, a: Action) => apply((s) => (a.type === "roll" ? roll(s, seat, dice()) : a.type === "move" && Number.isInteger(a.token) ? move(s, seat, a.token) : s));
+  const peerNet = usePeerGame<LudoState, Action>({
     role,
     kind: "ludo",
     room,
@@ -58,9 +80,12 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
     onHostAway,
     accept: okState,
     // The friend's requests, as the friend's seat only.
-    onAction: (a) => apply((s) => (a.type === "roll" ? roll(s, "guest", dice()) : a.type === "move" && Number.isInteger(a.token) ? move(s, "guest", a.token) : s)),
+    onAction: (a) => onSeat("guest", a),
     solo,
+    off: !!party,
   });
+  const partyNet = usePartyGame<LudoState, Action>(party, "ludo", { accept: okState, onAction: (from, a) => onSeat(from, a) });
+  const { stage, err, other, state, publish, act, forget, voiceOn, muted, toggleMute, noMic, knocked, audioRef, connected } = partyNet ?? peerNet;
   const s = state;
   useEffect(() => {
     sRef.current = state;
@@ -74,6 +99,15 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
 
   function start(opt?: { bots?: boolean; quick?: boolean }) {
     const withBots = opt?.bots ?? bots;
+    // Game night: the first four in the lobby, topped up to 4 with HIVEMIND bots if wanted.
+    const people = party ? party.players.filter((p) => p.online || p.host).slice(0, 4).map((p) => ({ id: p.id, name: p.name })) : null;
+    if (people) {
+      const fill = withBots ? 4 - people.length : people.length < 2 ? 1 : 0;
+      const g = newGame([...people, ...Array.from({ length: fill }, (_, i) => ({ id: `bot${i + 1}`, name: i ? `HIVEMIND ${i + 1}` : "HIVEMIND", bot: true }))], (opt?.quick ?? quick) ? 2 : 4);
+      sRef.current = g;
+      publish(g);
+      return;
+    }
     const players = solo
       ? withBots
         ? [{ id: "host", name: myName }, { id: "bot1", name: "HIVEMIND", bot: true }, { id: "bot2", name: "HIVEMIND 2", bot: true }, { id: "bot3", name: "HIVEMIND 3", bot: true }]
@@ -88,16 +122,18 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
 
   // Host: HIVEMIND's bots take their turns (only while the friend is connected, so nobody misses anything).
   useEffect(() => {
-    if (role !== "host" || !s || s.over || !live) return;
+    if (!isHost || !s || s.over || !live) return;
     const seat = s.seats[s.turn];
-    if (!seat.bot) return;
-    const t = setTimeout(() => apply((cur) => (cur.seq !== s.seq ? cur : !cur.rolled ? roll(cur, seat.id, dice()) : move(cur, seat.id, botChoice(cur) ?? 0))), s.rolled ? 700 : 900);
+    // Game night: a player who dropped out has HIVEMIND play for them until they're back.
+    const away = !!party && !seat.bot && seat.id !== "host" && !party.players.find((p) => p.id === seat.id)?.online;
+    if (!seat.bot && !away) return;
+    const t = setTimeout(() => apply((cur) => (cur.seq !== s.seq ? cur : !cur.rolled ? roll(cur, seat.id, dice()) : move(cur, seat.id, botChoice(cur) ?? 0))), away ? 2500 : s.rolled ? 700 : 900);
     return () => clearTimeout(t);
-  }, [role, s, live, apply]);
+  }, [isHost, s, live, apply, party]);
 
   // The owner's record: the host's device saves each finished game once.
   useEffect(() => {
-    if (role !== "host" || !s?.over) return;
+    if (!isHost || !s?.over) return;
     const place = s.finished.indexOf("host") + 1;
     recordResult(`ludo-${solo ? "solo" : room}-${gameKey(s.seq, ...s.finished)}`, {
       game: "ludo",
@@ -106,19 +142,19 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
       vs: solo ? "HIVEMIND" : other || "Friend",
       detail: place ? `#${place} of ${s.seats.length}` : undefined,
     });
-  }, [role, room, s, other, solo]);
+  }, [isHost, room, s, other, solo]);
 
   const myTurn = !!s && !s.over && s.seats[s.turn]?.id === me;
   const canRoll = myTurn && !s!.rolled && live;
   const canMove = myTurn && s!.rolled && live ? movable(s!) : [];
   function doRoll() {
     if (!canRoll) return;
-    if (role === "host") apply((cur) => roll(cur, "host", dice()));
+    if (isHost) apply((cur) => roll(cur, "host", dice()));
     else act({ type: "roll" });
   }
   function doMove(token: number) {
     if (!canMove.includes(token)) return;
-    if (role === "host") apply((cur) => move(cur, "host", token));
+    if (isHost) apply((cur) => move(cur, "host", token));
     else act({ type: "move", token });
   }
   // Voice: start, roll and move by saying so ("roll", "move token two").
@@ -126,7 +162,7 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
     ludo_start: {
       description: "Ludo page: start (or restart) a game. input: optional 'bots' for a full 4-player board with HIVEMIND bots, 'quick' for 2 tokens each (e.g. 'bots quick').",
       run: ({ input }) => {
-        if (role !== "host" || !live) return { error: "Only the host can start, once everyone's here." };
+        if (!isHost || !live) return { error: "Only the host can start, once everyone's here." };
         const t = String(input ?? "").toLowerCase();
         start({ bots: /bot|four|4/.test(t) || undefined, quick: /quick|two|2 token/.test(t) || undefined });
         return { started: true };
@@ -166,7 +202,7 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
     stage === "connecting"
       ? "Connecting…"
       : stage === "waiting"
-        ? role === "host"
+        ? isHost
           ? "Waiting for your friend to open the link…"
           : knocked
             ? `Waiting for ${hostName}… we sent them a notification, it connects as soon as they open the game.`
@@ -178,7 +214,7 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
             : !s
               ? solo
                 ? "You against HIVEMIND. Choose the game and start."
-                : role === "host"
+                : isHost
                 ? `${other} is here! Choose the game and start.`
                 : `Connected! ${hostName} is setting up the game.`
               : s.over
@@ -203,7 +239,7 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
             <b className="font-mono text-xs tabular-nums">{s.tokens[seat.id].filter((p) => p >= 56).length}/{s.tokens[seat.id].length}</b>
           </span>
         ))}
-        <span className={cx("ml-auto", solo && "hidden")}>
+        <span className={cx("ml-auto", (solo || party) && "hidden")}>
           {voiceOn ? (
             <button type="button" onClick={toggleMute} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", muted ? "border-alert text-alert" : "border-ok/50 text-ok")}>
               {muted ? <MicOff size={13} /> : <Mic size={13} />} {muted ? "Muted" : "Voice on"}
@@ -219,15 +255,15 @@ export function LudoGame({ role, room, myName, hostName = "Host", onHostAway, so
       {status && <p className={cx("text-sm", stage === "error" ? "text-alert" : stage === "reconnecting" ? "animate-pulse text-core" : myTurn ? "font-medium text-core" : "text-soft")}>{status}</p>}
 
 
-      {role === "host" && live && (!s || s.over) && (
+      {isHost && live && (!s || s.over) && (
         <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-soft">Players:</span>
             <Choice on={!bots} onClick={() => setBots(false)}>
-              {solo ? "Me vs HIVEMIND" : "Just us two"}
+              {solo ? "Me vs HIVEMIND" : party ? `Just us (${Math.min(4, party.players.filter((p) => p.online || p.host).length)})` : "Just us two"}
             </Choice>
             <Choice on={bots} onClick={() => setBots(true)}>
-              {solo ? "Me vs 3 HIVEMIND bots" : "+ 2 HIVEMIND bots"}
+              {solo ? "Me vs 3 HIVEMIND bots" : party ? "Fill to 4 with bots" : "+ 2 HIVEMIND bots"}
             </Choice>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">

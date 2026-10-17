@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { isPublicPage } from "@/lib/public-paths";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVoice, useVoiceActions } from "@/components/voice/provider";
 import { type Chatter, isJealous, JEALOUS, MAKE_UP, pickChatter, THUNDER_JUMP } from "@/lib/pet-talk";
@@ -67,7 +68,9 @@ const FEST_WORDS: [RegExp, Festival["id"]][] = [
 
 export function Nova() {
   // On its garden page it is already there, at home on its island: no second one floating about.
-  const atHome = usePathname() === "/garden";
+  const path = usePathname();
+  // At home on its garden page; and never on a friend's page (a game or call link): Nova is the owner's.
+  const atHome = path === "/garden" || isPublicPage(path);
   const [pet, setPet] = useState<Pet | null>(null);
   const [music, setMusic] = useState(false);
   // Asked to dance (by voice or tap) with no music on: a short dance on its own.

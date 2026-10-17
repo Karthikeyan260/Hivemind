@@ -60,7 +60,7 @@ const HISTORY_KEY = "hm-draw-used";
 const HISTORY_MAX = 200;
 
 /** A word for the next round: not used in this game, and not one of the recently drawn ones. */
-function pickWord(usedThisGame: Set<string>) {
+export function pickWord(usedThisGame: Set<string>) {
   let history: string[] = [];
   try {
     history = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]") as string[];
@@ -80,9 +80,9 @@ function pickWord(usedThisGame: Set<string>) {
   } catch {}
   return w;
 }
-const ROUND_S = 80;
-const AI_EVERY_MS = 6500;
-const COLORS = ["#111111", "#e5484d", "#2f7fe8", "#2fa34a", "#f59e0b", "#8b5cf6"];
+export const ROUND_S = 80;
+export const AI_EVERY_MS = 6500;
+export const COLORS = ["#111111", "#e5484d", "#2f7fe8", "#2fa34a", "#f59e0b", "#8b5cf6"];
 /** How long to keep trying to get back together before calling it. */
 const GIVE_UP_MS = 3 * 60_000;
 /** A saved game older than this is stale (a new visit starts fresh). */
@@ -90,7 +90,7 @@ const SAVED_FOR_MS = 45 * 60_000;
 
 type Who = "host" | "guest";
 type Stage = "connecting" | "waiting" | "lobby" | "playing" | "reconnecting" | "over" | "error";
-type Stroke = { pts: [number, number][]; color: string; w: number };
+export type Stroke = { pts: [number, number][]; color: string; w: number };
 type Round = { n: number; total: number; drawer: Who; word?: string; len: string; ends: number };
 type Line = { who: string; text: string; kind: "guess" | "ok" | "ai" | "info" };
 type Scores = { host: number; guest: number; ai: number };
@@ -112,14 +112,14 @@ type Msg =
 type Game = { n: number; rounds: number; word: string; drawer: Who; ends: number; guessed: boolean; aiGot: boolean; aiTried: string[]; used: Set<string>; dirty: boolean; scores: Scores };
 type Saved = { at: number; stage: Stage; other: string; guestId?: string; round: Round | null; scores: Scores; feed: Line[]; strokes: Stroke[]; game?: Omit<Game, "used" | "dirty"> & { used: string[] } };
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim().replace(/s$/, "");
-const blanks = (w: string) => w.replace(/[a-z]/gi, "_ ").trim();
+export const norm = (s: string) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim().replace(/s$/, "");
+export const blanks = (w: string) => w.replace(/[a-z]/gi, "_ ").trim();
 const clip = (v: unknown, n: number) => String(v ?? "").slice(0, n);
 const cleanName = (v: unknown) => clip(v, 20).replace(/[^\p{L}\p{N} .'-]/gu, "").trim();
 const NO_SCORES: Scores = { host: 0, guest: 0, ai: 0 };
 const totalOf = (n: unknown) => (typeof n === "number" && n >= 1 && n <= 20 ? Math.round(n) : DEFAULT_ROUNDS);
 /** A stroke from the other player: real points in the canvas, a known colour, a sane size. */
-const okStroke = (st: unknown): st is Stroke => {
+export const okStroke = (st: unknown): st is Stroke => {
   const x = st as Stroke;
   return (
     !!x &&

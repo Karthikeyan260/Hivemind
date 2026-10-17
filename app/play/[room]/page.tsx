@@ -7,6 +7,7 @@ import { LudoGame } from "@/components/games/ludo-game";
 import { CardsGame } from "@/components/games/cards-game";
 import { ChessVsFriend } from "@/components/games/chess/vs-friend";
 import { DotsGame } from "@/components/games/dots-game";
+import { PartyTable } from "@/components/games/party-table";
 
 /**
  * A friend's side of Draw & Guess (open to anyone with the link, no password): only the game, never
@@ -27,8 +28,8 @@ function Play() {
   const host = (params.get("from") || "Your friend").slice(0, 30);
   // Which game the link is for (the same room serves every game; Draw & Guess when not given).
   const g = params.get("g");
-  const game = g === "ludo" || g === "cards" || g === "chess" || g === "dots" ? g : "draw";
-  const title = game === "ludo" ? "Ludo" : game === "cards" ? "Colour Clash" : game === "chess" ? "Chess" : game === "dots" ? "Dots & Boxes" : "Draw & Guess";
+  const game = g === "ludo" || g === "cards" || g === "chess" || g === "dots" || g === "party" ? g : "draw";
+  const title = game === "party" ? "Game night" : game === "ludo" ? "Ludo" : game === "cards" ? "Colour Clash" : game === "chess" ? "Chess" : game === "dots" ? "Dots & Boxes" : "Draw & Guess";
   const key = `hm-play-${room}`;
   const [name, setName] = useState("");
   const [joined, setJoined] = useState(false);
@@ -48,7 +49,15 @@ function Play() {
   return (
     <main className="min-h-dvh bg-bg px-4 pb-[env(safe-area-inset-bottom)] pt-[max(1rem,env(safe-area-inset-top))] text-fg">
       <div className="mb-3 font-mono text-[11px] tracking-[0.3em] text-faint">HIVEMIND · {title.toUpperCase()}</div>
-      {joined && game === "chess" ? (
+      {joined && game === "party" ? (
+        <PartyTable
+          role="guest"
+          room={room}
+          myName={name.trim() || "Guest"}
+          hostName={host}
+          onHostAway={() => void fetch("/api/games/knock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room, name: name.trim(), game: "party" }) }).catch(() => {})}
+        />
+      ) : joined && game === "chess" ? (
         <ChessVsFriend
           role="guest"
           room={room}
@@ -99,11 +108,9 @@ function Play() {
           }}
           className="mx-auto mt-16 flex max-w-xs flex-col gap-3 text-center"
         >
-          <h1 className="text-xl font-semibold">
-            {host} challenged you to {title}
-          </h1>
+          <h1 className="text-xl font-semibold">{game === "party" ? `${host} invited you to game night` : `${host} challenged you to ${title}`}</h1>
           <p className="text-sm text-soft">
-            {game === "ludo" ? "Classic Ludo, you against your friend (and maybe HIVEMIND bots)." : game === "cards" ? "The colour-matching card game: match the colour or number, and don't forget to call Last card!" : game === "chess" ? "A game of chess with a clock, voice on." : game === "dots" ? "Take turns drawing lines between dots. Close a box to claim it and go again: most boxes wins." : "Take turns drawing and guessing. HIVEMIND, an AI, plays too."} Allow the microphone to talk while you play.
+            {game === "party" ? "Join the lobby: when everyone's here, they pick the game (Colour Clash, Ludo and more) and you all play together." : game === "ludo" ? "Classic Ludo, you against your friend (and maybe HIVEMIND bots)." : game === "cards" ? "The colour-matching card game: match the colour or number, and don't forget to call Last card!" : game === "chess" ? "A game of chess with a clock, voice on." : game === "dots" ? "Take turns drawing lines between dots. Close a box to claim it and go again: most boxes wins." : "Take turns drawing and guessing. HIVEMIND, an AI, plays too."} Allow the microphone to talk while you play.
           </p>
           <input value={name} onChange={(e) => setName(e.target.value.slice(0, 20))} placeholder="Your name" aria-label="Your name" className="rounded-full border border-line bg-panel px-4 py-3 text-center text-sm" />
           <button type="submit" className="rounded-full bg-core py-3 text-sm font-semibold text-core-ink">

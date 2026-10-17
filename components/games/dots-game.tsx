@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { botLine, drawLine, leaders, lineAt, newDots, scores, type DotsState, type GridSize } from "@/lib/games/dots";
+import { type Party, usePartyGame } from "@/lib/games/party";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { gameKey, recordResult } from "@/lib/games/record";
 import { sfx } from "@/lib/sfx";
@@ -54,6 +55,7 @@ export function DotsGame({
   hostName = "Host",
   onHostAway,
   solo = false,
+  party = null,
 }: {
   role: "host" | "guest";
   room: string;
@@ -62,8 +64,11 @@ export function DotsGame({
   onHostAway?: () => void;
   /** Just the owner against HIVEMIND, on this device. */
   solo?: boolean;
+  /** Game night: the seats are the people in the lobby (up to 4), over the party's connection. */
+  party?: Party | null;
 }) {
-  const me = role; // seat id
+  const isHost = party ? party.role === "host" : role === "host";
+  const me = party ? party.me : role; // seat id
   const sRef = useRef<DotsState | null>(null);
   const publishRef = useRef<(s: DotsState) => void>(() => {});
   const apply = useCallback((fn: (s: DotsState) => DotsState) => {
@@ -75,7 +80,7 @@ export function DotsGame({
       publishRef.current(next);
     }
   }, []);
-  const { stage, err, other, state: s, publish, act, forget, voiceOn, muted, toggleMute, noMic, knocked, audioRef, connected } = usePeerGame<DotsState, Action>({
+  const peerNet = usePeerGame<DotsState, Action>({
     role,
     kind: "dots",
     room,
@@ -86,7 +91,11 @@ export function DotsGame({
     // The friend's taps, as the friend's seat only.
     onAction: (a) => apply((cur) => (a?.type === "line" ? drawLine(cur, "guest", Number(a.line)) : cur)),
     solo,
+    off: !!party,
   });
+  // Game night: a line counts for the seat that sent it (the rules only accept that seat's own turn).
+  const partyNet = usePartyGame<DotsState, Action>(party, "dots", { accept: okState, onAction: (from, a) => apply((cur) => (a?.type === "line" ? drawLine(cur, from, Number(a.line)) : cur)) });
+  const { stage, err, other, state: s, publish, act, forget, voiceOn, muted, toggleMute, noMic, knocked, audioRef, connected } = partyNet ?? peerNet;
   useEffect(() => {
     sRef.current = s;
     publishRef.current = publish;
@@ -98,6 +107,16 @@ export function DotsGame({
 
   function start(opt?: { bots?: boolean; size?: GridSize }) {
     const withBots = opt?.bots ?? bots;
+    // Game night: the first four in the lobby, plus one HIVEMIND player if wanted (and room).
+    const people = party ? party.players.filter((p) => p.online || p.host).slice(0, 4).map((p) => ({ id: p.id, name: p.name })) : null;
+    if (people) {
+      const extra = (withBots && people.length < 4) || people.length < 2 ? [{ id: "bot1", name: "HIVEMIND", bot: true }] : [];
+      const g = newDots([...people, ...extra], opt?.size ?? size);
+      sRef.current = g;
+      publish(g);
+      sfx.boot();
+      return;
+    }
     const players = solo
       ? withBots
         ? [
@@ -127,12 +146,15 @@ export function DotsGame({
 
   // Host: HIVEMIND takes its turns (only while the friend is connected, so nobody misses anything).
   useEffect(() => {
-    if (role !== "host" || !s || s.over || !connected) return;
+    if (!isHost || !s || s.over || !connected) return;
     const seat = s.seats[s.turn];
-    if (!seat?.bot) return;
-    const t = setTimeout(() => apply((cur) => (cur.seq !== s.seq ? cur : drawLine(cur, seat.id, botLine(cur) ?? -1))), 650);
+    if (!seat) return;
+    // Game night: a player who dropped out has HIVEMIND play for them until they're back.
+    const away = !!party && !seat.bot && seat.id !== "host" && !party.players.find((p) => p.id === seat.id)?.online;
+    if (!seat.bot && !away) return;
+    const t = setTimeout(() => apply((cur) => (cur.seq !== s.seq ? cur : drawLine(cur, seat.id, botLine(cur) ?? -1))), away ? 2500 : 650);
     return () => clearTimeout(t);
-  }, [role, s, connected, apply]);
+  }, [isHost, s, connected, apply, party]);
 
   // Sounds: a line, a box, the end.
   const lastSeq = s?.last?.seq;
@@ -149,7 +171,7 @@ export function DotsGame({
 
   // The owner's record: the host's device saves each finished game once.
   useEffect(() => {
-    if (role !== "host" || !s?.over) return;
+    if (!isHost || !s?.over) return;
     const top = leaders(s);
     const sc = scores(s);
     const mine = sc[0];
@@ -161,13 +183,13 @@ export function DotsGame({
       vs: solo ? "HIVEMIND" : other || "Friend",
       detail: `${mine} – ${theirs}`,
     });
-  }, [role, room, s, other, solo]);
+  }, [isHost, room, s, other, solo]);
 
   const myIndex = s ? s.seats.findIndex((x) => x.id === me) : -1;
   const myTurn = !!s && !s.over && s.turn === myIndex && connected;
   function doLine(i: number) {
     if (!myTurn || !s || s.lines[i] >= 0) return;
-    if (role === "host") apply((cur) => drawLine(cur, "host", i));
+    if (isHost) apply((cur) => drawLine(cur, "host", i));
     else act({ type: "line", line: i });
   }
 
@@ -177,7 +199,7 @@ export function DotsGame({
     dots_start: {
       description: "Dots & Boxes page: start a game. input: in words, a board size (3, 4, 5 or 6) and 'bots' for extra HIVEMIND players.",
       run: ({ input }) => {
-        if (role !== "host" || !connected) return { error: "Only the host can start, once everyone's here." };
+        if (!isHost || !connected) return { error: "Only the host can start, once everyone's here." };
         const t = String(input ?? "");
         const n = Number(t.match(/[3-6]/)?.[0]);
         start({ size: (n >= 3 && n <= 6 ? n : undefined) as GridSize | undefined, bots: /bot/i.test(t) || undefined });
@@ -227,7 +249,7 @@ export function DotsGame({
     stage === "connecting"
       ? "Connecting…"
       : stage === "waiting"
-        ? role === "host"
+        ? isHost
           ? "Waiting for your friend to open the link…"
           : knocked
             ? `Waiting for ${hostName}… we sent them a notification, it connects as soon as they open the game.`
@@ -239,7 +261,7 @@ export function DotsGame({
             : !s
               ? solo
                 ? "You against HIVEMIND. Pick a board and start."
-                : role === "host"
+                : isHost
                   ? `${other} is here! Pick a board and start.`
                   : `Connected! ${hostName} is setting up the game.`
               : s.over
@@ -263,7 +285,7 @@ export function DotsGame({
           </span>
         ))}
         {!s && <span className="text-lg font-black tracking-tight">DOTS &amp; BOXES</span>}
-        <span className={cx("ml-auto", solo && "hidden")}>
+        <span className={cx("ml-auto", (solo || party) && "hidden")}>
           {voiceOn ? (
             <button type="button" onClick={toggleMute} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", muted ? "border-alert text-alert" : "border-ok/50 text-ok")}>
               {muted ? <MicOff size={13} /> : <Mic size={13} />} {muted ? "Muted" : "Voice on"}
@@ -280,12 +302,12 @@ export function DotsGame({
 
       {s?.over && <Result s={s} me={myIndex} />}
 
-      {role === "host" && connected && (!s || s.over) && (
+      {isHost && connected && (!s || s.over) && (
         <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-1 text-soft">Players:</span>
             <Choice on={!bots} onClick={() => setBots(false)}>
-              {solo ? "Me vs HIVEMIND" : "Just us two"}
+              {solo ? "Me vs HIVEMIND" : party ? `Just us (${Math.min(4, party.players.filter((p) => p.online || p.host).length)})` : "Just us two"}
             </Choice>
             <Choice on={bots} onClick={() => setBots(true)}>
               {solo ? "Me vs 2 HIVEMIND bots" : "+ HIVEMIND"}

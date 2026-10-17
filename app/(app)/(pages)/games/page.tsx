@@ -1,9 +1,10 @@
-import { Music2, PenLine, Dices, Layers, Crown, Grid3x3 } from "lucide-react";
+import { Music2, PenLine, Dices, Layers, Crown, Grid3x3, Users } from "lucide-react";
 import Link from "next/link";
 import { GameRecord } from "@/components/games/game-record";
 import { PageHeader } from "@/components/ui";
 
 const GAMES = [
+  { href: "/games/party", icon: Users, title: "Game night", who: "you + up to 5 friends", about: "One link for all your friends. They join the lobby, you pick the game (Colour Clash or Ludo, more soon) and everyone plays together, then the next one. Voice on." },
   { href: "/games/paattu", icon: Music2, title: "Paattu Quiz", who: "1 player", about: "Hear a few seconds of a Tamil song and guess the film. Anirudh, Rahman, Ilaiyaraaja, Vijay hits and more." },
   { href: "/games/chess", icon: Crown, title: "Chess", who: "vs HIVEMIND bot, or a friend online", about: "Play HIVEMIND's bot from Beginner to Hard, or a friend through your link with a clock: 1 min bullet, 3 | 2 blitz, 10 min rapid and more. Voice on with friends." },
   { href: "/games/cards", icon: Layers, title: "Colour Clash", who: "vs HIVEMIND, or a friend online", about: "The colour-matching card game (Uno-style) against HIVEMIND, or a friend on their own phone: match colours and numbers, Skip, Reverse, +2, Wild +4, and call Last card! Voice on." },

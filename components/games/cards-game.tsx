@@ -28,6 +28,7 @@ import {
   type CardColor,
   type CardsState,
 } from "@/lib/games/cards";
+import { type Party, usePartyGame } from "@/lib/games/party";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { sfx } from "@/lib/sfx";
 
@@ -72,6 +73,7 @@ export function CardsGame({
   hostName = "Host",
   onHostAway,
   solo = false,
+  party = null,
 }: {
   role: "host" | "guest";
   room: string;
@@ -80,8 +82,11 @@ export function CardsGame({
   onHostAway?: () => void;
   /** Just the owner against HIVEMIND's bots, on this device. */
   solo?: boolean;
+  /** Game night: the seats are the people in the lobby, over the party's connection. */
+  party?: Party | null;
 }) {
-  const me = role;
+  const isHost = party ? party.role === "host" : role === "host";
+  const me = party ? party.me : role;
   const sRef = useRef<CardsState | null>(null);
   const publishRef = useRef<(s: CardsState) => void>(() => {});
   const apply = useCallback((fn: (s: CardsState) => CardsState) => {
@@ -115,7 +120,7 @@ export function CardsGame({
       ),
     [apply],
   );
-  const net = usePeerGame<CardsState, Action>({
+  const peerNet = usePeerGame<CardsState, Action>({
     role,
     kind: "cards",
     room,
@@ -126,7 +131,11 @@ export function CardsGame({
     viewForGuest: (s) => viewFor(s, "guest"),
     onAction: (a) => act("guest", a),
     solo,
+    off: !!party,
   });
+  // Game night: each player sees only their own hand; a move counts for the seat that sent it.
+  const partyNet = usePartyGame<CardsState, Action>(party, "cards", { accept: okState, viewFor: (st, id) => viewFor(st, id), onAction: (from, a) => act(from, a) });
+  const net = partyNet ?? peerNet;
   const {
     stage,
     err,
@@ -150,6 +159,15 @@ export function CardsGame({
   const [bots, setBots] = useState(false);
   const [picking, setPicking] = useState<number | null>(null);
   function start(withBots = bots) {
+    // Game night: everyone in the lobby (up to 6), topped up to 4 with HIVEMIND bots if wanted.
+    const people = party ? party.players.filter((p) => p.online || p.host).slice(0, 6).map((p) => ({ id: p.id, name: p.name })) : null;
+    if (people) {
+      const fill = withBots ? Math.max(0, 4 - people.length) : people.length < 2 ? 1 : 0;
+      const g = newCardGame([...people, ...Array.from({ length: fill }, (_, i) => ({ id: `bot${i + 1}`, name: i ? `HIVEMIND ${i + 1}` : "HIVEMIND", bot: true }))], rand);
+      sRef.current = g;
+      publish(g);
+      return;
+    }
     const players = solo
       ? withBots
         ? [
@@ -180,9 +198,11 @@ export function CardsGame({
 
   // Host: HIVEMIND's bots play their turns (only while the friend is connected).
   useEffect(() => {
-    if (role !== "host" || !s || s.winner || !connected) return;
+    if (!isHost || !s || s.winner || !connected) return;
     const seat = s.seats[s.turn];
-    if (!seat.bot) return;
+    // Game night: a player who dropped out has HIVEMIND play for them until they're back.
+    const away = !!party && !seat.bot && seat.id !== "host" && !party.players.find((p) => p.id === seat.id)?.online;
+    if (!seat.bot && !away) return;
     const t = setTimeout(() => {
       const cur = sRef.current;
       if (!cur || cur.seq !== s.seq) return;
@@ -191,9 +211,9 @@ export function CardsGame({
         if (m.call) act(seat.id, { type: "last" });
         act(seat.id, { type: "play", card: m.card, color: m.color });
       } else act(seat.id, m);
-    }, 1100);
+    }, away ? 2500 : 1100);
     return () => clearTimeout(t);
-  }, [role, s, connected, act]);
+  }, [isHost, s, connected, act, party]);
 
   // Sounds for what just happened.
   const lastSeq = s?.last?.seq;
@@ -210,7 +230,7 @@ export function CardsGame({
   }, [won]);
   // The owner's record: the host's device saves each finished game once.
   useEffect(() => {
-    if (role !== "host" || !s?.winner) return;
+    if (!isHost || !s?.winner) return;
     const bots = s.seats.some((x) => x.bot);
     recordResult(`cards-${solo ? "solo" : room}-${gameKey(s.seq, s.winner, ...s.seats.map((x) => x.id))}`, {
       game: "cards",
@@ -219,14 +239,14 @@ export function CardsGame({
       vs: solo ? "HIVEMIND" : other || "Friend",
       detail: s.winner === "host" ? (bots ? "with HIVEMIND bots" : undefined) : `${s.seats.find((x) => x.id === s.winner)?.name ?? "?"} won`,
     });
-  }, [role, room, s, other, solo]);
+  }, [isHost, room, s, other, solo]);
 
   const myTurn = !!s && !s.winner && s.seats[s.turn]?.id === me && connected;
   const mine = s?.hands[me] ?? [];
   const canPlayIds = new Set(myTurn ? playable(s!).map((c) => c.id) : []);
   function doAct(a: Action) {
     if (!myTurn) return;
-    if (role === "host") act("host", a);
+    if (isHost) act("host", a);
     else net.act(a);
   }
   function tapCard(c: Card) {
@@ -240,7 +260,7 @@ export function CardsGame({
     stage === "connecting"
       ? "Connecting…"
       : stage === "waiting"
-        ? role === "host"
+        ? isHost
           ? "Waiting for your friend to open the link…"
           : knocked
             ? `Waiting for ${hostName}… we sent them a notification, it connects as soon as they open the game.`
@@ -252,7 +272,7 @@ export function CardsGame({
             : !s
               ? solo
                 ? "You against HIVEMIND. Choose and deal."
-                : role === "host"
+                : isHost
                 ? `${other} is here! Choose and start.`
                 : `Connected! ${hostName} is setting up the game.`
               : s.winner
@@ -272,7 +292,7 @@ export function CardsGame({
     cards_deal: {
       description: "Colour Clash page: deal a new game. input: 'bots' for a 4-player table with HIVEMIND bots, else just the two players.",
       run: ({ input }) => {
-        if (role !== "host" || !connected) return { error: "Only the host can deal, once everyone's here." };
+        if (!isHost || !connected) return { error: "Only the host can deal, once everyone's here." };
         start(/bot|four|4/i.test(String(input ?? "")));
         return { dealt: true };
       },
@@ -355,7 +375,7 @@ export function CardsGame({
         <span className="bg-gradient-to-r from-[#e5484d] via-[#f5b400] to-[#2f7fe8] bg-clip-text text-lg font-black italic tracking-tight text-transparent">
           COLOUR CLASH
         </span>
-        <span className={cx("ml-auto", solo && "hidden")}>
+        <span className={cx("ml-auto", (solo || party) && "hidden")}>
           {voiceOn ? (
             <button
               type="button"
@@ -400,7 +420,7 @@ export function CardsGame({
         </p>
       )}
 
-      {role === "host" && connected && (!s || s.winner) && (
+      {isHost && connected && (!s || s.winner) && (
         <div className="flex flex-col gap-3 rounded-2xl border border-line bg-panel p-4 text-sm">
           <div className="flex flex-wrap items-center gap-2">
             <span className="mr-1 text-soft">Players:</span>
@@ -417,7 +437,7 @@ export function CardsGame({
                     : "border-line text-soft hover:text-fg",
                 )}
               >
-                {solo ? (b ? "🤖🤖🤖 vs 3 HIVEMIND bots" : "🤖 Just me vs HIVEMIND") : b ? "🤖 + 2 HIVEMIND bots" : "👥 Just us two"}
+                {solo ? (b ? "🤖🤖🤖 vs 3 HIVEMIND bots" : "🤖 Just me vs HIVEMIND") : party ? (b ? "🤖 Fill the table to 4 with bots" : `👥 Just us (${party.players.filter((p) => p.online || p.host).length})`) : b ? "🤖 + 2 HIVEMIND bots" : "👥 Just us two"}
               </button>
             ))}
           </div>
@@ -768,7 +788,7 @@ export function CardsGame({
                   ? "YOU WIN! 🎉"
                   : `${s.seats.find((x) => x.id === s.winner)?.name} wins!`}
               </div>
-              {role === "guest" && (
+              {!isHost && (
                 <div className="mt-1 text-sm text-white/80">
                   {hostName} can start the next game.
                 </div>

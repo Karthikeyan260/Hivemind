@@ -4,6 +4,7 @@ import { Chess, type Color, type PieceSymbol, type Square } from "chess.js";
 import { Flag, Handshake, Mic, MicOff, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "@/components/ui";
+import { type Party, usePartyGame } from "@/lib/games/party";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { sfx } from "@/lib/sfx";
 import { Board, captured, Taken } from "./board";
@@ -29,6 +30,8 @@ type Net = {
   result: Result;
   drawOffer: Side | null;
   names: Record<Side, string>;
+  /** Game night: which friend plays the "guest" side (everyone else watches). */
+  guestId?: string;
   seq: number;
 };
 type Action = { type: "move"; san: string } | { type: "resign" } | { type: "draw"; answer?: boolean };
@@ -39,8 +42,23 @@ const okState = (s: unknown): s is Net => {
 };
 const colourOf = (n: Net, side: Side): Color => (n.white === side ? "w" : "b");
 
-export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAway }: { role: Side; room: string; myName: string; hostName?: string; onHostAway?: () => void }) {
-  const me = role;
+export function ChessVsFriend({
+  role,
+  room,
+  myName,
+  hostName = "Host",
+  onHostAway,
+  party = null,
+}: {
+  role: Side;
+  room: string;
+  myName: string;
+  hostName?: string;
+  onHostAway?: () => void;
+  /** Game night: the owner plays one friend they pick; everyone else watches. */
+  party?: Party | null;
+}) {
+  const isHost = party ? party.role === "host" : role === "host";
   const stateRef = useRef<Net | null>(null);
   const publishRef = useRef<(s: Net) => void>(() => {});
   /** Host: when the side to move started (this device's clock). */
@@ -94,8 +112,17 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
     [apply, move],
   );
 
-  const net = usePeerGame<Net, Action>({ role, kind: "chess", room, myName, hostName, onHostAway, accept: okState, onAction: (a) => onAction("guest", a) });
-  const { stage, err, other, state: s, publish, forget, voiceOn, muted, toggleMute, noMic, knocked, audioRef, connected } = net;
+  const peerNet = usePeerGame<Net, Action>({ role, kind: "chess", room, myName, hostName, onHostAway, accept: okState, onAction: (a) => onAction("guest", a), off: !!party });
+  // Game night: only the friend playing the other side may move; watchers' taps are ignored.
+  const partyNet = usePartyGame<Net, Action>(party, "chess", { accept: okState, onAction: (from, a) => from === stateRef.current?.guestId && onAction("guest", a) });
+  const net = partyNet ?? peerNet;
+  const { stage, err, state: s, publish, forget, voiceOn, muted, toggleMute, noMic, knocked, audioRef } = net;
+  // At game night "the other player" is the friend picked to play; the clock pauses while they're away.
+  const opponent = party && s?.guestId ? party.players.find((p) => p.id === s.guestId) : null;
+  const other = party ? (opponent?.name ?? "") : net.other;
+  const connected = party ? net.connected && (isHost ? !s || !!opponent?.online : true) : net.connected;
+  // Who I am in this game: a side, or (game night, not playing) a watcher.
+  const me: Side | null = isHost ? "host" : !party ? role : s?.guestId === party.me ? "guest" : null;
   useEffect(() => {
     stateRef.current = s;
     publishRef.current = publish;
@@ -103,7 +130,7 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
 
   // The owner's record: the host's device saves each finished game once.
   useEffect(() => {
-    if (role !== "host" || !s?.result) return;
+    if (!isHost || !s?.result) return;
     const mine = colourOf(s, "host");
     recordResult(`chess-friend-${room}-${gameKey(...s.history, s.result.reason, s.white)}`, {
       game: "chess",
@@ -112,17 +139,22 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
       vs: s.names.guest,
       detail: s.result.reason,
     });
-  }, [role, room, s]);
+  }, [isHost, room, s]);
 
   // Host settings for a new game.
   const [tc, setTc] = useState<TimeControl>({ base: 10, inc: 0 });
   const [colour, setColour] = useState<"w" | "b" | "random">("random");
+  const friends = party ? party.players.filter((p) => !p.host && p.online) : [];
+  const [rival, setRival] = useState("");
+  const rivalId = friends.some((f) => f.id === rival) ? rival : (friends[0]?.id ?? "");
   function start(rematch = false) {
     const prev = stateRef.current;
+    const gid = party ? (rematch && prev?.guestId ? prev.guestId : rivalId) : undefined;
+    const gname = party ? (party.players.find((p) => p.id === gid)?.name ?? "Friend") : other || "Friend";
     const hostWhite = rematch && prev ? prev.white !== "host" : colour === "random" ? Math.random() < 0.5 : colour === "w";
     const t = rematch && prev ? prev.tc : tc;
     turnStart.current = Date.now();
-    const g: Net = { history: [], white: hostWhite ? "host" : "guest", tc: t, clock: t ? { w: t.base * 60_000, b: t.base * 60_000 } : null, used: 0, paused: false, result: null, drawOffer: null, names: { host: myName, guest: other || "Friend" }, seq: (prev?.seq ?? 0) + 1 };
+    const g: Net = { history: [], white: hostWhite ? "host" : "guest", tc: t, clock: t ? { w: t.base * 60_000, b: t.base * 60_000 } : null, used: 0, paused: false, result: null, drawOffer: null, names: { host: myName, guest: gname }, guestId: gid, seq: (prev?.seq ?? 0) + 1 };
     stateRef.current = g;
     publish(g);
     sfx.boot();
@@ -130,7 +162,7 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
 
   // Host: the clock pauses while the friend is away, and a flag falls at zero.
   useEffect(() => {
-    if (role !== "host") return;
+    if (!isHost) return;
     const cur = stateRef.current;
     if (!cur || cur.result || !cur.clock) return;
     const c = new Chess();
@@ -142,9 +174,9 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
       turnStart.current = Date.now();
       apply((x) => ({ ...x, paused: false, seq: x.seq + 1 }));
     }
-  }, [role, connected, apply, s?.seq]);
+  }, [isHost, connected, apply, s?.seq]);
   useEffect(() => {
-    if (role !== "host" || !s?.clock || s.result || s.paused) return;
+    if (!isHost || !s?.clock || s.result || s.paused) return;
     const t = setInterval(() => {
       const cur = stateRef.current;
       if (!cur?.clock || cur.result || cur.paused) return;
@@ -154,7 +186,7 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
       if (cur.clock[turn] - (Date.now() - turnStart.current) <= 0) apply((x) => ({ ...x, clock: { ...x.clock!, [turn]: 0 }, result: { winner: turn === "w" ? "b" : "w", reason: "time" }, seq: x.seq + 1 }));
     }, 200);
     return () => clearInterval(t);
-  }, [role, s?.clock, s?.result, s?.paused, apply]);
+  }, [isHost, s?.clock, s?.result, s?.paused, apply]);
 
   // Both sides: the clock face ticks; the friend counts on from what the host sent.
   const [tick, setTick] = useState(0);
@@ -190,18 +222,19 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
     for (const m of history ?? []) c.move(m);
     return c;
   }, [history]);
-  const myColour: Color = s ? colourOf(s, me) : "w";
+  // A watcher sees the board from White's side.
+  const myColour: Color = s && me ? colourOf(s, me) : "w";
   const oppColour: Color = myColour === "w" ? "b" : "w";
   const turn = game.turn();
-  const live = connected && !!s && !s.result && !s.paused;
+  const live = connected && !!s && !s.result && !s.paused && !!me;
 
   function onMove(from: Square, to: Square, promotion?: PieceSymbol) {
     const m = game.moves({ verbose: true }).find((x) => x.from === from && x.to === to && (!x.promotion || x.promotion === (promotion ?? "q")));
     if (!m) return;
-    if (role === "host") move("host", m.san);
-    else net.act({ type: "move", san: m.san });
+    if (isHost) move("host", m.san);
+    else if (me) net.act({ type: "move", san: m.san });
   }
-  const send = (a: Action) => (role === "host" ? onAction("host", a) : net.act(a));
+  const send = (a: Action) => (isHost ? onAction("host", a) : me ? net.act(a) : undefined);
 
   // Clock faces: the side to move counts down from the start of its turn.
   const clockOf = (c: Color): number | null => {
@@ -215,7 +248,7 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
     stage === "connecting"
       ? "Connecting…"
       : stage === "waiting"
-        ? role === "host"
+        ? isHost
           ? "Waiting for your friend to open the link…"
           : knocked
             ? `Waiting for ${hostName}… we sent them a notification, it connects as soon as they open the game.`
@@ -225,10 +258,12 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
           : stage === "error"
             ? err
             : !s
-              ? role === "host"
+              ? isHost
                 ? `${other} is here! Choose the time and start.`
                 : `Connected! ${hostName} is setting up the game.`
-              : "";
+              : !me && s
+                ? `Watching: ${s.names.host} vs ${s.names.guest}`
+                : "";
   const names: Record<Color, string> = s ? { [colourOf(s, "host")]: s.names.host, [colourOf(s, "guest")]: s.names.guest } as Record<Color, string> : { w: "", b: "" };
   const end = s?.result ? resultText(s.result, myColour, names) : null;
   const { taken, lead } = captured(s?.history ?? []);
@@ -238,7 +273,7 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
       <audio ref={audioRef} autoPlay playsInline />
       <div className="flex items-center gap-2">
         {status && <p className={cx("text-sm", stage === "error" ? "text-alert" : stage === "reconnecting" ? "animate-pulse text-core" : "text-soft")}>{status}</p>}
-        <span className="ml-auto">
+        <span className={cx("ml-auto", party && "hidden")}>
           {voiceOn ? (
             <button type="button" onClick={toggleMute} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", muted ? "border-alert text-alert" : "border-ok/50 text-ok")}>
               {muted ? <MicOff size={13} /> : <Mic size={13} />} {muted ? "Muted" : "Voice on"}
@@ -252,8 +287,19 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
       </div>
 
 
-      {role === "host" && connected && !s && (
+      {isHost && (party ? !s : connected && !s) && (
         <div className="flex flex-col gap-4 rounded-2xl border border-line bg-panel p-4">
+          {party && (
+            <div>
+              <p className="mb-2 text-sm font-semibold">Play against</p>
+              {friends.length ? (
+                <Pick options={friends.map((f) => ({ value: f.id, label: f.name }))} value={rivalId} onChange={setRival} />
+              ) : (
+                <p className="text-sm text-soft">Waiting for a friend in the lobby…</p>
+              )}
+              <p className="mt-1 text-xs text-faint">Everyone else watches the game live.</p>
+            </div>
+          )}
           <div>
             <p className="mb-2 text-sm font-semibold">Time control</p>
             <TimePicker value={tc} onChange={setTc} />
@@ -270,7 +316,7 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
               onChange={setColour}
             />
           </div>
-          <button type="button" onClick={() => start()} className="self-start rounded-full bg-core px-6 py-2.5 text-base font-bold text-core-ink shadow-lg transition-transform hover:scale-105">
+          <button type="button" onClick={() => start()} disabled={!!party && !rivalId} className="self-start rounded-full bg-core px-6 py-2.5 text-base font-bold text-core-ink shadow-lg transition-transform hover:scale-105 disabled:opacity-50">
             Start game
           </button>
         </div>
@@ -284,7 +330,7 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
               <Board history={s.history} orientation={myColour} canMove={live} onMove={onMove} />
               {s.drawOffer && !s.result && (
                 <div className="absolute inset-x-3 top-3 z-10 flex flex-wrap items-center justify-center gap-2 rounded-xl bg-black/80 p-3 text-sm text-white">
-                  {s.drawOffer === me ? (
+                  {s.drawOffer === me || !me ? (
                     "You offered a draw…"
                   ) : (
                     <>
@@ -303,7 +349,7 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-lg bg-black/55 backdrop-blur-[2px]">
                   <div className="text-3xl font-black text-white drop-shadow">{end.title}</div>
                   <div className="mt-1 text-sm text-white/80">{end.sub}</div>
-                  {role === "host" ? (
+                  {isHost ? (
                     connected && (
                       <button type="button" onClick={() => start(true)} className="mt-4 flex items-center gap-1.5 rounded-full bg-core px-5 py-2 font-bold text-core-ink">
                         <RotateCcw size={16} /> Rematch (swap colours)
@@ -315,14 +361,14 @@ export function ChessVsFriend({ role, room, myName, hostName = "Host", onHostAwa
                 </div>
               )}
             </div>
-            <PlayerBar name={`${myName} (you)`} active={!s.result && turn === myColour} clock={clockOf(myColour)} taken={<Taken pieces={taken[myColour]} by={myColour} lead={myColour === "w" ? lead : -lead} />} />
+            <PlayerBar name={me ? `${myName} (you)` : names[myColour]} active={!s.result && turn === myColour} clock={clockOf(myColour)} taken={<Taken pieces={taken[myColour]} by={myColour} lead={myColour === "w" ? lead : -lead} />} />
           </div>
           <div className="flex flex-col gap-3">
             <div className="text-xs text-soft">
-              {tcLabel(s.tc)} · you play {myColour === "w" ? "White" : "Black"}
+              {tcLabel(s.tc)} · {me ? `you play ${myColour === "w" ? "White" : "Black"}` : "you're watching"}
               {s.paused && " · paused"}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className={cx("grid grid-cols-2 gap-2", !me && "hidden")}>
               <Action onClick={() => send({ type: "draw" })} disabled={!live || !!s.drawOffer || s.history.length < 2} icon={<Handshake size={16} />}>
                 Offer draw
               </Action>

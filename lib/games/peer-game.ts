@@ -44,6 +44,8 @@ type Opts<S, A> = {
   viewForGuest?: (s: S) => S;
   /** Just the owner and HIVEMIND's bots, no friend: nothing goes over the network. */
   solo?: boolean;
+  /** Not used (the game runs inside game night, lib/games/party): no connection at all. */
+  off?: boolean;
 };
 
 const SOLO_KEEP_MS = 7 * 24 * 60 * 60_000;
@@ -149,9 +151,9 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
   }, []);
 
   useEffect(() => {
-    const { role, kind, room, solo } = opts.current;
-    // Solo: nobody to connect to.
-    if (solo) return;
+    const { role, kind, room, solo, off } = opts.current;
+    // Solo: nobody to connect to. Off: the party connection is used instead.
+    if (solo || off) return;
     let alive = true;
     const timers = new Set<ReturnType<typeof setTimeout>>();
     const later = (fn: () => void, ms: number) => {
