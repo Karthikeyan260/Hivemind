@@ -1043,3 +1043,12 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
 .snakes-banner { animation: snakes-banner 0.45s cubic-bezier(.2,1.4,.4,1); }
 @keyframes snakes-banner { 0% { transform: scale(0.4); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .snakes-banner { animation: none; } }
+
+/* Bingo: the called ball pops in, a called number gets slashed, a box you can call glows. */
+.bingo-pop { animation: bingo-pop 0.55s cubic-bezier(.2,1.5,.4,1); }
+@keyframes bingo-pop { 0% { transform: translateY(-30%) scale(0.2) rotate(-40deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.bingo-slash line { stroke-dasharray: 100; stroke-dashoffset: 100; animation: bingo-slash 0.35s ease-out forwards; }
+@keyframes bingo-slash { to { stroke-dashoffset: 0; } }
+.bingo-hint { animation: bingo-hint 1.1s ease-in-out infinite; }
+@keyframes bingo-hint { 0%, 100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); } 50% { box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.85); } }
+@media (prefers-reduced-motion: reduce) { .bingo-pop, .bingo-hint { animation: none; } .bingo-slash line { animation: none; stroke-dashoffset: 0; } }

@@ -48,6 +48,7 @@ export function spokenGame(said: string): PartyGameKind | null {
   if (/\bludo\b/.test(t)) return "ludo";
   if (/snakes?|ladders?|paramapadham/.test(t)) return "snakes";
   if (/business|monopoly|property game/.test(t)) return "business";
+  if (/bingo|housie|tambola/.test(t)) return "bingo";
   if (/\bchess\b/.test(t)) return "chess";
   if (/\bdots?\b|\bboxes\b/.test(t)) return "dots";
   if (/\bdraw(ing)?\b|\bguess\b|pictionary|sketch/.test(t)) return "draw";

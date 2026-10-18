@@ -37,6 +37,7 @@ export const VOICE_PAGES = [
   { path: "/games/draw", what: "Draw & Guess" },
   { path: "/games/ludo", what: "Ludo" },
   { path: "/games/snakes", what: "Snakes and Ladders" },
+  { path: "/games/bingo", what: "Bingo (also housie or tambola)" },
   { path: "/games/business", what: "Business (the Indian property game)" },
   { path: "/games/cards", what: "Colour Clash (cards, like Uno)" },
   { path: "/games/chess", what: "Chess" },

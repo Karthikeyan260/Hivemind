@@ -1,6 +1,6 @@
 /** Browser side of the host check (see peerProof in lib/session.ts). */
 /** "snakes" and "business" are only ever played on this device or at game night (their kind names the saved game). */
-export type PeerKind = "call" | "draw" | "ludo" | "cards" | "chess" | "dots" | "party" | "snakes" | "business";
+export type PeerKind = "call" | "draw" | "ludo" | "cards" | "chess" | "dots" | "party" | "snakes" | "business" | "bingo";
 
 const post = (path: string, body: unknown) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 

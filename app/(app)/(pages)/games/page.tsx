@@ -1,4 +1,4 @@
-import { Music2, PenLine, Dices, Layers, Crown, Grid3x3, Users, Spline, Building2 } from "lucide-react";
+import { Music2, PenLine, Dices, Layers, Crown, Grid3x3, Hash, Users, Spline, Building2 } from "lucide-react";
 import Link from "next/link";
 import { GameRecord } from "@/components/games/game-record";
 import { PageHeader } from "@/components/ui";
@@ -9,6 +9,7 @@ const GAMES = [
   { href: "/games/chess", icon: Crown, title: "Chess", who: "vs HIVEMIND bot, or a friend online", about: "Play HIVEMIND's bot from Beginner to Hard, or a friend through your link with a clock: 1 min bullet, 3 | 2 blitz, 10 min rapid and more. Voice on with friends." },
   { href: "/games/cards", icon: Layers, title: "Colour Clash", who: "vs HIVEMIND, or a friend online", about: "The colour-matching card game (Uno-style) against HIVEMIND, or a friend on their own phone: match colours and numbers, Skip, Reverse, +2, Wild +4, and call Last card! Voice on." },
   { href: "/games/business", icon: Building2, title: "Business", who: "vs HIVEMIND, or at game night", about: "The Indian property game: buy Agra to Mumbai, collect rent, build houses and hotels, and bankrupt everyone else. Set a round limit for a quicker game." },
+  { href: "/games/bingo", icon: Hash, title: "Bingo", who: "vs HIVEMIND, or at game night", about: "The pen-and-paper game: fill a 5×5 card with 1–25 your way, take turns calling numbers, and every complete row, column or diagonal earns a letter of B-I-N-G-O. Spell it first to win. Up to 6 players." },
   { href: "/games/snakes", icon: Spline, title: "Snakes & Ladders", who: "vs HIVEMIND, or at game night", about: "The classic: roll, climb the ladders, slide down the snakes, and land exactly on 100 to win. Up to 6 players." },
   { href: "/games/ludo", icon: Dices, title: "Ludo", who: "vs HIVEMIND, or a friend online", about: "Classic Ludo against HIVEMIND, or a friend on their own phone through your link, voice on. Add two HIVEMIND bots for a full 4-player board, or play quick with 2 tokens each." },
   { href: "/games/dots", icon: Grid3x3, title: "Dots & Boxes", who: "vs HIVEMIND, or a friend online", about: "Draw lines between dots, close a box to claim it and go again. Simple to learn, sneaky to master: don't hand your opponent a chain of boxes." },

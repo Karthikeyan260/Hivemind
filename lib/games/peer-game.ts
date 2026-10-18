@@ -56,6 +56,8 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
   const [saved] = useState(() => {
     try {
       const v = JSON.parse(store(o.solo).getItem(KEY) ?? "null") as { at: number; state: S | null; other: string; guestId?: string } | null;
+      // A game saved by an older version of the game (a different shape) is dropped, not restored.
+      if (v?.state && o.accept && !o.accept(v.state)) return null;
       return v && Date.now() - v.at < (o.solo ? SOLO_KEEP_MS : KEEP_MS) ? v : null;
     } catch {
       return null;
