@@ -224,9 +224,12 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
 
       {s && (
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-          <Board s={s} me={me} sel={sel} onSel={setSel}>
-            <Middle s={s} me={me} myTurn={myTurn} sel={sel} canBuild={myBuild} manualEnd={manualEnd} send={send} onSel={setSel} />
-          </Board>
+          <div className="flex min-w-0 flex-col gap-2">
+            <Board s={s} me={me} sel={sel} onSel={setSel}>
+              <Middle s={s} me={me} myTurn={myTurn} sel={sel} onSel={setSel} />
+            </Board>
+            <Actions s={s} me={me} myTurn={myTurn} sel={sel} canBuild={myBuild} manualEnd={manualEnd} send={send} />
+          </div>
           <div className="flex flex-col gap-3">
             {s.over && <Podium s={s} me={me} />}
             <Players s={s} me={me} onSel={setSel} />
@@ -447,18 +450,15 @@ function Deed({ s, sq, me }: { s: BizState; sq: number; me: string }) {
 }
 
 /** The middle of the board: the logo, the dice, whose turn, a card drawn, and what can be done now. */
-function Middle({ s, me, myTurn, sel, canBuild, manualEnd, send, onSel }: { s: BizState; me: string; myTurn: boolean; sel: number | null; canBuild: number[]; manualEnd: boolean; send: (a: BizAction) => void; onSel: (i: number | null) => void }) {
+function Middle({ s, me, myTurn, sel, onSel }: { s: BizState; me: string; myTurn: boolean; sel: number | null; onSel: (i: number | null) => void }) {
   // Someone watching (joined after the game began) has no square.
   const here = s.pos[me] !== undefined ? BOARD[s.pos[me]] : null;
-  const price = here && (here.kind === "city" || here.kind === "station" || here.kind === "utility") ? here.price : 0;
   const card = s.card && s.card.seq >= (s.lastRoll?.seq ?? 0) ? s.card : null;
   const turnSeat = s.seats[s.turn];
   const buying = myTurn && s.phase === "buy";
   const deed = buying ? s.pos[me] : sel;
   const showDeed = deed !== null && deed !== undefined && ["city", "station", "utility"].includes(BOARD[deed].kind);
   const story = (s.story ?? []).slice(-5);
-  const btn = "rounded-full font-bold shadow-md transition-transform active:scale-95";
-  const big = { fontSize: "max(12px, 2.3cqw)", padding: "max(7px, 1.3cqw) max(14px, 3.2cqw)" };
   return (
     <div className="relative flex h-full flex-col items-center justify-between overflow-hidden py-[3%]" style={{ background: "radial-gradient(circle at 50% 40%, #e8f5e1 0%, #c9e6c0 70%, #b5d9aa 100%)" }}>
       {/* The two card piles, in the corners of the middle. */}
@@ -527,61 +527,75 @@ function Middle({ s, me, myTurn, sel, canBuild, manualEnd, send, onSel }: { s: B
             {myTurn && here && s.phase !== "roll" && <span className="font-normal text-stone-500">· on {here.name}</span>}
           </span>
         )}
-        {myTurn && (
-          <div className="flex flex-wrap justify-center gap-[1.5cqw]">
-            {s.phase === "roll" && s.jail[me] !== undefined && s.cash[me] >= JAIL_FINE && (
-              <button type="button" onClick={() => send({ type: "payJail" })} className={cx(btn, "border-2 border-stone-700 bg-white text-stone-800")} style={big}>
-                Pay {rs(JAIL_FINE)}
-              </button>
-            )}
-            {s.phase === "roll" && (
-              <button type="button" onClick={() => send({ type: "roll" })} className={cx(btn, "animate-pulse bg-core text-core-ink")} style={big}>
-                🎲 {s.jail[me] !== undefined ? "Roll for doubles" : "Roll"}
-              </button>
-            )}
-            {s.phase === "buy" && here && (
-              <>
-                <button type="button" onClick={() => send({ type: "buy" })} disabled={s.cash[me] < price} className={cx(btn, "bg-[#16a34a] text-white disabled:opacity-50")} style={big}>
-                  Buy {rs(price)}
-                </button>
-                <button type="button" onClick={() => send({ type: "skip" })} className={cx(btn, "border-2 border-stone-700 bg-white text-stone-800")} style={big}>
-                  Skip
-                </button>
-              </>
-            )}
-            {manualEnd && (
-              <button type="button" onClick={() => send({ type: "end" })} className={cx(btn, "bg-core text-core-ink")} style={big}>
-                {s.again ? "Done · roll again" : "Done"}
-              </button>
-            )}
-            {sel !== null && canBuild.includes(sel) && !buying && (
-              <button type="button" onClick={() => send({ type: "build", sq: sel })} className={cx(btn, "bg-[#16a34a] text-white")} style={big}>
-                🏠 Build {(s.houses[sel] ?? 0) === 4 ? "hotel" : "house"} {rs(houseCost(sel))}
-              </button>
-            )}
-            {sel !== null && s.owner[sel] === me && (s.houses[sel] ?? 0) > 0 && !buying && (
-              <button type="button" onClick={() => send({ type: "sell", sq: sel })} className={cx(btn, "border-2 border-stone-700 bg-white text-stone-800")} style={big}>
-                Sell a house
-              </button>
-            )}
-            {sel !== null && !buying && canMortgage(s, me, sel) && (
-              <button type="button" onClick={() => send({ type: "mortgage", sq: sel })} className={cx(btn, "border-2 border-stone-700 bg-white text-stone-800")} style={big}>
-                Mortgage +{rs(mortgageValue(sel))}
-              </button>
-            )}
-            {sel !== null && !buying && s.owner[sel] === me && s.mort?.[sel] && (
-              <button type="button" onClick={() => send({ type: "unmortgage", sq: sel })} disabled={s.cash[me] < unmortgageCost(sel)} className={cx(btn, "bg-[#16a34a] text-white disabled:opacity-50")} style={big}>
-                Lift mortgage −{rs(unmortgageCost(sel))}
-              </button>
-            )}
-          </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What you can do now, in a bar under the board (not inside it: on a phone the board's middle is far
+ * too small for a row of big buttons). Nothing shows when it isn't your turn.
+ */
+function Actions({ s, me, myTurn, sel, canBuild, manualEnd, send }: { s: BizState; me: string; myTurn: boolean; sel: number | null; canBuild: number[]; manualEnd: boolean; send: (a: BizAction) => void }) {
+  if (!myTurn) return null;
+  const here = s.pos[me] !== undefined ? BOARD[s.pos[me]] : null;
+  const price = here && (here.kind === "city" || here.kind === "station" || here.kind === "utility") ? here.price : 0;
+  const buying = s.phase === "buy";
+  const btn = "min-h-11 flex-1 basis-[8.5rem] rounded-full px-4 py-2 text-sm font-bold shadow-md transition-transform active:scale-95 disabled:opacity-50 sm:flex-none";
+  const plain = "border-2 border-stone-600 bg-panel text-fg";
+  const go = "bg-[#16a34a] text-white";
+  const mine = sel !== null && !buying && s.owner[sel] === me;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-line bg-panel p-2">
+      <div className="flex flex-wrap justify-center gap-2">
+        {s.phase === "roll" && s.jail[me] !== undefined && s.cash[me] >= JAIL_FINE && (
+          <button type="button" onClick={() => send({ type: "payJail" })} className={cx(btn, plain)}>
+            Pay {rs(JAIL_FINE)} bail
+          </button>
         )}
-        {myTurn && canBuild.length > 0 && (sel === null || !canBuild.includes(sel)) && !buying && (
-          <p className="text-stone-700" style={{ fontSize: "max(10px, 1.9cqw)" }}>
-            🏠 You own a full colour set: tap one of its cities to build.
-          </p>
+        {s.phase === "roll" && (
+          <button type="button" onClick={() => send({ type: "roll" })} className={cx(btn, "animate-pulse bg-core text-core-ink")}>
+            🎲 {s.jail[me] !== undefined ? "Roll for doubles" : "Roll"}
+          </button>
+        )}
+        {buying && here && (
+          <>
+            <button type="button" onClick={() => send({ type: "buy" })} disabled={s.cash[me] < price} className={cx(btn, go)}>
+              Buy {rs(price)}
+            </button>
+            <button type="button" onClick={() => send({ type: "skip" })} className={cx(btn, plain)}>
+              Skip
+            </button>
+          </>
+        )}
+        {mine && canBuild.includes(sel) && (
+          <button type="button" onClick={() => send({ type: "build", sq: sel })} className={cx(btn, go)}>
+            🏠 Build {(s.houses[sel] ?? 0) === 4 ? "hotel" : "house"} {rs(houseCost(sel))}
+          </button>
+        )}
+        {mine && (s.houses[sel] ?? 0) > 0 && (
+          <button type="button" onClick={() => send({ type: "sell", sq: sel })} className={cx(btn, plain)}>
+            Sell a house
+          </button>
+        )}
+        {mine && canMortgage(s, me, sel) && (
+          <button type="button" onClick={() => send({ type: "mortgage", sq: sel })} className={cx(btn, plain)}>
+            Mortgage +{rs(mortgageValue(sel))}
+          </button>
+        )}
+        {mine && s.mort?.[sel] && (
+          <button type="button" onClick={() => send({ type: "unmortgage", sq: sel })} disabled={s.cash[me] < unmortgageCost(sel)} className={cx(btn, go)}>
+            Lift mortgage −{rs(unmortgageCost(sel))}
+          </button>
+        )}
+        {manualEnd && (
+          <button type="button" onClick={() => send({ type: "end" })} className={cx(btn, "bg-core text-core-ink")}>
+            {s.again ? "Done · roll again" : "Done"}
+          </button>
         )}
       </div>
+      {canBuild.length > 0 && !buying && (sel === null || !canBuild.includes(sel)) && <p className="text-center text-xs text-soft">🏠 You own a full colour set: tap one of its cities to build.</p>}
+      {!buying && s.phase !== "roll" && sel === null && <p className="text-center text-xs text-faint">Tap a property on the board or in the list to mortgage or build.</p>}
     </div>
   );
 }

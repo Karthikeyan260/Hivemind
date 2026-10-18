@@ -113,9 +113,39 @@ function Reactions({ party }: { party: Party }) {
   const [floats, setFloats] = useState<PartyFloat[]>([]);
   const { onFloats } = party;
   useEffect(() => onFloats(setFloats), [onFloats]);
+  // Phone: one 😀 button that opens a row of reactions beside it, instead of a tall strip over the game.
+  const [tray, setTray] = useState(false);
+  useEffect(() => {
+    if (!tray) return;
+    const t = setTimeout(() => setTray(false), 5000);
+    return () => clearTimeout(t);
+  }, [tray]);
   const nameOf = (id: string) => (id === party.me ? "You" : (party.players.find((p) => p.id === id)?.name ?? (id === "host" ? party.hostName : "Friend")));
   return (
     <>
+      <div className="fixed top-[58%] right-1.5 z-40 -translate-y-1/2 sm:hidden">
+        <button type="button" onClick={() => setTray((o) => !o)} aria-expanded={tray} aria-label={tray ? "Close reactions" : "Open reactions"} className="flex size-10 items-center justify-center rounded-full border border-line bg-panel/90 text-xl shadow-lg backdrop-blur active:scale-90">
+          {tray ? <X size={18} /> : "😀"}
+        </button>
+        {tray && (
+          <div className="absolute top-1/2 right-full mr-2 flex -translate-y-1/2 gap-0.5 rounded-full border border-line bg-panel/95 p-1 shadow-xl backdrop-blur" role="toolbar" aria-label="Reactions">
+            {REACTIONS.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => {
+                  party.react(e);
+                  setTray(false);
+                }}
+                aria-label={`React ${e}`}
+                className="flex size-9 items-center justify-center rounded-full text-xl active:scale-90"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="pointer-events-none fixed inset-0 z-40 overflow-hidden" aria-live="polite">
         {floats.map((f) => (
           <span key={f.k} className="party-float absolute bottom-16 flex flex-col items-center" style={{ left: `${f.x}%` }}>
@@ -124,9 +154,9 @@ function Reactions({ party }: { party: Party }) {
           </span>
         ))}
       </div>
-      <div className="fixed top-[58%] right-1 z-40 flex -translate-y-1/2 flex-col gap-0.5 rounded-full border border-line bg-panel/70 p-0.5 shadow-lg backdrop-blur sm:top-1/2 sm:right-1.5 sm:gap-1 sm:bg-panel/85 sm:p-1" role="toolbar" aria-label="Reactions">
+      <div className="fixed top-1/2 right-1.5 z-40 hidden -translate-y-1/2 flex-col gap-1 rounded-full border border-line bg-panel/85 p-1 shadow-lg backdrop-blur sm:flex" role="toolbar" aria-label="Reactions">
         {REACTIONS.map((e) => (
-          <button key={e} type="button" onClick={() => party.react(e)} aria-label={`React ${e}`} className="flex size-7 items-center justify-center rounded-full text-base transition-transform hover:scale-125 active:scale-90 sm:size-9 sm:text-xl">
+          <button key={e} type="button" onClick={() => party.react(e)} aria-label={`React ${e}`} className="flex size-9 items-center justify-center rounded-full text-xl transition-transform hover:scale-125 active:scale-90">
             {e}
           </button>
         ))}
@@ -176,21 +206,21 @@ function Chat({ party }: { party: Party }) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close the chat" : `Open the chat${unread ? `, ${unread} new` : ""}`}
-        className="fixed top-[calc(58%+7.5rem)] right-1 z-40 flex size-9 items-center justify-center rounded-full border border-line bg-panel/90 text-fg shadow-lg backdrop-blur sm:top-[calc(50%+9.5rem)] sm:right-1.5 sm:size-11"
+        className="fixed top-[calc(58%+2.75rem)] right-1.5 z-40 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-panel/90 text-fg shadow-lg backdrop-blur sm:top-[calc(50%+9.5rem)] sm:size-11"
       >
         <MessageCircle size={18} />
         {unread > 0 && <span className="absolute -top-1 -left-1 flex min-w-5 items-center justify-center rounded-full bg-alert px-1 text-[10px] font-bold text-white">{unread > 9 ? "9+" : unread}</span>}
       </button>
 
       {peek && !open && (
-        <button type="button" onClick={() => setOpen(true)} className="fixed right-12 bottom-24 z-40 max-w-[70vw] rounded-2xl rounded-br-sm border border-line bg-panel/95 px-3 py-2 text-left text-sm shadow-xl backdrop-blur sm:right-16 sm:max-w-xs">
+        <button type="button" onClick={() => setOpen(true)} className="fixed top-[calc(58%+2.75rem)] right-14 z-40 max-w-[65vw] -translate-y-1/2 rounded-2xl rounded-br-sm border border-line bg-panel/95 px-3 py-2 text-left text-sm shadow-xl backdrop-blur sm:top-auto sm:right-16 sm:bottom-24 sm:max-w-xs sm:translate-y-0">
           <span className="block text-[11px] font-semibold text-core">{nameOf(peek.who)}</span>
           <span className="line-clamp-3 break-words">{peek.text}</span>
         </button>
       )}
 
       {open && (
-        <div role="dialog" aria-label="Game night chat" className="fixed inset-x-2 bottom-2 z-[70] flex h-[60dvh] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl sm:inset-x-auto sm:right-16 sm:bottom-6 sm:h-[28rem] sm:w-80">
+        <div role="dialog" aria-label="Game night chat" className="fixed inset-x-2 top-[max(0.5rem,env(safe-area-inset-top))] z-[70] flex h-[min(55dvh,26rem)] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl sm:inset-x-auto sm:top-auto sm:right-16 sm:bottom-6 sm:h-[28rem] sm:w-80">
           <div className="flex items-center gap-2 border-b border-line px-3 py-2">
             <MessageCircle size={15} className="text-core" />
             <span className="flex-1 text-sm font-semibold">Table chat</span>
@@ -198,7 +228,7 @@ function Chat({ party }: { party: Party }) {
               <X size={16} />
             </button>
           </div>
-          <div className="flex-1 space-y-2 overflow-y-auto p-3">
+          <div className="flex-1 space-y-2 overflow-y-auto overscroll-contain p-3">
             {!list.length && <p className="pt-6 text-center text-sm text-faint">No messages yet. Say hi to the table!</p>}
             {list.map((m) => (
               <div key={m.k} className={cx("flex flex-col", mine(m.who) ? "items-end" : "items-start")}>
