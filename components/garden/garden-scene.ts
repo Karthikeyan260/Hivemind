@@ -714,7 +714,7 @@ void main() {`);
     if (u) u.value = exposure;
 
     // Glows: lamps, windows, crystals and gems light up after dark.
-    for (const m of this.lampMats) m.emissiveIntensity = m.userData.base0 = night ? 4 : wet ? 1.4 : 0.8;
+    for (const m of this.lampMats) m.emissiveIntensity = m.userData.base0 = night ? 3 : wet ? 1.2 : 0.7;
     for (const l of this.lampLights) l.visible = night || wet;
     for (const m of this.crystalMats) m.emissiveIntensity = m.userData.base0 = night ? 2.6 : 0.35;
     // The stage lights: added light glows at night; by day they're drawn as a soft coloured haze instead.
@@ -1549,8 +1549,8 @@ void main() {`);
       if (f.kind !== "flower") return;
       const p = this.toWorld(f.x, f.y);
       if (this.noteFrom.length < 40) this.noteFrom.push(p.clone().add(new THREE.Vector3(0, 0.7, 0)));
-      const s = (0.85 + hash01(f.id, 3) * 0.4) * 1.9;
-      q.setFromEuler(new THREE.Euler((hash01(f.id, 5) - 0.5) * 0.25, hash01(f.id, 6) * Math.PI * 2, (hash01(f.id, 7) - 0.5) * 0.25));
+      const s = (0.95 + hash01(f.id, 3) * 0.12) * 1.9;
+      q.setFromEuler(new THREE.Euler((hash01(f.id, 5) - 0.5) * 0.08, hash01(f.id, 6) * Math.PI * 2, (hash01(f.id, 7) - 0.5) * 0.08));
       sv.setScalar(s);
       m.compose(p, q, sv);
       stems.setMatrixAt(i, m);
@@ -1697,9 +1697,9 @@ void main() {`);
     lantern.position.y = 0.93;
     // A soft halo, so lamps glow at night even where the bloom pass is off (phones).
     this.glowTex ??= puffTexture("glow");
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: "#ffb860", transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: "#ffb860", transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
     halo.position.y = 0.93;
-    halo.scale.setScalar(0.9);
+    halo.scale.setScalar(0.72);
     halo.raycast = () => {};
     this.haloMats.push(halo.material);
     this.nightOnly.push(halo);
@@ -2347,7 +2347,7 @@ void main() {`);
     for (const m of this.haloMats) {
       if (!m.userData.orig) m.userData.orig = m.color.clone();
       m.color.copy(m.userData.orig).lerp(col, mix * 0.85);
-      m.opacity = 0.55 + kick * mix * 0.35;
+      m.opacity = 0.4 + kick * mix * 0.3;
     }
     for (const l of this.lampLights) {
       if (!l.userData.orig) l.userData.orig = l.color.clone();

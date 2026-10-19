@@ -104,18 +104,63 @@ export function layout(items: GardenItem[]): Placed[] {
   const sorted = [...items].sort((a, b) => order[a.kind] - order[b.kind] || a.id.localeCompare(b.id));
   let lampNo = 0;
   const pathLen = cy + ry * 0.9 - (home.y + 26);
+  // Each flower's place in its bed: the oldest first, so a new flower never moves an old one.
+  const rank = new Map<string, number>();
+  for (const h of habits) items.filter((i) => i.kind === "flower" && habit(i) === h).map((i) => i.id).sort().forEach((id, k) => rank.set(id, k));
+  const gemRank = new Map<string, number>();
+  items.filter((i) => i.kind === "gem").map((i) => i.id).sort().forEach((id, k) => gemRank.set(id, k));
   for (const it of sorted) {
-    // The first lamps light the cottage path, in pairs down to the edge.
-    if (it.kind === "lamp" && lampNo < 10) {
-      const i = lampNo++;
-      const y = Math.round(home.y + 26 + ((Math.floor(i / 2) + 0.5) / 5) * pathLen);
-      placed.push({ ...it, x: Math.round(pathX(n, y) + (i % 2 ? 26 : -26)), y });
+    // Gems lie in even rings near the rim (36 to a ring), the oldest first, so the next one never moves an old one.
+    if (it.kind === "gem") {
+      const k = gemRank.get(it.id) ?? 0;
+      const ring = Math.floor(k / 36);
+      const a = -Math.PI / 2 + 0.2 + ((k % 36) / 36) * (Math.PI * 2 - 0.4) + ring * 0.09;
+      const r = 0.9 - ring * 0.1;
+      const x = Math.round(cx + Math.cos(a) * r * rx);
+      const y = Math.round(cy + Math.sin(a) * r * ry);
+      if (inside(x, y) && !blocked(n, x, y)) {
+        placed.push({ ...it, x, y });
+        continue;
+      }
+    }
+    if (it.kind === "lamp") {
+      // The first lamps light the cottage path, in pairs down to the edge.
+      if (lampNo < 10) {
+        const i = lampNo++;
+        const y = Math.round(home.y + 26 + ((Math.floor(i / 2) + 0.5) / 5) * pathLen);
+        placed.push({ ...it, x: Math.round(pathX(n, y) + (i % 2 ? 26 : -26)), y });
+        continue;
+      }
+      // The next ones stand evenly spaced round the rim (14 more at most), not scattered everywhere.
+      const e = lampNo++ - 10;
+      if (e >= 14) continue;
+      const a = -Math.PI / 2 + 0.3 + (e / 14) * (Math.PI * 2 - 0.6);
+      for (const r of [0.84, 0.76, 0.68]) {
+        const x = Math.round(cx + Math.cos(a) * r * rx);
+        const y = Math.round(cy + Math.sin(a) * r * ry);
+        if (inside(x, y) && !blocked(n, x, y)) {
+          placed.push({ ...it, x, y });
+          break;
+        }
+      }
       continue;
     }
-    const gap = it.kind === "tree" ? 70 : it.kind === "lamp" ? 40 : it.kind === "gem" ? 26 : 13;
+    const gap = it.kind === "tree" ? 70 : it.kind === "gem" ? 26 : 13;
     let best: { x: number; y: number; d: number } | null = null;
     const b = it.kind === "flower" ? bed.get(habit(it)) : undefined;
     // 16 tries where it belongs; if those all miss (a crowded bed), anywhere free on the island.
+    // Flowers grow in a neat spiral from the middle of their bed (a sunflower's pattern), evenly spaced.
+    if (it.kind === "flower" && b) {
+      const k = rank.get(it.id) ?? 0;
+      const a = k * 2.399963;
+      const r = 8 * Math.sqrt(k + 0.5);
+      const x = Math.round(b.x + Math.cos(a) * r);
+      const y = Math.round(b.y + Math.sin(a) * r * 0.42);
+      if (inside(x, y) && !blocked(n, x, y)) {
+        placed.push({ ...it, x, y });
+        continue;
+      }
+    }
     for (let t = 0; t < 60 && !(best && t >= 16); t++) {
       let x: number;
       let y: number;
