@@ -547,7 +547,7 @@ void main() {`);
       }),
     );
     this.nightSky.add(dome);
-    const n = 1800;
+    const n = 4200;
     const pos = new Float32Array(n * 3);
     const seed = new Float32Array(n);
     for (let i = 0; i < n; i++) {
@@ -557,16 +557,17 @@ void main() {`);
       const y = v;
       const rr = Math.sqrt(1 - y * y);
       pos.set([Math.cos(th) * rr * 3000, y * 3000, Math.sin(th) * rr * 3000], i * 3);
-      seed[i] = hash01(`ss${i}`);
+      // Brightness like the real sky: a great many faint stars, a few bright ones.
+      seed[i] = Math.pow(hash01(`ss${i}`), 1.7);
     }
     const sg = new THREE.BufferGeometry();
     sg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     sg.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
-    // Most stars white, some warm, some blue.
+    // Most stars white, some warm orange, some icy blue (a touch richer than before).
     const tint = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       const k = hash01(`sk${i}`);
-      const c = k < 0.15 ? [1, 0.78, 0.6] : k < 0.3 ? [0.7, 0.82, 1] : [1, 0.97, 0.92];
+      const c = k < 0.14 ? [1, 0.7, 0.45] : k < 0.3 ? [0.62, 0.78, 1] : k < 0.36 ? [1, 0.88, 0.7] : [1, 0.97, 0.92];
       tint.set(c, i * 3);
     }
     sg.setAttribute("tint", new THREE.BufferAttribute(tint, 3));
@@ -575,9 +576,29 @@ void main() {`);
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       uniforms: { uTime: this.uTime, uDpr: { value: Math.min(devicePixelRatio, 2) } },
-      vertexShader: `attribute float seed; attribute vec3 tint; uniform float uTime; uniform float uDpr; varying float vA; varying vec3 vT;
-        void main(){ vT = tint; vA = 0.4 + 0.6 * pow(0.5 + 0.5 * sin(uTime * (0.6 + seed * 3.0) + seed * 40.0), 2.0); vec4 mv = modelViewMatrix * vec4(position,1.); gl_PointSize = (1.1 + pow(seed, 6.0) * 5.5) * uDpr; gl_Position = projectionMatrix * mv; }`,
-      fragmentShader: `varying float vA; varying vec3 vT; void main(){ float d = length(gl_PointCoord - 0.5); float core = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(vT * (1.2 + core * 1.4), vA * core); }`,
+      vertexShader: `attribute float seed; attribute vec3 tint; uniform float uTime; uniform float uDpr; varying float vA; varying vec3 vT; varying float vS;
+        void main(){
+          vT = tint; vS = seed;
+          // Each star twinkles at its own pace and depth (faint ones barely, bright ones more).
+          float tw = 0.5 + 0.5 * sin(uTime * (0.7 + seed * 2.6) + seed * 57.0);
+          vA = mix(0.75, 0.3 + 0.7 * tw * tw, 0.35 + seed * 0.65);
+          vec4 mv = modelViewMatrix * vec4(position,1.);
+          gl_PointSize = (1.0 + pow(seed, 3.0) * 4.0 + step(0.97, seed) * (4.0 + (seed - 0.97) * 160.0)) * uDpr;
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `varying float vA; varying vec3 vT; varying float vS;
+        void main(){
+          vec2 p = gl_PointCoord - 0.5;
+          float d = length(p);
+          // A tight bright core, a soft halo round it...
+          float core = exp(-d * d * 90.0);
+          float halo = pow(smoothstep(0.5, 0.0, d), 3.0) * 0.55;
+          // ...and, on the brightest, four fine diffraction spikes.
+          float big = smoothstep(0.97, 0.995, vS);
+          float spike = (exp(-abs(p.x) * 70.0) * smoothstep(0.5, 0.0, abs(p.y)) + exp(-abs(p.y) * 70.0) * smoothstep(0.5, 0.0, abs(p.x))) * big * 0.8;
+          float a = (core + halo + spike);
+          gl_FragColor = vec4(mix(vT, vec3(1.0), core * 0.6) * (1.1 + core * 1.6), vA * a);
+        }`,
     });
     this.animatedMats.push(starMat);
     this.nightSky.add(new THREE.Points(sg, starMat));
@@ -1287,6 +1308,7 @@ void main() {`);
     const pond = pondSpot(n);
     const c = this.toWorld(pond.x, pond.y);
     const pr = (pond.rx / this.isl.rx) * R;
+    const sy = pond.ry / this.isl.ry / (pond.rx / this.isl.rx);
     const water = new THREE.ShaderMaterial({
       transparent: true,
       fog: true,
@@ -1294,22 +1316,42 @@ void main() {`);
       vertexShader: `varying vec3 vW; #include <fog_pars_vertex>
         void main(){ vec4 wp = modelMatrix * vec4(position,1.); vW = wp.xyz; vec4 mvPosition = viewMatrix * wp; gl_Position = projectionMatrix * mvPosition; #include <fog_vertex>
  }`.replace(/ #/g, "\n#"),
-      fragmentShader: `uniform float uTime; uniform vec3 uSky; uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uMusicCol; uniform float uMusicMix; uniform float uKick; uniform vec2 uPondC; varying vec3 vW; #include <fog_pars_fragment>
+      fragmentShader: `uniform float uTime; uniform vec3 uSky; uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uMusicCol; uniform float uMusicMix; uniform float uKick; uniform vec2 uPondC; uniform vec2 uPondRad; varying vec3 vW; #include <fog_pars_fragment>
         void main(){
-          vec2 p = vW.xz * 3.0;
+          vec2 q = vW.xz * 4.0;
+          float t = uTime;
+          // How far from the middle of the pond (1 = the bank). The stream and puddles use this water too: they count as deep.
+          float rr = length((vW.xz - uPondC) / uPondRad);
+          float inPond = 1.0 - smoothstep(1.1, 1.3, rr);
+          float depth = mix(0.75, smoothstep(1.0, 0.3, rr), inPond);
           // With a song: rings run out from the middle on every beat.
           float pd = length(vW.xz - uPondC);
           float wave = sin(pd * 22.0 - uTime * 7.0) * uMusicMix * (0.04 + uKick * 0.12);
-          vec3 nrm = normalize(vec3(sin(p.x * 1.7 + uTime * 1.3) * 0.08 + sin(p.y * 2.3 - uTime) * 0.06 + wave, 1.0, cos(p.y * 1.9 + uTime * 1.1) * 0.08 + wave));
+          // Ripples from several directions and sizes, so the surface never looks like one repeating wave.
+          vec2 g = vec2(cos(q.x * 1.7 + q.y * 0.9 + t * 1.2), sin(q.y * 2.1 - q.x * 0.7 + t * 0.9)) * 0.045;
+          g += vec2(cos(q.x * 3.9 - q.y * 2.2 - t * 1.7), sin(q.x * 2.6 + q.y * 3.4 + t * 1.5)) * 0.025;
+          g += vec2(cos(q.x * 8.3 + q.y * 5.1 + t * 2.6), sin(q.x * 6.7 - q.y * 8.9 - t * 2.3)) * 0.012;
+          vec3 nrm = normalize(vec3(g.x + wave, 1.0, g.y + wave));
           vec3 v = normalize(cameraPosition - vW);
           float fres = pow(1.0 - max(dot(v, nrm), 0.0), 3.0);
-          vec3 deep = vec3(0.008, 0.045, 0.06);
-          vec3 col = mix(deep, mix(uSky, vec3(0.3, 0.5, 0.7) * length(uSky), 0.55), 0.2 + fres * 0.7);
+          // Shallow water near the bank is a clear turquoise over the earth; the middle is deep and dark.
+          vec3 shallow = vec3(0.1, 0.34, 0.34);
+          vec3 deep = vec3(0.008, 0.05, 0.075);
+          vec3 body = mix(shallow, deep, depth) * (0.22 + 0.78 * clamp(length(uSky) * 1.5, 0.0, 1.0));
+          vec3 refl = mix(uSky, vec3(0.3, 0.5, 0.7) * length(uSky), 0.5);
+          vec3 col = mix(body, refl, 0.16 + fres * 0.72);
+          // Sunlight in net-like lines on the shallows.
+          float caus = pow(abs(sin(q.x * 3.0 + t) * sin(q.y * 3.0 - t * 1.2) + sin((q.x + q.y) * 2.0 + t * 0.8) * 0.5), 6.0);
+          col += uSunCol * caus * (1.0 - depth) * 0.22 * inPond;
+          // Glints of the sun: a sharp one and a wider, softer one.
           vec3 h = normalize(v + uSunDir);
-          col += uSunCol * pow(max(dot(nrm, h), 0.0), 120.0) * 3.0;
+          float nh = max(dot(nrm, h), 0.0);
+          col += uSunCol * (pow(nh, 260.0) * 4.5 + pow(nh, 60.0) * 0.5);
           // ...and the water glows in the song's colour, brighter on the beat.
           col = mix(col, uMusicCol * 1.2, uMusicMix * (0.18 + uKick * 0.35) * (0.6 + 0.4 * sin(pd * 22.0 - uTime * 7.0)));
-          gl_FragColor = vec4(col, 0.92);
+          // A soft shoreline: the water thins out where it meets the bank.
+          float a = mix(0.93, 0.5, smoothstep(0.86, 1.02, rr) * inPond);
+          gl_FragColor = vec4(col, a);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
           #include <fog_fragment>
@@ -1320,55 +1362,93 @@ void main() {`);
     water.uniforms.uMusicMix = this.uMusicMix;
     water.uniforms.uKick = this.uKick;
     water.uniforms.uPondC = { value: new THREE.Vector2(c.x, c.z) };
+    water.uniforms.uPondRad = { value: new THREE.Vector2(pr, pr * sy) };
     this.animatedMats.push(water);
     this.waterMats.push(water);
     // The pond sits in a small hollow, ringed by stones, with lily pads and reeds.
     const disc = new THREE.Mesh(new THREE.CircleGeometry(pr, 40), water);
     disc.rotation.x = -Math.PI / 2;
-    disc.scale.y = (pond.ry / this.isl.ry / (pond.rx / this.isl.rx)) * 1;
+    disc.scale.y = sy;
     disc.position.set(c.x, c.y + 0.03, c.z);
     this.island.add(disc);
-    const rock = new THREE.MeshStandardMaterial({ color: "#8d8577", roughness: 1 });
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * Math.PI * 2 + hash01(`pk${i}`) * 0.2;
-      if (Math.abs(((a - POND_ANGLE + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.35) continue;
-      const m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.1 + hash01(`pz${i}`) * 0.08, 0), rock);
-      const x = c.x + Math.cos(a) * pr * 1.05;
-      const z = c.z + Math.sin(a) * pr * 1.05;
-      m.position.set(x, this.heightAt(x, z), z);
-      m.scale.y = 0.6;
-      m.castShadow = true;
-      this.island.add(m);
+    // The wet bank: darker earth round the water, then a ring of stones of different sizes and shades.
+    const bank = new THREE.Mesh(new THREE.CircleGeometry(pr * 1.26, 48), new THREE.MeshStandardMaterial({ color: "#4a3a2b", roughness: 0.95 }));
+    bank.rotation.x = -Math.PI / 2;
+    bank.scale.y = sy;
+    bank.position.set(c.x, c.y + 0.016, c.z);
+    bank.receiveShadow = true;
+    bank.raycast = () => {};
+    this.island.add(bank);
+    const rocks: { x: number; z: number; s: number; r: number; l: number }[] = [];
+    for (let i = 0; i < 32; i++) {
+      const a = (i / 32) * Math.PI * 2 + hash01(`pk${i}`) * 0.16;
+      if (Math.abs(((a - POND_ANGLE + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.3) continue;
+      const rr = 1.06 + hash01(`pq${i}`) * 0.14;
+      rocks.push({ x: c.x + Math.cos(a) * pr * rr, z: c.z + Math.sin(a) * pr * sy * rr, s: 0.05 + hash01(`pz${i}`) * 0.085, r: hash01(`pr${i}`) * 6, l: 0.36 + hash01(`pl${i}`) * 0.26 });
     }
-    const pad = new THREE.MeshStandardMaterial({ color: "#3f8a3a", roughness: 0.6, side: THREE.DoubleSide });
-    for (let i = 0; i < 5; i++) {
+    const rockMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.92 }), rocks.length);
+    const rm = new THREE.Matrix4();
+    const rq = new THREE.Quaternion();
+    rocks.forEach((rk, i) => {
+      rq.setFromEuler(new THREE.Euler(0, rk.r, 0));
+      rm.compose(new THREE.Vector3(rk.x, this.heightAt(rk.x, rk.z) + rk.s * 0.2, rk.z), rq, new THREE.Vector3(rk.s * 1.25, rk.s * 0.62, rk.s));
+      rockMesh.setMatrixAt(i, rm);
+      rockMesh.setColorAt(i, new THREE.Color().setHSL(0.09, 0.07, rk.l));
+    });
+    rockMesh.castShadow = true;
+    rockMesh.receiveShadow = true;
+    rockMesh.raycast = () => {};
+    this.island.add(rockMesh);
+    // Lily pads in three greens, and a lotus flower on a few of them.
+    const pads = ["#3f8a3a", "#4b9a43", "#336f33"].map((col) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, side: THREE.DoubleSide }));
+    const lotusMat = new THREE.MeshStandardMaterial({ color: "#ffc7dc", roughness: 0.5, side: THREE.DoubleSide });
+    const lotusHeart = new THREE.MeshStandardMaterial({ color: "#ffd23f", roughness: 0.6 });
+    const lotusPetal = (len: number, lift: number, ang: number) => {
+      const p = new THREE.SphereGeometry(0.03, 8, 6);
+      p.scale(len, 0.18, 0.55);
+      p.translate(0.03 * len, 0, 0);
+      p.rotateZ(lift);
+      p.rotateY(ang);
+      return p;
+    };
+    const lotusGeo = mergeGeometries([...Array.from({ length: 8 }, (_, k) => lotusPetal(1.6, 0.35, (k / 8) * Math.PI * 2)), ...Array.from({ length: 6 }, (_, k) => lotusPetal(1.2, 0.85, ((k + 0.5) / 6) * Math.PI * 2))]);
+    for (let i = 0; i < 9; i++) {
       const a = hash01(`ly${i}`) * Math.PI * 2;
-      const rr = pr * (0.25 + hash01(`lr${i}`) * 0.5);
-      const m = new THREE.Mesh(new THREE.CircleGeometry(0.11, 14, 0.4, Math.PI * 2 - 0.4), pad);
+      const rr = pr * (0.2 + hash01(`lr${i}`) * 0.55);
+      const px = c.x + Math.cos(a) * rr;
+      const pz = c.z + Math.sin(a) * rr * sy;
+      const m = new THREE.Mesh(new THREE.CircleGeometry(0.075 + hash01(`ls${i}`) * 0.07, 18, 0.35, Math.PI * 2 - 0.35), pads[i % 3]);
       m.rotation.x = -Math.PI / 2;
       m.rotation.z = hash01(`lz${i}`) * 6;
-      m.position.set(c.x + Math.cos(a) * rr, c.y + 0.045, c.z + Math.sin(a) * rr);
-      this.island.add(m);
-      if (i % 2 === 0) {
-        const fl = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshStandardMaterial({ color: "#ffd1e0", roughness: 0.5 }));
-        fl.position.copy(m.position).y += 0.03;
-        this.island.add(fl);
-      }
-    }
-    const reed = this.windy(new THREE.MeshStandardMaterial({ color: "#5b8f3a", roughness: 0.8 }), 0.25);
-    for (let i = 0; i < 14; i++) {
-      const a = Math.PI + hash01(`rd${i}`) * 1.6;
-      const x = c.x + Math.cos(a) * pr * (0.95 + hash01(`re${i}`) * 0.2);
-      const z = c.z + Math.sin(a) * pr * (0.95 + hash01(`re${i}`) * 0.2);
-      const hgt = 0.4 + hash01(`rh${i}`) * 0.3;
-      const geo = new THREE.CylinderGeometry(0.008, 0.014, hgt, 4);
-      geo.translate(0, hgt / 2, 0);
-      const m = new THREE.Mesh(geo, reed);
-      m.position.set(x, this.heightAt(x, z), z);
+      m.position.set(px, c.y + 0.045, pz);
       this.island.add(m);
       if (i % 3 === 0) {
-        const cat = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.08, 3, 6), new THREE.MeshStandardMaterial({ color: "#6a4128" }));
-        cat.position.set(x, this.heightAt(x, z) + hgt, z);
+        const lotus = new THREE.Mesh(lotusGeo, lotusMat);
+        lotus.position.set(px, c.y + 0.06, pz);
+        this.island.add(lotus);
+        const heart = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), lotusHeart);
+        heart.position.set(px, c.y + 0.075, pz);
+        this.island.add(heart);
+      }
+    }
+    // Reeds: tapering blades in two greens, leaning a little, with cattails among them.
+    const reeds = [this.windy(new THREE.MeshStandardMaterial({ color: "#5b8f3a", roughness: 0.8 }), 0.25), this.windy(new THREE.MeshStandardMaterial({ color: "#6fa043", roughness: 0.8 }), 0.25)];
+    const cattail = new THREE.MeshStandardMaterial({ color: "#6a4128", roughness: 0.9 });
+    for (let i = 0; i < 30; i++) {
+      const a = Math.PI + hash01(`rd${i}`) * 1.7;
+      const rr = 0.97 + hash01(`re${i}`) * 0.22;
+      const x = c.x + Math.cos(a) * pr * rr;
+      const z = c.z + Math.sin(a) * pr * sy * rr;
+      const hgt = 0.38 + hash01(`rh${i}`) * 0.34;
+      const geo = new THREE.ConeGeometry(0.012, hgt, 4);
+      geo.translate(0, hgt / 2, 0);
+      const m = new THREE.Mesh(geo, reeds[i % 2]);
+      m.position.set(x, this.heightAt(x, z), z);
+      m.rotation.set((hash01(`rx${i}`) - 0.5) * 0.3, 0, (hash01(`rz${i}`) - 0.5) * 0.3);
+      this.island.add(m);
+      if (i % 3 === 0) {
+        const cat = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.085, 3, 8), cattail);
+        cat.position.set(x, this.heightAt(x, z) + hgt * 0.82, z);
         this.island.add(cat);
       }
     }
@@ -1477,61 +1557,72 @@ void main() {`);
     const flowers = items.filter((i) => i.kind === "flower");
     const kindOf = (id: string) => Math.floor(hash01(id.split(":")[1] ?? "", 11) * 4);
 
-    // Stems (all flowers), heads by kind (each its habit's colour), centres for daisies and sunflowers.
+    // Stems (all flowers): a slim tapered stem with two pointed leaves. Heads by kind (each its habit's colour).
     const stemGeo = (() => {
-      const st = new THREE.CylinderGeometry(0.007, 0.01, 0.3, 4);
+      const st = new THREE.CylinderGeometry(0.006, 0.011, 0.3, 6, 4);
       st.translate(0, 0.15, 0);
-      const leaf = new THREE.SphereGeometry(0.035, 6, 4);
-      leaf.scale(1, 0.25, 0.5);
-      leaf.rotateZ(0.5);
-      leaf.translate(0.03, 0.1, 0);
-      return mergeGeometries([unindexed(st), unindexed(leaf)]);
+      const leaf = (y: number, side: number, len: number) => {
+        const l = new THREE.SphereGeometry(0.03, 8, 6);
+        l.scale(len, 0.1, 0.4);
+        l.rotateZ(side * 0.5);
+        l.translate(side * 0.05 * (len / 1.8), y, 0);
+        return unindexed(l);
+      };
+      return mergeGeometries([unindexed(st), leaf(0.08, 1, 2), leaf(0.17, -1, 1.7)]);
     })();
+    /** A petal: a thin flattened ellipsoid lying along +x, raised by `lift`, turned round the stem by `a`, `y` up the stem. */
+    const petal = (len: number, wid: number, r: number, lift: number, a: number, y: number) => {
+      const p = new THREE.SphereGeometry(0.03, 8, 6);
+      p.scale(len, 0.16, wid);
+      p.translate(r + 0.03 * len, 0, 0);
+      p.rotateZ(lift);
+      p.rotateY(a);
+      p.translate(0, y, 0);
+      return unindexed(p);
+    };
+    const ring = (count: number, len: number, wid: number, r: number, lift: number, y: number, offset = 0) => Array.from({ length: count }, (_, i) => petal(len, wid, r, lift, ((i + offset) / count) * Math.PI * 2, y));
     const heads: THREE.BufferGeometry[] = [
-      // Daisy: a ring of petals.
-      mergeGeometries(
-        Array.from({ length: 8 }, (_, i) => {
-          const p = new THREE.SphereGeometry(0.03, 6, 4);
-          p.scale(1.4, 0.25, 0.6);
-          p.translate(0.042, 0, 0);
-          p.rotateY((i / 8) * Math.PI * 2);
-          p.rotateX(-0.25);
-          p.translate(0, 0.3, 0);
-          return unindexed(p);
-        }),
-      ),
-      // Tulip: a cup.
+      // Daisy: two rings of long petals, the inner ring shorter and standing up.
+      mergeGeometries([...ring(12, 1.4, 0.62, 0.014, 0.16, 0.3), ...ring(10, 1.0, 0.78, 0.01, 0.42, 0.306, 0.5)]),
+      // Tulip: a smooth cup with three soft ridges, pinched towards the top.
       (() => {
-        const l = new THREE.LatheGeometry([new THREE.Vector2(0.0, 0), new THREE.Vector2(0.035, 0.01), new THREE.Vector2(0.045, 0.05), new THREE.Vector2(0.032, 0.095), new THREE.Vector2(0.036, 0.1)], 10);
-        l.translate(0, 0.29, 0);
+        const prof = [[0, 0], [0.022, 0.004], [0.04, 0.025], [0.048, 0.055], [0.045, 0.085], [0.035, 0.112], [0.025, 0.128], [0.019, 0.14]].map(([x, y]) => new THREE.Vector2(x, y));
+        const l = new THREE.LatheGeometry(prof, 15);
+        const lp = l.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < lp.count; i++) {
+          const x = lp.getX(i);
+          const z = lp.getZ(i);
+          const k = 1 + 0.1 * Math.cos(3 * Math.atan2(z, x)) * (lp.getY(i) / 0.14);
+          lp.setX(i, x * k);
+          lp.setZ(i, z * k);
+        }
+        l.translate(0, 0.285, 0);
         return unindexed(l);
       })(),
-      // Pompom: a round head.
+      // Pompom: a round, slightly fluffy head.
       (() => {
-        const s = new THREE.IcosahedronGeometry(0.055, 1);
+        const s = new THREE.IcosahedronGeometry(0.055, 2);
+        const sp = s.attributes.position as THREE.BufferAttribute;
+        for (let i = 0; i < sp.count; i++) {
+          const k = 1 + (hash01(`pp${Math.round(sp.getX(i) * 900)}${Math.round(sp.getY(i) * 900)}${Math.round(sp.getZ(i) * 900)}`) - 0.5) * 0.22;
+          sp.setXYZ(i, sp.getX(i) * k, sp.getY(i) * k, sp.getZ(i) * k);
+        }
         s.translate(0, 0.33, 0);
         return unindexed(s);
       })(),
-      // Sunflower: thin petals, wide.
-      mergeGeometries(
-        Array.from({ length: 14 }, (_, i) => {
-          const p = new THREE.SphereGeometry(0.025, 5, 3);
-          p.scale(2.2, 0.2, 0.5);
-          p.translate(0.07, 0, 0);
-          p.rotateY((i / 14) * Math.PI * 2);
-          p.rotateZ(0.0);
-          p.rotateX(-0.9);
-          p.translate(0, 0.34, 0);
-          return unindexed(p);
-        }),
-      ),
+      // Sunflower: two rings of long thin petals round a big dark middle.
+      mergeGeometries([...ring(18, 1.9, 0.5, 0.03, 0.1, 0.34), ...ring(14, 1.6, 0.55, 0.024, 0.3, 0.345, 0.5)]),
     ];
-    const centreGeo = new THREE.SphereGeometry(0.022, 8, 6);
-    centreGeo.scale(1, 0.6, 1);
-    centreGeo.translate(0, 0.305, 0);
+    const centreGeo = new THREE.SphereGeometry(0.024, 10, 8);
+    centreGeo.scale(1, 0.65, 1);
+    centreGeo.translate(0, 0.307, 0);
+    const sunCentreGeo = new THREE.SphereGeometry(0.05, 12, 8);
+    sunCentreGeo.scale(1, 0.4, 1);
+    sunCentreGeo.translate(0, 0.348, 0);
 
     const stems = new THREE.InstancedMesh(stemGeo, this.windy(new THREE.MeshStandardMaterial({ color: "#3f7f30", roughness: 0.8 }), 0.9, 1), Math.max(1, flowers.length));
     const centres = new THREE.InstancedMesh(centreGeo, this.windy(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.7 }), 0.9, 1), Math.max(1, flowers.length));
+    const sunCentres = new THREE.InstancedMesh(sunCentreGeo, this.windy(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.85 }), 0.9, 1), Math.max(1, flowers.length));
     const byKind = [0, 1, 2, 3].map((k) => flowers.filter((f) => kindOf(f.id) === k));
     const headMeshes = byKind.map((list, k) => {
       const mesh = new THREE.InstancedMesh(heads[k], this.windy(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.55, side: THREE.DoubleSide }), 0.9, 1), Math.max(1, list.length));
@@ -1545,6 +1636,7 @@ void main() {`);
     const col = new THREE.Color();
     const kCount = [0, 0, 0, 0];
     let ci = 0;
+    let si = 0;
     flowers.forEach((f, i) => {
       if (f.kind !== "flower") return;
       const p = this.toWorld(f.x, f.y);
@@ -1559,22 +1651,27 @@ void main() {`);
       col.setHSL(f.hue / 360, 0.85, k === 2 ? 0.5 : 0.55);
       headMeshes[k].setColorAt(kCount[k], col);
       kCount[k]++;
-      if (k === 0 || k === 3) {
+      if (k === 0) {
         centres.setMatrixAt(ci, m);
-        centres.setColorAt(ci, col.set(k === 0 ? "#ffd23f" : "#5a3418"));
+        centres.setColorAt(ci, col.set("#ffd23f"));
         ci++;
+      } else if (k === 3) {
+        sunCentres.setMatrixAt(si, m);
+        sunCentres.setColorAt(si, col.set("#4a2a14"));
+        si++;
       }
     });
     stems.count = flowers.length;
     centres.count = ci;
-    for (const o of [stems, centres, ...headMeshes]) {
+    sunCentres.count = si;
+    for (const o of [stems, centres, sunCentres, ...headMeshes]) {
       o.castShadow = false;
       o.frustumCulled = false;
       this.island.add(o);
     }
 
     // Trees, lamps and gems: few enough to be their own objects.
-    const bark = new THREE.MeshStandardMaterial({ color: "#5b3d27", roughness: 0.95 });
+    const bark = new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.95 });
     for (const it of items) {
       if (it.kind === "tree") this.island.add(this.tree(it, bark));
       if (it.kind === "lamp") this.island.add(this.lamp(it));
@@ -1587,9 +1684,52 @@ void main() {`);
     const kind = hash01(it.id, 9);
     const s = (0.55 + it.size * 0.65) * 1.35;
     const trunkH = kind > 0.45 && kind <= 0.75 ? 0.5 : 1.0;
-    const trunk = new THREE.CylinderGeometry(0.06, 0.11, trunkH, 7);
+    const pineTree = kind > 0.45 && kind <= 0.75;
+    const sd = hash01(it.id, 41) * 6;
+    // The trunk: tapered, knotted, flaring into roots at the foot and leaning a little; broadleaf trees also send out branches.
+    const trunk = new THREE.CylinderGeometry(0.05, 0.1, trunkH, 10, 8);
     trunk.translate(0, trunkH / 2, 0);
-    const tm = new THREE.Mesh(trunk, bark);
+    const tp = trunk.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < tp.count; i++) {
+      const x = tp.getX(i);
+      const y = tp.getY(i);
+      const z = tp.getZ(i);
+      const a = Math.atan2(z, x);
+      let k = 1 + (fbm(a * 2 + sd, y * 4, sd, 2) - 0.5) * 0.28;
+      if (y < 0.16) k *= 1 + ((0.16 - y) / 0.16) * 0.7 * (0.65 + 0.35 * Math.cos(3 * a + sd));
+      tp.setXYZ(i, x * k + Math.sin(y * 2.4 + sd) * 0.03 * y, y, z * k);
+    }
+    const trunkParts: THREE.BufferGeometry[] = [trunk];
+    if (!pineTree) {
+      for (const [ang, y0, len] of [[0.6, 0.78, 0.5], [2.7, 0.9, 0.46], [4.5, 0.7, 0.42]] as const) {
+        const b = new THREE.CylinderGeometry(0.014, 0.03, len, 6);
+        b.translate(0, len / 2, 0);
+        b.rotateZ(-0.9);
+        b.rotateY(ang + sd * 0.3);
+        b.translate(Math.sin(y0 * 2.4 + sd) * 0.03 * y0, y0, 0);
+        trunkParts.push(b);
+      }
+    }
+    let trunkGeo = mergeGeometries(trunkParts);
+    trunkGeo.deleteAttribute("normal");
+    trunkGeo.deleteAttribute("uv");
+    trunkGeo = mergeVertices(trunkGeo, 1e-4);
+    // Bark: dark at the foot and in the grooves, lighter in vertical streaks.
+    const tcol = new Float32Array(trunkGeo.attributes.position.count * 3);
+    const barkLo = new THREE.Color("#3a2617");
+    const barkHi = new THREE.Color("#80593a");
+    const bc = new THREE.Color();
+    for (let i = 0; i < trunkGeo.attributes.position.count; i++) {
+      const x = trunkGeo.attributes.position.getX(i);
+      const y = trunkGeo.attributes.position.getY(i);
+      const z = trunkGeo.attributes.position.getZ(i);
+      const streak = fbm(Math.atan2(z, x) * 3 + sd, y * 1.6, 1.3, 2);
+      bc.copy(barkLo).lerp(barkHi, Math.min(1, 0.22 + streak * 0.65 + Math.min(0.2, y * 0.15)));
+      tcol.set([bc.r, bc.g, bc.b], i * 3);
+    }
+    trunkGeo.setAttribute("color", new THREE.BufferAttribute(tcol, 3));
+    trunkGeo.computeVertexNormals();
+    const tm = new THREE.Mesh(trunkGeo, bark);
     tm.castShadow = true;
     g.add(tm);
     const blob = (r: number, x: number, y: number, z: number, seed: number) => {
@@ -1607,22 +1747,24 @@ void main() {`);
     if (kind > 0.45 && kind <= 0.75) {
       // A pine: stacked, ragged cones.
       canopy = mergeGeometries(
-        [0, 1, 2, 3].map((k) => {
-          const c = new THREE.ConeGeometry(0.62 - k * 0.12, 0.75, 9, 3);
+        [0, 1, 2, 3, 4].map((k) => {
+          const c = new THREE.ConeGeometry(0.68 - k * 0.1, 0.68, 14, 4);
           const p = c.attributes.position as THREE.BufferAttribute;
           for (let i = 0; i < p.count; i++) {
             const v = new THREE.Vector3().fromBufferAttribute(p, i);
-            const d = 1 + (fbm(v.x * 5 + k, v.y * 5, v.z * 5, 2) - 0.5) * 0.35;
-            p.setXYZ(i, v.x * d, v.y, v.z * d);
+            const d = 1 + (fbm(v.x * 5 + k, v.y * 5, v.z * 5, 2) - 0.5) * 0.3;
+            // Boughs: the skirt of each tier scallops, most at its lower edge.
+            const scallop = 1 + 0.1 * Math.sin(Math.atan2(v.z, v.x) * 8 + k * 1.7) * (1 - (v.y + 0.34) / 0.68);
+            p.setXYZ(i, v.x * d * scallop, v.y, v.z * d * scallop);
           }
-          c.translate(0, 0.75 + k * 0.42, 0);
+          c.translate(0, 0.7 + k * 0.36, 0);
           return unindexed(c);
         }),
       );
       leafCol = ["#1f4a2a", "#3d7a45"];
     } else {
       const blossom = kind > 0.75;
-      canopy = mergeGeometries([blob(0.62, 0, 1.45, 0, 1), blob(0.45, -0.42, 1.2, 0.12, 2), blob(0.45, 0.4, 1.22, -0.1, 3), blob(0.4, 0.05, 1.85, 0.05, 4), blob(0.38, 0.1, 1.25, 0.42, 5), blob(0.36, -0.2, 1.6, -0.35, 6)]);
+      canopy = mergeGeometries([blob(0.62, 0, 1.45, 0, 1), blob(0.45, -0.42, 1.2, 0.12, 2), blob(0.45, 0.4, 1.22, -0.1, 3), blob(0.4, 0.05, 1.85, 0.05, 4), blob(0.38, 0.1, 1.25, 0.42, 5), blob(0.36, -0.2, 1.6, -0.35, 6), blob(0.4, -0.05, 1.35, -0.45, 7), blob(0.34, 0.5, 1.6, 0.25, 8), blob(0.32, -0.5, 1.6, -0.1, 9)]);
       // Weld the vertices so the leaves shade smoothly (not as facets).
       canopy.deleteAttribute("normal");
       canopy.deleteAttribute("uv");
@@ -1659,7 +1801,7 @@ void main() {`);
       const cp = canopy.attributes.position as THREE.BufferAttribute;
       const centre = new THREE.Vector3(0, 1.45, 0);
       const cards: THREE.BufferGeometry[] = [];
-      const count = this.quality === "high" ? 110 : 60;
+      const count = this.quality === "high" ? 190 : 110;
       for (let i = 0; i < count; i++) {
         const v = new THREE.Vector3().fromBufferAttribute(cp, Math.floor(hash01(`${it.id}c${i}`) * cp.count));
         const out = v.clone().sub(centre).normalize();
@@ -1668,10 +1810,14 @@ void main() {`);
         q.rotateY(hash01(`${it.id}y${i}`) * Math.PI);
         q.rotateZ(hash01(`${it.id}z${i}`) * Math.PI);
         q.translate(v.x + out.x * 0.06, v.y + out.y * 0.06, v.z + out.z * 0.06);
+        // Each leaf cluster its own shade: lighter towards the top and the sun side, with a little random.
+        const lt = THREE.MathUtils.clamp((v.y - 0.9) / 1.3 + (hash01(`${it.id}s${i}`) - 0.5) * 0.5 + out.y * 0.15, 0, 1);
+        const shade = new THREE.Color(leafCol[0]).lerp(new THREE.Color(leafCol[1]), 0.15 + lt * 0.85);
+        q.setAttribute("color", new THREE.BufferAttribute(new Float32Array([shade.r, shade.g, shade.b, shade.r, shade.g, shade.b, shade.r, shade.g, shade.b, shade.r, shade.g, shade.b]), 3));
         cards.push(q);
       }
       const cardGeo = mergeGeometries(cards);
-      const cardMat = this.windy(new THREE.MeshStandardMaterial({ map: this.leafTex, alphaTest: 0.45, side: THREE.DoubleSide, color: new THREE.Color(leafCol[1]).lerp(new THREE.Color(leafCol[0]), 0.35), roughness: 0.8 }), 0.035);
+      const cardMat = this.windy(new THREE.MeshStandardMaterial({ map: this.leafTex, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.8 }), 0.035);
       const cm = new THREE.Mesh(cardGeo, cardMat);
       cm.receiveShadow = true;
       g.add(cm);
@@ -1687,30 +1833,48 @@ void main() {`);
 
   private lamp(it: Placed) {
     const g = new THREE.Group();
-    const iron = new THREE.MeshStandardMaterial({ color: "#2e2a26", roughness: 0.6, metalness: 0.6 });
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.85, 6), iron);
-    post.position.y = 0.425;
-    post.castShadow = true;
-    const glow = new THREE.MeshStandardMaterial({ color: "#ffe2a6", emissive: "#ffb347", emissiveIntensity: 1 });
+    const iron = new THREE.MeshStandardMaterial({ color: "#26231f", roughness: 0.45, metalness: 0.75 });
+    const brass = new THREE.MeshStandardMaterial({ color: "#b0813a", roughness: 0.32, metalness: 0.85 });
+    const stone = new THREE.MeshStandardMaterial({ color: "#8b8478", roughness: 0.95 });
+    const part = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z = 0) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.castShadow = true;
+      g.add(m);
+      return m;
+    };
+    // A stone footing, a flared iron foot, a slim tapered post with brass collars.
+    part(new THREE.CylinderGeometry(0.075, 0.095, 0.05, 12), stone, 0, 0.025);
+    part(new THREE.CylinderGeometry(0.034, 0.07, 0.1, 12), iron, 0, 0.1);
+    part(new THREE.CylinderGeometry(0.017, 0.03, 0.62, 10), iron, 0, 0.46);
+    for (const y of [0.2, 0.72]) part(new THREE.TorusGeometry(0.027, 0.008, 6, 14), brass, 0, y).rotation.x = Math.PI / 2;
+    // The lantern: a brass plate, four corner posts round a glass body, a flame inside, a pyramid roof, a finial and a ring.
+    part(new THREE.CylinderGeometry(0.068, 0.052, 0.03, 4), brass, 0, 0.785).rotation.y = Math.PI / 4;
+    const glow = new THREE.MeshStandardMaterial({ color: "#ffe2a6", emissive: "#ffb347", emissiveIntensity: 1, roughness: 0.2 });
+    glow.userData.ph = hash01(it.id, 31) * 6.28;
     this.lampMats.push(glow);
-    const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.15, 0.11), glow);
-    lantern.position.y = 0.93;
+    part(new THREE.CylinderGeometry(0.06, 0.052, 0.14, 4), glow, 0, 0.875).rotation.y = Math.PI / 4;
+    for (const [x, z] of [[0.042, 0.042], [-0.042, 0.042], [0.042, -0.042], [-0.042, -0.042]]) part(new THREE.BoxGeometry(0.009, 0.15, 0.009), iron, x, 0.875, z);
+    const flame = new THREE.Mesh(new THREE.SphereGeometry(0.028, 12, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.8, 0.9), toneMapped: false }));
+    flame.scale.y = 1.5;
+    flame.position.y = 0.875;
+    g.add(flame);
+    part(new THREE.ConeGeometry(0.098, 0.08, 4), iron, 0, 0.99).rotation.y = Math.PI / 4;
+    part(new THREE.TorusGeometry(0.075, 0.006, 5, 4), brass, 0, 0.955).rotation.set(Math.PI / 2, 0, Math.PI / 4);
+    part(new THREE.SphereGeometry(0.013, 8, 6), brass, 0, 1.04);
+    part(new THREE.TorusGeometry(0.016, 0.004, 5, 10), brass, 0, 1.062);
     // A soft halo, so lamps glow at night even where the bloom pass is off (phones).
     this.glowTex ??= puffTexture("glow");
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: "#ffb860", transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
-    halo.position.y = 0.93;
-    halo.scale.setScalar(0.72);
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: "#ffb860", transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.position.y = 0.875;
+    halo.scale.setScalar(0.85);
     halo.raycast = () => {};
     this.haloMats.push(halo.material);
     this.nightOnly.push(halo);
     g.add(halo);
-    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.08, 4), iron);
-    cap.position.y = 1.04;
-    cap.rotation.y = Math.PI / 4;
-    g.add(post, lantern, cap);
     if (this.lampLights.length < 6) {
       const l = new THREE.PointLight("#ffb860", 1.4, 3.2, 1.6);
-      l.position.y = 0.95;
+      l.position.y = 0.9;
       this.lampLights.push(l);
       g.add(l);
     }
@@ -2691,6 +2855,14 @@ void main() {`);
     } else {
       if (!this.controls.autoRotate && !this.reduced && t - this.idleSince > 9) this.controls.autoRotate = true;
       this.controls.update(dt);
+    }
+    // Lamplight breathes a little: each flame flickers on its own (the music takes over while a song plays).
+    if (this.uMusicMix.value < 0.01 && !this.reduced) {
+      for (const m of this.lampMats) {
+        const ph = m.userData.ph as number | undefined;
+        if (ph === undefined) continue;
+        m.emissiveIntensity = (m.userData.base0 ?? 1) * (1 + 0.07 * Math.sin(t * 7.3 + ph) * Math.sin(t * 3.1 + ph * 2) + 0.03 * Math.sin(t * 17 + ph));
+      }
     }
     // Shooting stars on clear nights.
     if (this.shoot && this.phase === "night" && !this.wet && !this.reduced) {
