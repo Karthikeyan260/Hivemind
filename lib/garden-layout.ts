@@ -16,11 +16,26 @@ export type Garden = {
   streak: number;
   /** How the last night check-in went (1 rough to 5 great), if it was last night or tonight; null otherwise. Tints the island's light. */
   mood: 1 | 2 | 3 | 4 | 5 | null;
+  /** Rare visitors earned by milestones: an owl for a long streak, a deer for many game wins. */
+  visitors: Visitor[];
   counts: { flowers: number; trees: number; lamps: number; gems: number; butterflies: number; music?: number };
   /** Name of the pet living there. */
   pet: string;
   stage: number;
 };
+
+/** A rare visitor to the island, earned by a milestone (tap it to see why it came). */
+export type Visitor = { kind: "owl" | "deer"; label: string };
+/** Days of streak that bring the owl, and game wins that bring the deer. */
+export const OWL_STREAK = 7;
+export const DEER_WINS = 10;
+/** The visitors a streak and a count of wins have earned. */
+export function visitorsFor(streak: number, wins: number): Visitor[] {
+  const out: Visitor[] = [];
+  if (streak >= OWL_STREAK) out.push({ kind: "owl", label: `🦉 A night owl came to roost: you kept a ${streak}-day streak` });
+  if (wins >= DEER_WINS) out.push({ kind: "deer", label: `🦌 A deer wandered in: ${wins} games won` });
+  return out;
+}
 
 /** The island's season: it changes the grass, the leaves and what drifts through the air. */
 export type Season = "spring" | "summer" | "autumn" | "winter";

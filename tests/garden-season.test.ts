@@ -18,3 +18,14 @@ describe("Streak fireflies", () => {
     expect(fireflyCount(-3)).toBe(0);
   });
 });
+
+describe("Rare visitors", () => {
+  it("an owl at a 7-day streak, a deer at 10 game wins, both when both are earned", async () => {
+    const { visitorsFor } = await import("@/lib/garden-layout");
+    expect(visitorsFor(6, 9)).toEqual([]);
+    expect(visitorsFor(7, 9).map((v) => v.kind)).toEqual(["owl"]);
+    expect(visitorsFor(2, 10).map((v) => v.kind)).toEqual(["deer"]);
+    expect(visitorsFor(30, 40).map((v) => v.kind)).toEqual(["owl", "deer"]);
+    expect(visitorsFor(7, 0)[0].label).toContain("7-day streak");
+  });
+});

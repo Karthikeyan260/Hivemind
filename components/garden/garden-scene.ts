@@ -72,7 +72,7 @@ export type FrameInfo = {
 };
 export type GardenCallbacks = { onPick: (id: string) => void; onFrame: (f: FrameInfo) => void };
 /** `mini`: the small live view in a corner while a song plays (low quality, no fly-in, no touching). */
-type Opts = { n: number; phase: Phase; wet: boolean; butterflies: number; lit: boolean; mini?: boolean; /** How the last night check-in went (1 rough to 5 great), or null: tints the light. */ mood?: number | null; /** Days of habit streak: the swarm of golden fireflies. */ streak?: number; /** Spring, summer, autumn or winter: grass, leaves and what drifts through the air. */ season?: Season };
+type Opts = { n: number; phase: Phase; wet: boolean; butterflies: number; lit: boolean; mini?: boolean; /** Rare visitors earned by milestones: an owl on the tallest tree, a deer by the grass. */ visitors?: ("owl" | "deer")[]; /** How the last night check-in went (1 rough to 5 great), or null: tints the light. */ mood?: number | null; /** Days of habit streak: the swarm of golden fireflies. */ streak?: number; /** Spring, summer, autumn or winter: grass, leaves and what drifts through the air. */ season?: Season };
 
 /** Each season's grass (the blade's foot and its tip, in full daylight; the tip dims at dusk and night). */
 const SEASON_GRASS: Record<Season, { base: string; tip: string }> = {
@@ -410,6 +410,7 @@ export class GardenScene {
   private smoke: THREE.Sprite[] = [];
   private zzz: THREE.Sprite[] = [];
   private chimneyTop = new THREE.Vector3();
+  private cottage: THREE.Group | null = null;
   private butterflies: { g: THREE.Group; l: THREE.Mesh; r: THREE.Mesh; ph: number; sp: number; rad: number; h: number }[] = [];
   private clouds = new THREE.Group();
   private cloudMats: THREE.SpriteMaterial[] = [];
@@ -479,6 +480,7 @@ export class GardenScene {
     this.buildCottage();
     this.buildPond();
     this.buildItems(items);
+    this.buildVisitors(opts.visitors ?? []);
     this.buildButterflies(opts.butterflies);
     this.buildParticles();
     this.buildStreak(opts.streak ?? 0);
@@ -539,6 +541,338 @@ export class GardenScene {
     this.camera.position.copy(this.controls.target).add(v);
     this.camera.lookAt(this.controls.target);
   }
+  /* ── the moon ── */
+
+  private moon: THREE.Mesh | null = null;
+  private moonHalo: THREE.Sprite | null = null;
+  /** Where the moon hangs: in the sky the resting camera actually sees (upper right of the picture, however wide the screen is). */
+  private placeMoon() {
+    if (!this.moon || !this.moonHalo) return;
+    const off = new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, 1.2, 0.32));
+    const f = off.clone().negate().normalize();
+    const right = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize();
+    const up = new THREE.Vector3().crossVectors(right, f).normalize();
+    const halfV = THREE.MathUtils.degToRad(this.camera.fov / 2);
+    const halfH = Math.atan(Math.tan(halfV) * (this.camera.aspect || 1.6));
+    const dir = f.add(right.multiplyScalar(Math.tan(halfH * -0.6))).add(up.multiplyScalar(Math.tan(halfV * 0.44))).normalize();
+    this.moon.position.copy(dir).multiplyScalar(2600);
+    this.moon.lookAt(0, 0, 0);
+    this.moonHalo.position.copy(this.moon.position);
+    // Smaller on a tall, narrow screen, so it doesn't crowd the title.
+    const k = Math.min(1, 0.45 + (this.camera.aspect || 1.6) * 0.45);
+    this.moon.scale.setScalar(k);
+    this.moonHalo.scale.setScalar(520 * k);
+  }
+
+  /* ── rare visitors: an owl for a long streak, a deer for many wins ── */
+
+  private visitors = new Map<string, { g: THREE.Group; kind: "owl" | "deer"; ph: number; head: THREE.Object3D; eyes: THREE.Object3D; home: THREE.Vector3; legs: THREE.Object3D[]; state: "graze" | "look" | "walk"; until: number; target: THREE.Vector3; yaw: number; graze: number; sleep: number }>();
+  /** (development only, from the test hook) Put the camera close in front of a visitor, to look at it. */
+  debugFocus(id: string, dist = 2.2) {
+    const v = this.visitors.get(id);
+    if (!v) return;
+    this.skipIntro();
+    this.controls.minDistance = 0.3;
+    const p = v.g.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, v.kind === "owl" ? 0.35 : 0.45, 0));
+    this.controls.target.copy(p);
+    this.camera.position.copy(p).add(new THREE.Vector3(0.5, 0.2, dist));
+    this.camera.lookAt(p);
+    this.controls.autoRotate = false;
+  }
+  private tipFollow: THREE.Object3D | null = null;
+  private tipLift = 1;
+
+  private visitorMesh(g: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    g.add(m);
+    return m;
+  }
+  private blob(r: number, sx: number, sy: number, sz: number) {
+    const geo = new THREE.SphereGeometry(r, 14, 10);
+    geo.scale(sx, sy, sz);
+    return geo;
+  }
+
+  /**
+   * An owl, perched: a smooth egg-shaped body with a streaked belly, barred folded wings, a fanned tail, a round head with
+   * a pale face disc, soft brows, tufted ears, big golden eyes with a gleam (and eyelids that close), a hooked beak and gripping claws.
+   */
+  private makeOwl() {
+    const g = new THREE.Group();
+    const std = (color: string, rough = 0.9) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const back = std("#7a5a3c");
+    const backLight = std("#a07e58");
+    const dark = std("#4a3322");
+    const streak = std("#6a4a30");
+    const cream = std("#ecdcbc", 0.95);
+    const rim = std("#b08a5e");
+    const white = std("#fbf6ea", 0.4);
+    const iris = new THREE.MeshStandardMaterial({ color: "#f5b82a", emissive: "#e89a10", emissiveIntensity: 0.45, roughness: 0.35 });
+    const black = std("#0f0b08", 0.25);
+    const beakMat = std("#d98a2b", 0.55);
+    const claw = std("#3a2c22", 0.5);
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = g) => this.visitorMesh(parent, geo, mat, x, y, z);
+    // Body: one smooth lathe, wide at the belly and narrowing to the neck.
+    const profile = [[0.0, 0.0], [0.07, 0.01], [0.122, 0.07], [0.146, 0.16], [0.138, 0.25], [0.108, 0.32], [0.075, 0.36], [0.0, 0.375]].map(([x, y]) => new THREE.Vector2(x, y));
+    const body = add(new THREE.LatheGeometry(profile, 24), back, 0, 0.04, 0);
+    body.scale.set(1, 1, 0.92);
+    // A pale belly on the front, with neat rows of little dark streaks down it.
+    add(this.blob(0.112, 0.92, 1.45, 0.55), cream, 0, 0.2, 0.082);
+    for (let row = 0; row < 5; row++) {
+      const y = 0.115 + row * 0.044;
+      const per = row % 2 ? 4 : 3;
+      for (let k = 0; k < per; k++) {
+        const x = (k - (per - 1) / 2) * 0.05;
+        const ex = x / 0.103;
+        const ey = (y - 0.2) / 0.162;
+        const inside = 1 - ex * ex - ey * ey;
+        if (inside <= 0.05) continue;
+        const m = add(this.blob(0.0105, 0.75, 2.4, 0.35), streak, x, y, 0.082 + 0.0616 * Math.sqrt(inside) + 0.004);
+        m.rotation.x = -ey * 0.5;
+        m.rotation.z = -x * 2.5;
+      }
+    }
+    // Wings folded down the sides: three overlapping layers, darker at the tips.
+    for (const s of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        const w = add(this.blob(0.062 - k * 0.006, 0.4, 1.5 + k * 0.28, 0.85), k === 0 ? back : k === 1 ? backLight : dark, s * (0.128 - k * 0.003), 0.22 - k * 0.05, -0.02 - k * 0.004);
+        w.rotation.z = -s * (0.08 + k * 0.03);
+        w.rotation.x = 0.05;
+      }
+    }
+    // Tail: a fan of feathers hanging down behind.
+    for (let k = -2; k <= 2; k++) {
+      const t = add(this.blob(0.034, 0.6, 2.7, 0.3), k % 2 ? dark : back, k * 0.026, 0.05, -0.128 - Math.abs(k) * 0.004);
+      t.rotation.x = -0.55;
+      t.rotation.z = -k * 0.09;
+    }
+    // Feet: three toes forward, with dark claws, gripping the perch.
+    for (const s of [-1, 1]) {
+      add(new THREE.CylinderGeometry(0.014, 0.017, 0.06, 7), beakMat, s * 0.05, 0.035, 0.035);
+      for (let k = -1; k <= 1; k++) {
+        const toe = add(new THREE.CylinderGeometry(0.008, 0.01, 0.055, 6), beakMat, s * 0.05 + k * 0.016, 0.006, 0.065);
+        toe.rotation.x = Math.PI / 2;
+        toe.rotation.z = k * 0.2;
+        const c = add(new THREE.ConeGeometry(0.008, 0.026, 5), claw, s * 0.05 + k * 0.02, 0.0, 0.1);
+        c.rotation.x = Math.PI / 2 + 0.5;
+      }
+    }
+    // The head turns on its own pivot.
+    const head = new THREE.Group();
+    head.position.set(0, 0.405, 0.012);
+    g.add(head);
+    add(this.blob(0.122, 1.12, 0.96, 1.0), back, 0, 0, 0, head);
+    add(this.blob(0.1, 1.0, 0.7, 0.9), backLight, 0, 0.045, -0.01, head);
+    // The face: two pale discs with a soft rim, and a light brow above each eye.
+    for (const s of [-1, 1]) {
+      const ring = add(new THREE.TorusGeometry(0.066, 0.006, 6, 24), rim, s * 0.06, 0.008, 0.092, head);
+      ring.scale.y = 1.05;
+      add(this.blob(0.068, 1, 1.02, 0.42), cream, s * 0.06, 0.008, 0.094, head);
+      const brow = add(this.blob(0.026, 1.6, 0.4, 0.55), backLight, s * 0.066, 0.058, 0.111, head);
+      brow.rotation.z = -s * 0.28;
+      const tuft = add(new THREE.ConeGeometry(0.03, 0.095, 5), back, s * 0.082, 0.112, -0.012, head);
+      tuft.rotation.z = -s * 0.32;
+      const tuftTip = add(new THREE.ConeGeometry(0.017, 0.045, 5), dark, s * 0.092, 0.152, -0.012, head);
+      tuftTip.rotation.z = -s * 0.32;
+    }
+    for (const s of [-1, 1]) {
+      add(this.blob(0.046, 1, 1, 0.7), white, s * 0.06, 0.008, 0.118, head);
+      add(this.blob(0.038, 1, 1, 0.5), iris, s * 0.06, 0.008, 0.134, head);
+      add(this.blob(0.022, 1, 1, 0.5), black, s * 0.06, 0.008, 0.146, head);
+      add(this.blob(0.008, 1, 1, 0.6), white, s * 0.052, 0.018, 0.152, head);
+    }
+    // Eyelids (feather-coloured), open at rest and closed over the eyes when it sleeps or blinks.
+    const lids = new THREE.Group();
+    head.add(lids);
+    for (const s of [-1, 1]) {
+      add(this.blob(0.05, 1, 1, 0.8), back, s * 0.06, 0.008, 0.135, lids);
+      add(this.blob(0.034, 1, 0.1, 0.3), dark, s * 0.06, -0.012, 0.172, lids);
+    }
+    lids.scale.y = 0.02;
+    // A hooked beak between the eyes.
+    const beak = add(new THREE.ConeGeometry(0.02, 0.055, 6), beakMat, 0, -0.018, 0.148, head);
+    beak.rotation.x = Math.PI / 2 + 0.55;
+    const hook = add(new THREE.ConeGeometry(0.011, 0.024, 5), beakMat, 0, -0.04, 0.164, head);
+    hook.rotation.x = Math.PI / 2 + 1.3;
+    return { g, head, eyes: lids };
+  }
+
+  /**
+   * A fawn: a smooth warm-brown body (chest, belly and rump blended), a long curved neck, a proper head with a muzzle, a wet nose,
+   * big leaf ears and dark eyes with a gleam, slender jointed legs with dark hooves, a white tail and a spotted back.
+   */
+  private makeDeer() {
+    const g = new THREE.Group();
+    const std = (color: string, rough = 0.88) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const fur = std("#b9824f");
+    const furDark = std("#8e5c36");
+    const light = std("#efdcba", 0.95);
+    const spot = std("#fff3dc", 0.9);
+    const dark = std("#2a1d16", 0.5);
+    const black = new THREE.MeshStandardMaterial({ color: "#120c09", roughness: 0.15 });
+    const white = std("#ffffff", 0.3);
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = g) => this.visitorMesh(parent, geo, mat, x, y, z);
+    // The body: chest, middle and rump blended into one smooth shape, with a pale belly under it.
+    add(this.blob(0.17, 0.85, 0.95, 1.1), fur, 0, 0.5, 0.17);
+    add(this.blob(0.18, 0.86, 0.9, 1.5), fur, 0, 0.47, 0);
+    add(this.blob(0.165, 0.9, 0.95, 1.0), fur, 0, 0.48, -0.18);
+    add(this.blob(0.15, 0.75, 0.55, 1.5), light, 0, 0.37, 0.02);
+    // Soft white spots over the back and flanks.
+    for (let i = 0; i < 22; i++) {
+      const s = i % 2 ? 1 : -1;
+      const z = -0.27 + hash01(`dz${i}`) * 0.5;
+      const x = s * (0.03 + hash01(`dx${i}`) * 0.1);
+      const y = 0.5 + 0.145 * Math.sqrt(Math.max(0, 1 - (x / 0.155) ** 2)) - 0.012;
+      const sp = add(this.blob(0.0135, 1.2, 0.3, 1.0), spot, x, y, z);
+      sp.rotation.z = -x * 3;
+    }
+    // Tail: short, white underneath, flicks up.
+    const tail = add(this.blob(0.04, 0.8, 1.15, 1.2), spot, 0, 0.55, -0.31);
+    tail.rotation.x = -0.7;
+    // Legs: each swings from the shoulder or hip; a shaped upper part, a slim shin, a dark hoof.
+    const legs: THREE.Object3D[] = [];
+    for (const [x, z, hind] of [[0.075, 0.2, 0], [-0.075, 0.2, 0], [0.075, -0.2, 1], [-0.075, -0.2, 1]] as const) {
+      const leg = new THREE.Group();
+      leg.position.set(x, 0.4, z);
+      add(this.blob(0.04, 0.9, 2.6, 1.0), fur, 0, -0.1, hind ? -0.01 : 0.005, leg);
+      const shin = add(new THREE.CylinderGeometry(0.019, 0.012, 0.26, 8), furDark, 0, -0.28, hind ? -0.02 : 0, leg);
+      shin.rotation.x = hind ? 0.14 : -0.03;
+      add(new THREE.CylinderGeometry(0.013, 0.017, 0.04, 8), dark, 0, -0.405, hind ? -0.045 : -0.01, leg);
+      g.add(leg);
+      legs.push(leg);
+    }
+    // The neck: a chain of spheres from the shoulder up and forward, getting slimmer, on a pivot that dips to graze.
+    const neck = new THREE.Group();
+    neck.position.set(0, 0.54, 0.21);
+    g.add(neck);
+    for (let i = 0; i <= 6; i++) {
+      const t = i / 6;
+      add(this.blob(0.074 - t * 0.03, 1, 1.05, 1.1), i % 3 === 2 ? light : fur, 0, 0.02 + t * 0.32, 0.02 + t * 0.13, neck);
+    }
+    const head = new THREE.Group();
+    head.position.set(0, 0.36, 0.16);
+    neck.add(head);
+    add(this.blob(0.058, 0.88, 0.95, 1.2), fur, 0, 0, 0, head);
+    add(this.blob(0.036, 0.85, 0.82, 1.55), fur, 0, -0.022, 0.07, head);
+    add(this.blob(0.03, 0.85, 0.7, 1.2), light, 0, -0.04, 0.052, head);
+    add(this.blob(0.017, 1.1, 0.85, 0.9), black, 0, -0.018, 0.123, head);
+    add(this.blob(0.006, 1, 0.8, 0.8), white, 0.006, -0.012, 0.133, head);
+    for (const s of [-1, 1]) {
+      add(this.blob(0.0135, 1, 1.1, 0.7), black, s * 0.048, 0.016, 0.045, head);
+      add(this.blob(0.004, 1, 1, 0.6), white, s * 0.046, 0.021, 0.056, head);
+      const ear = add(this.blob(0.05, 0.28, 1.35, 0.85), fur, s * 0.074, 0.056, -0.028, head);
+      ear.rotation.z = -s * 0.85;
+      ear.rotation.x = -0.15;
+      const inner = add(this.blob(0.036, 0.18, 1.15, 0.65), light, s * 0.0745, 0.054, -0.021, head);
+      inner.rotation.z = -s * 0.85;
+      inner.rotation.x = -0.15;
+    }
+    // The neck pivot is returned as "head": it dips (rotation.x towards 1.2) to graze.
+    return { g, head: neck, legs };
+  }
+
+  private buildVisitors(kinds: ("owl" | "deer")[]) {
+    this.visitors.clear();
+    if (kinds.includes("owl") && this.cottage) {
+      // Perched on the ridge of the cottage roof, facing the front.
+      const { g, head, eyes } = this.makeOwl();
+      g.position.set(0, 2.3, 0.4);
+      g.scale.setScalar(1.15);
+      g.userData.id = "visitor:owl";
+      this.pickables.push(g);
+      this.cottage.add(g);
+      this.visitors.set("visitor:owl", { g, kind: "owl", ph: 1.7, head, eyes, home: new THREE.Vector3(), legs: [], state: "look", until: 0, target: new THREE.Vector3(), yaw: 0, graze: 0, sleep: 0 });
+    }
+    if (kinds.includes("deer")) {
+      const spot = this.freeSpots(10, "deer", 1.2, 0.62).sort((a, b) => b.z - Math.abs(b.x) * 0.3 - (a.z - Math.abs(a.x) * 0.3))[0];
+      if (spot) {
+        const { g, head, legs } = this.makeDeer();
+        g.position.copy(spot);
+        g.scale.setScalar(1.6);
+        g.userData.id = "visitor:deer";
+        this.pickables.push(g);
+        this.island.add(g);
+        this.visitors.set("visitor:deer", { g, kind: "deer", ph: 0.4, head, eyes: head, home: spot.clone(), legs, state: "graze", until: 3, target: spot.clone(), yaw: 0, graze: 1, sleep: 0 });
+      }
+    }
+  }
+
+  /** The visitors' little lives: the owl sleeps by day and turns its head and blinks at night; the deer grazes, looks up, and wanders a few steps now and then. */
+  private updateVisitors(dt: number, t: number) {
+    const night = this.phase === "night";
+    for (const v of this.visitors.values()) {
+      if (v.kind === "owl") {
+        const asleep = !night;
+        const swivel = Math.sin(t * 0.32 + v.ph) * 0.85 + Math.sin(t * 0.9 + v.ph * 2) * 0.25;
+        const blink = ((t / 4.4 + v.ph) % 1) < 0.045;
+        const closed = asleep || blink;
+        v.head.rotation.y = THREE.MathUtils.lerp(v.head.rotation.y, asleep ? 0.15 : swivel, 0.06);
+        v.head.rotation.x = THREE.MathUtils.lerp(v.head.rotation.x, asleep ? 0.28 : 0, 0.05);
+        v.eyes.scale.y = THREE.MathUtils.lerp(v.eyes.scale.y, closed ? 1 : 0.02, 0.35);
+        const breath = 1 + Math.sin(t * (asleep ? 1.1 : 1.6) + v.ph) * 0.012;
+        v.g.scale.setScalar(1.15 * breath);
+        continue;
+      }
+      // The deer.
+      v.sleep = THREE.MathUtils.lerp(v.sleep, night ? 1 : 0, 0.03);
+      if (night && v.state === "walk") v.state = "graze";
+      v.graze = THREE.MathUtils.lerp(v.graze, night || v.state === "graze" ? 1 : v.state === "walk" ? 0.1 : 0, 0.05);
+      v.head.rotation.x = v.graze * 1.15 + Math.sin(t * 1.4 + v.ph) * 0.02 * (1 - v.graze);
+      if (!night && t > v.until) {
+        if (v.state === "graze") {
+          v.state = "look";
+          v.until = t + 1.5 + Math.random() * 1.5;
+        } else if (v.state === "look") {
+          if (Math.random() < 0.5) {
+            // A few steps somewhere near home, on the island.
+            const a = Math.random() * Math.PI * 2;
+            const r = 0.4 + Math.random() * 0.9;
+            const x = v.home.x + Math.cos(a) * r;
+            const z = v.home.z + Math.sin(a) * r;
+            if (Math.hypot(x, z) < this.R * 0.82) {
+              v.target.set(x, this.heightAt(x, z), z);
+              v.state = "walk";
+              v.until = t + 12;
+            } else {
+              v.state = "graze";
+              v.until = t + 3 + Math.random() * 3;
+            }
+          } else {
+            v.state = "graze";
+            v.until = t + 3 + Math.random() * 3;
+          }
+        }
+      }
+      let moving = false;
+      if (v.state === "walk") {
+        const dx = v.target.x - v.g.position.x;
+        const dz = v.target.z - v.g.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.05) {
+          v.state = "graze";
+          v.until = t + 3 + Math.random() * 3;
+        } else {
+          const want = Math.atan2(dx, dz);
+          const turn = Math.atan2(Math.sin(want - v.yaw), Math.cos(want - v.yaw));
+          v.yaw += turn * Math.min(1, dt * 3);
+          const step = Math.min(d, 0.22 * dt);
+          v.g.position.x += (dx / d) * step;
+          v.g.position.z += (dz / d) * step;
+          v.g.position.y = this.heightAt(v.g.position.x, v.g.position.z);
+          moving = true;
+        }
+      }
+      v.g.rotation.y = v.yaw;
+      v.g.position.y = this.heightAt(v.g.position.x, v.g.position.z) - v.sleep * 0.45;
+      v.legs.forEach((leg, i) => {
+        const swing = moving ? Math.sin(t * 5.5 + (i === 0 || i === 3 ? 0 : Math.PI)) * 0.45 : 0;
+        leg.rotation.x = THREE.MathUtils.lerp(leg.rotation.x, swing, 0.25);
+        leg.scale.y = 1 - v.sleep * 0.82;
+      });
+    }
+  }
+
   private finishIntro() {
     this.intro.t0 = -2;
     this.controls.enabled = true;
@@ -576,7 +910,7 @@ void main() {`);
     const seed = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const u = hash01(`st${i}`);
-      const v = hash01(`sv${i}`) * 0.92 + 0.08;
+      const v = hash01(`sv${i}`) * 1.45 - 0.45;
       const th = u * Math.PI * 2;
       const y = v;
       const rr = Math.sqrt(1 - y * y);
@@ -662,15 +996,71 @@ void main() {`);
     this.shoot.frustumCulled = false;
     this.shoot.visible = false;
     this.nightSky.add(this.shoot);
-    // Moon with a halo.
-    const moonDir = new THREE.Vector3(...LOOK.night.sun).normalize();
-    const moon = new THREE.Mesh(new THREE.CircleGeometry(60, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.2, 2.0), fog: false }));
-    moon.position.copy(moonDir).multiplyScalar(2600);
-    moon.lookAt(0, 0, 0);
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTexture("glow"), color: "#9fb3ff", transparent: true, opacity: 0.35, depthWrite: false, fog: false }));
+    // The moon: a ball with pale highlands, dark seas and craters (bright-rimmed, shadowed on one side), in today's real phase, with a soft glow.
+    // It hangs where the camera looks (see placeMoon).
+    const syn = 29.530588853;
+    const julian = Date.now() / 86400000 + 2440587.5;
+    const phase = (((julian - 2451550.1) / syn) % 1 + 1) % 1;
+    const lit = (1 - Math.cos(phase * Math.PI * 2)) / 2;
+    const moon = new THREE.Mesh(
+      new THREE.PlaneGeometry(210, 210),
+      new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        fog: false,
+        uniforms: { uPhase: { value: phase } },
+        vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `uniform float uPhase; varying vec2 vUv;
+          float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+          vec2 h2(vec2 p){ return vec2(h(p), h(p + 17.31)); }
+          float n(vec2 p){ vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+          float fbm(vec2 p){ float s = 0.0; float a = 0.5; for (int i = 0; i < 5; i++) { s += a * n(p); p *= 2.03; a *= 0.5; } return s; }
+          // Craters: one per cell, a dark bowl with a bright rim; returns (bowl, rim).
+          vec2 craters(vec2 p, float scale, float density){
+            vec2 g = p * scale; vec2 id = floor(g); vec2 f = fract(g);
+            float bowl = 0.0; float rim = 0.0;
+            for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+              vec2 o = vec2(float(i), float(j)); vec2 cid = id + o; vec2 r = h2(cid);
+              if (r.x > density) continue;
+              vec2 c = o + 0.2 + 0.6 * h2(cid + 5.7) - f;
+              float rad = 0.16 + 0.22 * r.y;
+              float d = length(c) / rad;
+              bowl = max(bowl, smoothstep(1.0, 0.55, d) * 0.9);
+              rim = max(rim, smoothstep(0.78, 1.0, d) * smoothstep(1.35, 1.0, d));
+            }
+            return vec2(bowl, rim);
+          }
+          void main(){
+            vec2 p = vUv * 2.0 - 1.0;
+            float r = length(p);
+            if (r > 1.0) discard;
+            vec3 nrm = vec3(p, sqrt(max(0.0, 1.0 - r * r)));
+            // Highlands and the great dark seas.
+            float sea = smoothstep(0.5, 0.66, fbm(p * 1.6 + 3.1) + 0.12 * fbm(p * 5.0));
+            float grain = fbm(p * 14.0) * 0.08;
+            vec2 big = craters(p, 4.5, 0.55);
+            vec2 small = craters(p + 3.0, 11.0, 0.6);
+            float shade = 1.0 - big.x * 0.32 - small.x * 0.2 + big.y * 0.16 + small.y * 0.1;
+            vec3 land = vec3(0.86, 0.84, 0.77);
+            vec3 seaCol = vec3(0.44, 0.47, 0.54);
+            vec3 albedo = mix(land, seaCol, sea * 0.82) * shade + grain;
+            // The phase: sunlight from the side; a crescent or half is lit, the rest in faint earthshine.
+            float ang = uPhase * 6.2831853;
+            vec3 L = normalize(vec3(sin(ang), 0.0, -cos(ang)));
+            float lit = smoothstep(-0.04, 0.16, dot(nrm, L));
+            float limb = mix(0.7, 1.0, pow(nrm.z, 0.3));
+            vec3 col = albedo * (lit * 0.95 + 0.04) * limb;
+            gl_FragColor = vec4(col, smoothstep(1.0, 0.975, r));
+          }`,
+      }),
+    );
+    // A soft glow round it, brighter when it's fuller.
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: puffTexture("glow"), color: "#b9c8ff", transparent: true, opacity: 0.06 + 0.2 * lit, depthWrite: false, fog: false }));
     halo.scale.setScalar(520);
-    halo.position.copy(moon.position);
+    this.moon = moon;
+    this.moonHalo = halo;
     this.nightSky.add(moon, halo);
+    this.placeMoon();
     // Northern lights: a tall curtain far away, its rays wandering.
     const aur = new THREE.Mesh(
       new THREE.CylinderGeometry(1800, 1800, 900, 96, 1, true, Math.PI * 0.85, Math.PI * 0.9),
@@ -1200,6 +1590,7 @@ void main() {`);
     const n = this.opts.n;
     const at = this.toWorld(homeSpot(n).x, homeSpot(n).y);
     const g = new THREE.Group();
+    this.cottage = g;
     const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25);
     const plaster = new THREE.MeshStandardMaterial({ color: "#efe2c8", roughness: 0.92 });
     const timber = new THREE.MeshStandardMaterial({ color: "#5a3a24", roughness: 0.85 });
@@ -2841,6 +3232,7 @@ void main() {`);
     const before = this.camera.aspect;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.placeMoon();
     // The frame changed shape (a phone turned, a window resized): pull the camera to the distance
     // that fits the island again, keeping the direction it looks from.
     if (this.intro.t0 === -2 && Math.abs(before - this.camera.aspect) / before > 0.15) {
@@ -2863,8 +3255,16 @@ void main() {`);
   }
   /** Point the label at an item (or the cottage), or clear it. */
   setTip(id: string | null) {
+    this.tipFollow = null;
     if (!id) {
       this.tip = null;
+      return;
+    }
+    const visitor = this.visitors.get(id);
+    if (visitor) {
+      this.tipFollow = visitor.g;
+      this.tipLift = visitor.kind === "owl" ? 0.8 : 1.45;
+      this.tip = visitor.g.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, this.tipLift, 0));
       return;
     }
     if (id === "home") {
@@ -3018,6 +3418,8 @@ void main() {`);
       if (!this.controls.autoRotate && !this.reduced && t - this.idleSince > 9) this.controls.autoRotate = true;
       this.controls.update(dt);
     }
+    this.updateVisitors(dt, t);
+    if (this.tipFollow) this.tip = this.tipFollow.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, this.tipLift, 0));
     // Lamplight breathes a little: each flame flickers on its own (the music takes over while a song plays).
     if (this.uMusicMix.value < 0.01 && !this.reduced) {
       for (const m of this.lampMats) {

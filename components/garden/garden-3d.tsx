@@ -9,7 +9,7 @@ import * as beat from "@/lib/beat";
 import { MUSIC_EVENT, MUSIC_STATE_EVENT, useFetch } from "@/lib/client-api";
 import type { GoodNight } from "@/lib/goodnight";
 import type { GardenDay } from "@/lib/garden-day";
-import { type Garden, homeSpot, islandSize, layout, type Season, SEASONS, seasonOf } from "@/lib/garden-layout";
+import { type Garden, homeSpot, islandSize, layout, type Season, SEASONS, seasonOf, type Visitor } from "@/lib/garden-layout";
 import { festivalById, festivalOn } from "@/lib/pet-looks";
 import type { Sky } from "@/lib/sky";
 import type { GardenScene } from "./garden-scene";
@@ -40,16 +40,19 @@ function decorFor(asked: string | null) {
   return { fest: isDecor(asked) ? asked : own && isDecor(today) ? today : null, monsoon: asked === "monsoon" || (own && monsoonMonth()) };
 }
 
-export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason = null, askedMood = null }: { onFail: () => void; asked?: string | null; bedtimeAsk?: boolean; askedSeason?: string | null; askedMood?: string | null }) {
+export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason = null, askedMood = null, askedVisitors = null }: { onFail: () => void; asked?: string | null; bedtimeAsk?: boolean; askedSeason?: string | null; askedMood?: string | null; askedVisitors?: string | null }) {
   const feed = useFetch<{ garden: Garden }>("/api/pet/garden");
   const g = feed.data?.garden;
   const placed = useMemo(() => (g ? layout(g.items) : []), [g]);
   // The season: this month's, or one previewed from the link (?season=autumn).
   const season: Season = (SEASONS as string[]).includes(askedSeason ?? "") ? (askedSeason as Season) : seasonOf(new Date().getMonth());
   // How the last night check-in went (or ?mood=1..5 to preview): tints the light and Nova's face.
+  // Rare visitors earned by milestones (or ?visitors=owl,deer to preview them).
+  const previewVisitors = (askedVisitors ?? "").split(",").filter((k): k is "owl" | "deer" => k === "owl" || k === "deer");
+  const visitors: Visitor[] = askedVisitors ? previewVisitors.map((kind) => g?.visitors.find((v) => v.kind === kind) ?? { kind, label: kind === "owl" ? "🦉 A night owl came to roost" : "🦌 A deer wandered in" }) : (g?.visitors ?? []);
   const previewMood = Number(askedMood);
   const mood = Number.isInteger(previewMood) && previewMood >= 1 && previewMood <= 5 ? previewMood : (g?.mood ?? null);
-  const gardenKey = g ? `${g.items.map((i) => i.id).join(",")}|${g.butterflies}|${g.stage}|${g.streak}|${season}|${mood ?? ""}` : "";
+  const gardenKey = g ? `${g.items.map((i) => i.id).join(",")}|${g.butterflies}|${g.stage}|${g.streak}|${season}|${mood ?? ""}|${visitors.map((v) => v.kind).join("+")}` : "";
   const n = g?.items.length ?? 0;
   const isl = islandSize(n);
   const home = homeSpot(n);
@@ -162,6 +165,12 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
       }
       return;
     }
+    // A rare visitor: its label says why it came.
+    if (id.startsWith("visitor:")) {
+      const v = visitors.find((x) => `visitor:${x.kind}` === id);
+      if (v) showTip(id, v.label);
+      return;
+    }
     const p = placed.find((x) => x.id === id);
     if (!p) return;
     showTip(p.id, p.label);
@@ -224,7 +233,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         scene.current = new mod.GardenScene(
           cv,
           placed,
-          { n: g.items.length, phase: phaseNow(), wet: false, butterflies: g.butterflies, lit: sleeping, streak: g.streak ?? 0, season, mood },
+          { n: g.items.length, phase: phaseNow(), wet: false, butterflies: g.butterflies, lit: sleeping, streak: g.streak ?? 0, season, mood, visitors: visitors.map((v) => v.kind) },
           {
             onPick: (id) => pickRef.current(id),
             onFrame: ({ pet, tip }) => {
@@ -320,7 +329,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     const paint = () => s()?.setMusic(playing() ? beat.currentRgb() : null);
     paint();
     // Development only: tests send beats without playing a real song (which would log a play).
-    if (process.env.NODE_ENV === "development") (window as unknown as { __hmGarden?: unknown }).__hmGarden = { beat: () => s()?.musicBeat(), drop: () => s()?.musicDrop(), level: (v: number) => s()?.setMusicLevel(v), music: (rgb: [number, number, number] | null) => s()?.setMusic(rgb) };
+    if (process.env.NODE_ENV === "development") (window as unknown as { __hmGarden?: unknown }).__hmGarden = { focus: (id: string, d?: number) => s()?.debugFocus(id, d), beat: () => s()?.musicBeat(), drop: () => s()?.musicDrop(), level: (v: number) => s()?.setMusicLevel(v), music: (rgb: [number, number, number] | null) => s()?.setMusic(rgb) };
     const offBeat = beat.onBeat(() => s()?.musicBeat());
     // The song's loudness, a few times a second, for the gentle sway and the fireflies.
     const lv = setInterval(() => playing() && s()?.setMusicLevel(beat.level()), 120);

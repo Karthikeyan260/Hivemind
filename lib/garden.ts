@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listCheckins, nightDay } from "@/lib/checkin";
 import { listResults } from "@/lib/games/stats";
-import { type Garden, type GardenItem, hueOf } from "@/lib/garden-layout";
+import { type Garden, type GardenItem, hueOf, visitorsFor } from "@/lib/garden-layout";
 import { listHabits, stats as habitStats } from "@/lib/habits";
 import { getPet } from "@/lib/pet";
 import { listPlays } from "@/lib/plays";
@@ -94,6 +94,7 @@ export async function getGarden(supabase: SupabaseClient): Promise<Garden> {
     butterflies,
     streak,
     mood,
+    visitors: visitorsFor(streak, gems.length),
     counts: { flowers: flowers.length, trees: full + (growing ? 1 : 0), lamps: lamps.length, gems: gems.length, butterflies, music: music.length },
     pet: pet?.name ?? "Nova",
     stage: pet?.stage ?? 0,

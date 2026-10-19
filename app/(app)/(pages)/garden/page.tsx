@@ -24,13 +24,15 @@ function Garden() {
   const askedSeason = params.get("season");
   // ?mood=1 to 5 previews how a check-in tints the light.
   const askedMood = params.get("mood");
+  // ?visitors=owl,deer previews the rare visitors.
+  const askedVisitors = params.get("visitors");
   const [mode, setMode] = useState<"3d" | "flat" | null>(null);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- what the device can draw, checked once
     setMode(canDraw3D() ? "3d" : "flat");
   }, []);
   if (mode === "flat") return <FlatGarden />;
-  if (mode === "3d") return <Garden3D onFail={() => setMode("flat")} asked={asked} bedtimeAsk={bedtime} askedSeason={askedSeason} askedMood={askedMood} />;
+  if (mode === "3d") return <Garden3D onFail={() => setMode("flat")} asked={asked} bedtimeAsk={bedtime} askedSeason={askedSeason} askedMood={askedMood} askedVisitors={askedVisitors} />;
   return null;
 }
 
