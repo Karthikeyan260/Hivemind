@@ -14,6 +14,8 @@ export type Garden = {
   butterflies: number;
   /** The best current habit streak, in days (0 = none running): the more days, the bigger the swarm of fireflies. */
   streak: number;
+  /** How the last night check-in went (1 rough to 5 great), if it was last night or tonight; null otherwise. Tints the island's light. */
+  mood: 1 | 2 | 3 | 4 | 5 | null;
   counts: { flowers: number; trees: number; lamps: number; gems: number; butterflies: number; music?: number };
   /** Name of the pet living there. */
   pet: string;

@@ -25,6 +25,8 @@ const PHASE_NAME: Record<Phase, string> = { dawn: "Dawn", day: "Daytime", golden
 /** Festivals the island dresses up for (others only change Nova's outfit). */
 const DECOR = ["pongal", "karthigai", "deepavali"] as const;
 const DECOR_ICON: Record<string, string> = { pongal: "🌾", karthigai: "🪔", deepavali: "🎆", monsoon: "🌧️" };
+/** How the last night went, for the title line (1 rough to 5 great). */
+const MOOD_TEXT = ["😞 a rough night", "😕 a meh night", "😐 an okay night", "🙂 a good night", "😄 a great night"];
 const SEASON_ICON: Record<Season, string> = { spring: "🌸", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const todayLocal = () => new Date().toLocaleDateString("en-CA");
 /** The north-east monsoon over Tamil Nadu: October to December. */
@@ -38,13 +40,16 @@ function decorFor(asked: string | null) {
   return { fest: isDecor(asked) ? asked : own && isDecor(today) ? today : null, monsoon: asked === "monsoon" || (own && monsoonMonth()) };
 }
 
-export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason = null }: { onFail: () => void; asked?: string | null; bedtimeAsk?: boolean; askedSeason?: string | null }) {
+export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason = null, askedMood = null }: { onFail: () => void; asked?: string | null; bedtimeAsk?: boolean; askedSeason?: string | null; askedMood?: string | null }) {
   const feed = useFetch<{ garden: Garden }>("/api/pet/garden");
   const g = feed.data?.garden;
   const placed = useMemo(() => (g ? layout(g.items) : []), [g]);
   // The season: this month's, or one previewed from the link (?season=autumn).
   const season: Season = (SEASONS as string[]).includes(askedSeason ?? "") ? (askedSeason as Season) : seasonOf(new Date().getMonth());
-  const gardenKey = g ? `${g.items.map((i) => i.id).join(",")}|${g.butterflies}|${g.stage}|${g.streak}|${season}` : "";
+  // How the last night check-in went (or ?mood=1..5 to preview): tints the light and Nova's face.
+  const previewMood = Number(askedMood);
+  const mood = Number.isInteger(previewMood) && previewMood >= 1 && previewMood <= 5 ? previewMood : (g?.mood ?? null);
+  const gardenKey = g ? `${g.items.map((i) => i.id).join(",")}|${g.butterflies}|${g.stage}|${g.streak}|${season}|${mood ?? ""}` : "";
   const n = g?.items.length ?? 0;
   const isl = islandSize(n);
   const home = homeSpot(n);
@@ -219,7 +224,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         scene.current = new mod.GardenScene(
           cv,
           placed,
-          { n: g.items.length, phase: phaseNow(), wet: false, butterflies: g.butterflies, lit: sleeping, streak: g.streak ?? 0, season },
+          { n: g.items.length, phase: phaseNow(), wet: false, butterflies: g.butterflies, lit: sleeping, streak: g.streak ?? 0, season, mood },
           {
             onPick: (id) => pickRef.current(id),
             onFrame: ({ pet, tip }) => {
@@ -497,7 +502,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
             <div className="h-full w-full" style={{ opacity: inside ? 0 : 1, transform: inside ? "scale(0.5) translateY(-8%)" : "none", transformOrigin: "50% 90%", transition: "opacity .45s ease, transform .45s ease" }}>
               <div className="absolute inset-x-[22%] bottom-[7%] h-[9%] rounded-[50%] bg-black/30 blur-[3px]" />
               <div className={walking ? "garden-walk h-full w-full" : love ? "garden-hop h-full w-full" : "h-full w-full"}>
-                <Creature stage={g.stage} mood={night ? "sleepy" : "happy"} look={{ x: (walking ? facing : lookAt) * 2.4, y: 0 }} eating={love} evolving={false} poked={false} sky={sky} />
+                <Creature stage={g.stage} mood={night || (mood !== null && mood <= 2) ? "sleepy" : "happy"} look={{ x: (walking ? facing : lookAt) * 2.4, y: 0 }} eating={love} evolving={false} poked={false} sky={sky} />
               </div>
             </div>
           </div>
@@ -527,6 +532,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
             {fest ? ` · ${DECOR_ICON[fest] ?? ""} ${festivalById(fest)?.name ?? fest}` : monsoon || wet ? ` · ${DECOR_ICON.monsoon} Monsoon` : ""}
             {` · ${SEASON_ICON[season]} ${season}`}
             {g && g.streak > 0 ? ` · 🔥 ${g.streak}-day streak` : ""}
+            {mood !== null ? ` · ${MOOD_TEXT[mood - 1]}` : ""}
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)] sm:text-5xl">{g?.pet ?? "Nova"}&apos;s garden</h1>
           <p className="mt-2 max-w-sm text-sm text-white/75 drop-shadow">Everything you keep up with grows here.</p>

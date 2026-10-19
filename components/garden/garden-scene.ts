@@ -72,7 +72,7 @@ export type FrameInfo = {
 };
 export type GardenCallbacks = { onPick: (id: string) => void; onFrame: (f: FrameInfo) => void };
 /** `mini`: the small live view in a corner while a song plays (low quality, no fly-in, no touching). */
-type Opts = { n: number; phase: Phase; wet: boolean; butterflies: number; lit: boolean; mini?: boolean; /** Days of habit streak: the swarm of golden fireflies. */ streak?: number; /** Spring, summer, autumn or winter: grass, leaves and what drifts through the air. */ season?: Season };
+type Opts = { n: number; phase: Phase; wet: boolean; butterflies: number; lit: boolean; mini?: boolean; /** How the last night check-in went (1 rough to 5 great), or null: tints the light. */ mood?: number | null; /** Days of habit streak: the swarm of golden fireflies. */ streak?: number; /** Spring, summer, autumn or winter: grass, leaves and what drifts through the air. */ season?: Season };
 
 /** Each season's grass (the blade's foot and its tip, in full daylight; the tip dims at dusk and night). */
 const SEASON_GRASS: Record<Season, { base: string; tip: string }> = {
@@ -727,6 +727,22 @@ void main() {`);
     this.hemi.color.set(wet ? "#9aa8b8" : L.sky);
     this.hemi.groundColor.set(L.ground);
     this.hemi.intensity = L.hemiI * (wet ? 1.1 : 1);
+    // How the last night check-in went tints the light: warm and golden after a good day, soft and cool after a rough one.
+    let moodExp = 1;
+    const mood = this.opts.mood ?? null;
+    if (mood !== null && mood >= 4) {
+      const k = mood === 5 ? 1 : 0.65;
+      this.sun.color.lerp(new THREE.Color("#ffc977"), 0.5 * k);
+      this.hemi.color.lerp(new THREE.Color("#ffe3b8"), 0.35 * k);
+      this.sun.intensity *= 1 + 0.12 * k;
+      moodExp = 1 + 0.07 * k;
+    } else if (mood !== null && mood <= 2) {
+      const k = mood === 1 ? 1 : 0.65;
+      this.sun.color.lerp(new THREE.Color("#a9bbd8"), 0.5 * k);
+      this.hemi.color.lerp(new THREE.Color("#8fa3c4"), 0.45 * k);
+      this.sun.intensity *= 1 - 0.22 * k;
+      moodExp = 1 - 0.06 * k;
+    }
     const fog = new THREE.Color(wet ? (night ? "#0c1220" : "#7d8a99") : L.fog);
     this.scene.fog = new THREE.Fog(fog, this.R * 6, this.R * 26);
 
@@ -753,7 +769,7 @@ void main() {`);
       m.color.set(wet ? (night ? "#1c2436" : "#aab4c0") : L.cloud).multiplyScalar(night ? 1 : 1.8);
     }
     if (this.rain) this.rain.visible = wet;
-    const exposure = (L.exp + (night ? 0.25 : 0)) * (wet ? 1.15 : 1);
+    const exposure = (L.exp + (night ? 0.25 : 0)) * (wet ? 1.15 : 1) * moodExp;
     this.renderer.toneMappingExposure = exposure;
     const u = this.grade?.uniforms.get("exposure");
     if (u) u.value = exposure;

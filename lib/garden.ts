@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { listCheckins } from "@/lib/checkin";
+import { listCheckins, nightDay } from "@/lib/checkin";
 import { listResults } from "@/lib/games/stats";
 import { type Garden, type GardenItem, hueOf } from "@/lib/garden-layout";
 import { listHabits, stats as habitStats } from "@/lib/habits";
@@ -85,10 +85,15 @@ export async function getGarden(supabase: SupabaseClient): Promise<Garden> {
   // The best streak running across the habits (a habit's streak counts back from today or yesterday).
   const streak = habits.reduce((best, h) => Math.max(best, habitStats(h, today).streak), 0);
 
+  // The mood of the last check-in, while it's fresh (tonight's or last night's).
+  const lastNight = [...checkins].sort((a, b) => b.date.localeCompare(a.date))[0];
+  const mood = lastNight && lastNight.date >= addDays(nightDay(), -1) ? lastNight.mood : null;
+
   return {
     items: [...trees, ...lamps, ...gems, ...flowers, ...music],
     butterflies,
     streak,
+    mood,
     counts: { flowers: flowers.length, trees: full + (growing ? 1 : 0), lamps: lamps.length, gems: gems.length, butterflies, music: music.length },
     pet: pet?.name ?? "Nova",
     stage: pet?.stage ?? 0,
