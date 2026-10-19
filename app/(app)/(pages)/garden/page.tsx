@@ -20,13 +20,15 @@ function Garden() {
   const asked = params.get("fest");
   // ?goodnight=1 starts Nova's bedtime routine (from chat or voice).
   const bedtime = params.get("goodnight") === "1";
+  // ?season=autumn (or spring, summer, winter) previews a season on the island.
+  const askedSeason = params.get("season");
   const [mode, setMode] = useState<"3d" | "flat" | null>(null);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- what the device can draw, checked once
     setMode(canDraw3D() ? "3d" : "flat");
   }, []);
   if (mode === "flat") return <FlatGarden />;
-  if (mode === "3d") return <Garden3D onFail={() => setMode("flat")} asked={asked} bedtimeAsk={bedtime} />;
+  if (mode === "3d") return <Garden3D onFail={() => setMode("flat")} asked={asked} bedtimeAsk={bedtime} askedSeason={askedSeason} />;
   return null;
 }
 

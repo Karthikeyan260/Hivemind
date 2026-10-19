@@ -12,11 +12,21 @@ export type GardenItem =
 export type Garden = {
   items: GardenItem[];
   butterflies: number;
+  /** The best current habit streak, in days (0 = none running): the more days, the bigger the swarm of fireflies. */
+  streak: number;
   counts: { flowers: number; trees: number; lamps: number; gems: number; butterflies: number; music?: number };
   /** Name of the pet living there. */
   pet: string;
   stage: number;
 };
+
+/** The island's season: it changes the grass, the leaves and what drifts through the air. */
+export type Season = "spring" | "summer" | "autumn" | "winter";
+export const SEASONS: Season[] = ["spring", "summer", "autumn", "winter"];
+/** The season for a month (0 = January): spring March to May, summer June to August, autumn September to November, winter December to February. */
+export const seasonOf = (month: number): Season => (month >= 2 && month <= 4 ? "spring" : month >= 5 && month <= 7 ? "summer" : month >= 8 && month <= 10 ? "autumn" : "winter");
+/** How many streak fireflies a streak earns (4 a day, up to 48). */
+export const fireflyCount = (streak: number) => Math.max(0, Math.min(48, Math.round(streak * 4)));
 
 /** A stable number 0..1 from a string (FNV-1a). */
 export function hash01(s: string, salt = 0) {

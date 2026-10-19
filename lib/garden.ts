@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { listCheckins } from "@/lib/checkin";
 import { listResults } from "@/lib/games/stats";
 import { type Garden, type GardenItem, hueOf } from "@/lib/garden-layout";
-import { listHabits } from "@/lib/habits";
+import { listHabits, stats as habitStats } from "@/lib/habits";
 import { getPet } from "@/lib/pet";
 import { listPlays } from "@/lib/plays";
 import { readJSON } from "@/lib/private-store";
@@ -82,9 +82,13 @@ export async function getGarden(supabase: SupabaseClient): Promise<Garden> {
   const songs = plays.filter((p) => localParts(new Date(p.at)).date >= since).length;
   const butterflies = Math.min(12, Math.floor(songs / SONGS_PER_BUTTERFLY));
 
+  // The best streak running across the habits (a habit's streak counts back from today or yesterday).
+  const streak = habits.reduce((best, h) => Math.max(best, habitStats(h, today).streak), 0);
+
   return {
     items: [...trees, ...lamps, ...gems, ...flowers, ...music],
     butterflies,
+    streak,
     counts: { flowers: flowers.length, trees: full + (growing ? 1 : 0), lamps: lamps.length, gems: gems.length, butterflies, music: music.length },
     pet: pet?.name ?? "Nova",
     stage: pet?.stage ?? 0,

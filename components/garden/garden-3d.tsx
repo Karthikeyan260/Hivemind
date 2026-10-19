@@ -9,7 +9,7 @@ import * as beat from "@/lib/beat";
 import { MUSIC_EVENT, MUSIC_STATE_EVENT, useFetch } from "@/lib/client-api";
 import type { GoodNight } from "@/lib/goodnight";
 import type { GardenDay } from "@/lib/garden-day";
-import { type Garden, homeSpot, islandSize, layout } from "@/lib/garden-layout";
+import { type Garden, homeSpot, islandSize, layout, type Season, SEASONS, seasonOf } from "@/lib/garden-layout";
 import { festivalById, festivalOn } from "@/lib/pet-looks";
 import type { Sky } from "@/lib/sky";
 import type { GardenScene } from "./garden-scene";
@@ -25,6 +25,7 @@ const PHASE_NAME: Record<Phase, string> = { dawn: "Dawn", day: "Daytime", golden
 /** Festivals the island dresses up for (others only change Nova's outfit). */
 const DECOR = ["pongal", "karthigai", "deepavali"] as const;
 const DECOR_ICON: Record<string, string> = { pongal: "🌾", karthigai: "🪔", deepavali: "🎆", monsoon: "🌧️" };
+const SEASON_ICON: Record<Season, string> = { spring: "🌸", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const todayLocal = () => new Date().toLocaleDateString("en-CA");
 /** The north-east monsoon over Tamil Nadu: October to December. */
 const monsoonMonth = () => [9, 10, 11].includes(new Date().getMonth());
@@ -37,11 +38,13 @@ function decorFor(asked: string | null) {
   return { fest: isDecor(asked) ? asked : own && isDecor(today) ? today : null, monsoon: asked === "monsoon" || (own && monsoonMonth()) };
 }
 
-export function Garden3D({ onFail, asked = null, bedtimeAsk = false }: { onFail: () => void; asked?: string | null; bedtimeAsk?: boolean }) {
+export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason = null }: { onFail: () => void; asked?: string | null; bedtimeAsk?: boolean; askedSeason?: string | null }) {
   const feed = useFetch<{ garden: Garden }>("/api/pet/garden");
   const g = feed.data?.garden;
   const placed = useMemo(() => (g ? layout(g.items) : []), [g]);
-  const gardenKey = g ? `${g.items.map((i) => i.id).join(",")}|${g.butterflies}|${g.stage}` : "";
+  // The season: this month's, or one previewed from the link (?season=autumn).
+  const season: Season = (SEASONS as string[]).includes(askedSeason ?? "") ? (askedSeason as Season) : seasonOf(new Date().getMonth());
+  const gardenKey = g ? `${g.items.map((i) => i.id).join(",")}|${g.butterflies}|${g.stage}|${g.streak}|${season}` : "";
   const n = g?.items.length ?? 0;
   const isl = islandSize(n);
   const home = homeSpot(n);
@@ -216,7 +219,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false }: { onFail:
         scene.current = new mod.GardenScene(
           cv,
           placed,
-          { n: g.items.length, phase: phaseNow(), wet: false, butterflies: g.butterflies, lit: sleeping },
+          { n: g.items.length, phase: phaseNow(), wet: false, butterflies: g.butterflies, lit: sleeping, streak: g.streak ?? 0, season },
           {
             onPick: (id) => pickRef.current(id),
             onFrame: ({ pet, tip }) => {
@@ -522,6 +525,8 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false }: { onFail:
         <div className="pointer-events-none absolute top-5 left-5 sm:top-7 sm:left-8">
           <p className="font-mono text-[10px] tracking-[0.35em] text-white/60 uppercase">Pocket pet · {bedtime ? "🌙 Bedtime" : PHASE_NAME[phase]}
             {fest ? ` · ${DECOR_ICON[fest] ?? ""} ${festivalById(fest)?.name ?? fest}` : monsoon || wet ? ` · ${DECOR_ICON.monsoon} Monsoon` : ""}
+            {` · ${SEASON_ICON[season]} ${season}`}
+            {g && g.streak > 0 ? ` · 🔥 ${g.streak}-day streak` : ""}
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)] sm:text-5xl">{g?.pet ?? "Nova"}&apos;s garden</h1>
           <p className="mt-2 max-w-sm text-sm text-white/75 drop-shadow">Everything you keep up with grows here.</p>

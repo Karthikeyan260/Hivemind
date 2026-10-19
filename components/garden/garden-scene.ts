@@ -54,7 +54,7 @@ class GradeEffect extends Effect {
   }
 }
 import { type Phase } from "./phase";
-import { hash01, homeSpot, islandSize, pathX, POND_ANGLE, pondSpot, type Placed } from "@/lib/garden-layout";
+import { fireflyCount, hash01, homeSpot, islandSize, pathX, POND_ANGLE, pondSpot, type Placed, type Season } from "@/lib/garden-layout";
 
 /**
  * Nova's garden in 3D: a floating island lit by the real sky of the hour. Thousands of grass blades
@@ -72,7 +72,29 @@ export type FrameInfo = {
 };
 export type GardenCallbacks = { onPick: (id: string) => void; onFrame: (f: FrameInfo) => void };
 /** `mini`: the small live view in a corner while a song plays (low quality, no fly-in, no touching). */
-type Opts = { n: number; phase: Phase; wet: boolean; butterflies: number; lit: boolean; mini?: boolean };
+type Opts = { n: number; phase: Phase; wet: boolean; butterflies: number; lit: boolean; mini?: boolean; /** Days of habit streak: the swarm of golden fireflies. */ streak?: number; /** Spring, summer, autumn or winter: grass, leaves and what drifts through the air. */ season?: Season };
+
+/** Each season's grass (the blade's foot and its tip, in full daylight; the tip dims at dusk and night). */
+const SEASON_GRASS: Record<Season, { base: string; tip: string }> = {
+  spring: { base: "#2a5426", tip: "#b9ea72" },
+  summer: { base: "#244a1c", tip: "#a6d65a" },
+  autumn: { base: "#4a4a1c", tip: "#dfa543" },
+  winter: { base: "#2a4a3c", tip: "#b3d5c7" },
+};
+/** Each season's leaves: [dark, light] for pines, blossom trees and ordinary broadleaf trees. */
+const SEASON_LEAF: Record<Season, { pine: [string, string]; blossom: [string, string]; leaf: [string, string] }> = {
+  spring: { pine: ["#1f4a2a", "#3d7a45"], blossom: ["#d9659a", "#ffd0e6"], leaf: ["#3a7a30", "#a4dc62"] },
+  summer: { pine: ["#1f4a2a", "#3d7a45"], blossom: ["#c96b93", "#ffc4dc"], leaf: ["#2f6b2c", "#7fbf4a"] },
+  autumn: { pine: ["#27452a", "#4b7a3f"], blossom: ["#b0482a", "#f0a070"], leaf: ["#8a3a14", "#f2b13e"] },
+  winter: { pine: ["#2b4a3a", "#8fb3a0"], blossom: ["#8f7686", "#e8dcea"], leaf: ["#4a6652", "#a8c8b8"] },
+};
+/** What drifts through the air: petals in spring, leaves in autumn, frost sparkles in winter (summer has its pollen already). */
+const SEASON_FALL: Partial<Record<Season, { count: number; size: number; speed: number; shape: 0 | 1 | 2; colors: [string, string, string] }>> = {
+  spring: { count: 110, size: 11, speed: 0.4, shape: 0, colors: ["#ffb7d1", "#ffe3ef", "#ff95bb"] },
+  autumn: { count: 120, size: 9, speed: 0.6, shape: 1, colors: ["#e8742a", "#c0392b", "#f0b83a"] },
+  winter: { count: 130, size: 4.5, speed: 0.28, shape: 2, colors: ["#ffffff", "#d6ecff", "#eef6ff"] },
+};
+
 
 /* ── tiny noise (value noise + fbm), enough for rocks and colour variation ── */
 function hash3(x: number, y: number, z: number) {
@@ -459,6 +481,8 @@ export class GardenScene {
     this.buildItems(items);
     this.buildButterflies(opts.butterflies);
     this.buildParticles();
+    this.buildStreak(opts.streak ?? 0);
+    this.buildSeason(opts.season ?? "summer");
     this.buildClouds();
     this.buildFarIslands();
     this.buildRain();
@@ -979,8 +1003,8 @@ void main() {`);
           uSunCol: { value: new THREE.Color() },
           uSky: { value: new THREE.Color() },
           uGround: { value: new THREE.Color() },
-          uBase: { value: new THREE.Color("#244a1c") },
-          uTip: { value: new THREE.Color("#a6d65a") },
+          uBase: { value: new THREE.Color(SEASON_GRASS[this.opts.season ?? "summer"].base) },
+          uTip: { value: new THREE.Color(SEASON_GRASS[this.opts.season ?? "summer"].tip) },
         },
       ]),
       vertexShader: /* glsl */ `
@@ -1761,7 +1785,7 @@ void main() {`);
           return unindexed(c);
         }),
       );
-      leafCol = ["#1f4a2a", "#3d7a45"];
+      leafCol = SEASON_LEAF[this.opts.season ?? "summer"].pine;
     } else {
       const blossom = kind > 0.75;
       canopy = mergeGeometries([blob(0.62, 0, 1.45, 0, 1), blob(0.45, -0.42, 1.2, 0.12, 2), blob(0.45, 0.4, 1.22, -0.1, 3), blob(0.4, 0.05, 1.85, 0.05, 4), blob(0.38, 0.1, 1.25, 0.42, 5), blob(0.36, -0.2, 1.6, -0.35, 6), blob(0.4, -0.05, 1.35, -0.45, 7), blob(0.34, 0.5, 1.6, 0.25, 8), blob(0.32, -0.5, 1.6, -0.1, 9)]);
@@ -1769,7 +1793,7 @@ void main() {`);
       canopy.deleteAttribute("normal");
       canopy.deleteAttribute("uv");
       canopy = mergeVertices(canopy, 1e-4);
-      leafCol = blossom ? ["#c96b93", "#ffc4dc"] : ["#2f6b2c", "#7fbf4a"];
+      leafCol = blossom ? SEASON_LEAF[this.opts.season ?? "summer"].blossom : SEASON_LEAF[this.opts.season ?? "summer"].leaf;
     }
     // Colour: darker inside and below, lighter on top.
     const p = canopy.attributes.position as THREE.BufferAttribute;
@@ -1921,6 +1945,128 @@ void main() {`);
       this.dayOnly.push(g);
       this.island.add(g);
     }
+  }
+
+  private uSeasonLight = { value: 1 };
+
+  /**
+   * A swarm of golden fireflies for the habit streak: none without one, four more for every day, up to 48.
+   * They drift lazily over the whole island by day and by night, so the streak is always in sight.
+   */
+  private buildStreak(streak: number) {
+    const n = fireflyCount(streak);
+    if (!n) return;
+    const R = this.R;
+    const pos = new Float32Array(n * 3);
+    const seed = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = hash3(i, 31, 32) * Math.PI * 2;
+      const r = Math.sqrt(hash3(i, 33, 34)) * R * 0.95;
+      pos.set([Math.cos(a) * r, 0.4 + hash3(i, 35, 36) * 2.0, Math.sin(a) * r], i * 3);
+      seed[i] = hash3(i, 37, 38);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: { uTime: this.uTime, uBeat: this.uBeat, uSize: { value: 17 * (1 + Math.min(streak, 14) / 28) * this.renderer.getPixelRatio() } },
+      vertexShader: `attribute float seed; uniform float uTime; uniform float uSize; uniform float uBeat; varying float vA;
+        void main(){
+          vec3 p = position;
+          float t = uTime * 0.32 + seed * 40.0;
+          // A slow loop and a bob, each firefly on its own path.
+          p += vec3(sin(t * 0.9) * 1.5 + sin(t * 0.37) * 0.8, sin(t * 1.3 + 1.1) * 0.35, cos(t * 0.7) * 1.5 + cos(t * 0.29) * 0.8);
+          vA = (0.55 + 0.45 * sin(uTime * (1.1 + seed * 1.6) + seed * 50.0)) * (1.0 + uBeat * 0.5);
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          gl_PointSize = uSize * (0.7 + seed * 0.6) * (10.0 / -mv.z);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `varying float vA;
+        void main(){
+          float d = length(gl_PointCoord - 0.5);
+          // A bright warm heart and a soft glow round it, opaque enough to show against a sunny sky.
+          float core = smoothstep(0.17, 0.0, d);
+          float glow = smoothstep(0.5, 0.05, d);
+          vec3 col = mix(vec3(1.0, 0.72, 0.22), vec3(1.0, 0.97, 0.78), core) * (1.5 + core * 1.5);
+          gl_FragColor = vec4(col, (glow * glow * 0.75 + core) * vA);
+        }`,
+    });
+    this.animatedMats.push(mat);
+    const pts = new THREE.Points(geo, mat);
+    pts.frustumCulled = false;
+    pts.raycast = () => {};
+    this.island.add(pts);
+  }
+
+  /** The season's weather in the air: pink petals, falling leaves or frost sparkles drifting down across the island. */
+  private buildSeason(season: Season) {
+    const cfg = SEASON_FALL[season];
+    if (!cfg) return;
+    const R = this.R;
+    const n = Math.round(cfg.count * (this.quality === "high" ? 1 : 0.55));
+    const pos = new Float32Array(n * 3);
+    const seed = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = hash3(i, 41, 42) * Math.PI * 2;
+      const r = Math.sqrt(hash3(i, 43, 44)) * R * 1.15;
+      pos.set([Math.cos(a) * r, 0, Math.sin(a) * r], i * 3);
+      seed[i] = hash3(i, 45, 46);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uTime: this.uTime,
+        uSize: { value: cfg.size * this.renderer.getPixelRatio() },
+        uSpeed: { value: cfg.speed },
+        uShape: { value: cfg.shape },
+        uLight: this.uSeasonLight,
+        uA: { value: new THREE.Color(cfg.colors[0]) },
+        uB: { value: new THREE.Color(cfg.colors[1]) },
+        uC: { value: new THREE.Color(cfg.colors[2]) },
+      },
+      vertexShader: `attribute float seed; uniform float uTime; uniform float uSize; uniform float uSpeed; uniform float uLight; uniform vec3 uA; uniform vec3 uB; uniform vec3 uC;
+        varying float vA; varying vec3 vC; varying float vAng;
+        void main(){
+          float H = 6.0;
+          // Each piece falls from the top to the grass, then starts again, swaying as it goes.
+          float cyc = fract(seed * 7.13 + uTime * uSpeed * (0.6 + seed * 0.8) / H);
+          vec3 p = position;
+          p.y = 0.1 + H * (1.0 - cyc);
+          float sw = uTime * (0.5 + seed * 0.8) + seed * 40.0;
+          p.x += sin(sw) * 0.7 + sin(sw * 0.37) * 0.5;
+          p.z += cos(sw * 0.9) * 0.7;
+          vA = smoothstep(0.0, 0.07, cyc) * smoothstep(1.0, 0.92, cyc);
+          vAng = uTime * (0.5 + seed * 1.2) + seed * 30.0;
+          float k = fract(seed * 13.7);
+          vC = (k < 0.34 ? uA : k < 0.67 ? uB : uC) * uLight;
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          gl_PointSize = uSize * (0.55 + seed * 0.8) * (10.0 / -mv.z);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `uniform float uShape; varying float vA; varying vec3 vC; varying float vAng;
+        void main(){
+          vec2 pc = gl_PointCoord - 0.5;
+          float c = cos(vAng); float s = sin(vAng);
+          vec2 q = vec2(c * pc.x - s * pc.y, s * pc.x + c * pc.y);
+          float a;
+          float tone = 1.0;
+          if (uShape < 0.5) { a = smoothstep(0.5, 0.26, length(vec2(q.x, q.y * 2.4))); tone = 0.88 + 0.25 * smoothstep(0.12, 0.0, abs(q.y)); }
+          else if (uShape < 1.5) { a = smoothstep(0.5, 0.33, abs(q.x) * 2.3 + abs(q.y) * 0.95); tone = 0.82 + 0.3 * smoothstep(0.06, 0.0, abs(q.y)); }
+          else { float d = length(pc); a = smoothstep(0.5, 0.0, d); a *= a; tone = 1.6; }
+          gl_FragColor = vec4(vC * tone, a * vA);
+        }`,
+    });
+    this.animatedMats.push(mat);
+    const pts = new THREE.Points(geo, mat);
+    pts.frustumCulled = false;
+    pts.raycast = () => {};
+    this.island.add(pts);
   }
 
   private buildParticles() {
@@ -2898,7 +3044,9 @@ void main() {`);
       u.uSunCol.value.copy(sunCol);
       u.uSky.value.copy(this.hemi.color).multiplyScalar(this.hemi.intensity * 0.55);
       u.uGround.value.copy(this.hemi.groundColor).multiplyScalar(this.hemi.intensity * 0.55);
-      u.uTip.value.set(night ? "#6f9a4a" : this.phase === "golden" || this.phase === "dusk" ? "#8fcf4f" : "#a6d65a");
+      const dim = night ? 0.68 : this.phase === "golden" || this.phase === "dusk" ? 0.9 : 1;
+      u.uTip.value.set(SEASON_GRASS[this.opts.season ?? "summer"].tip).multiplyScalar(dim);
+      this.uSeasonLight.value = night ? 0.5 : this.phase === "golden" || this.phase === "dusk" ? 0.85 : 1;
     }
     for (const w of this.waterMats) {
       w.uniforms.uSky.value.copy(this.hemi.color).multiplyScalar(night ? 0.08 : 0.7);
