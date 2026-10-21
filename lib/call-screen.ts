@@ -135,15 +135,15 @@ async function understand(owner: string, s: Screened, wav: string): Promise<Turn
 /** One caller turn: what they said (audio) → what HIVEMIND says back; at the end, tells the owner. */
 export async function screenTurn(supabase: SupabaseClient, room: Room, id: string, wav: string) {
   const settings = await getScreenSettings(supabase);
-  const items = await listScreened(supabase);
-  const s = items.find((x) => x.id === id && x.room === room.room);
-  if (!s || s.done) return null;
-  const callerTurns = s.lines.filter((l) => l.who === "caller").length;
+  const before = (await listScreened(supabase)).find((x) => x.id === id && x.room === room.room);
+  if (!before || before.done) return null;
+  const callerTurns = before.lines.filter((l) => l.who === "caller").length;
   const owner = room.from || "the owner";
 
+  // The slow part (the AI listening). Nothing is written until it's back.
   let t: Turn;
   try {
-    t = await understand(owner, s, wav);
+    t = await understand(owner, before, wav);
   } catch (err) {
     console.warn("call screen:", err instanceof Error ? err.message.slice(0, 120) : err);
     t = { heard: "(couldn't make it out)", reply: `Sorry, the line isn't clear. I'll tell ${owner} you called.`, done: true, caller_name: "", reason: "", urgent: false };
@@ -155,12 +155,18 @@ export async function screenTurn(supabase: SupabaseClient, room: Room, id: strin
   }
   if (!t.reply) t.reply = t.done ? `Thanks, I'll tell ${owner} right away.` : "Sorry, could you say that again?";
 
+  // Re-read the log now: while the AI was thinking another caller may have been added, the owner may have
+  // marked things read or cleared them, or this caller may have hung up. Change only this call's entry.
+  const items = await listScreened(supabase);
+  const s = items.find((x) => x.id === id && x.room === room.room);
+  if (!s || s.done) return null;
   s.lines.push({ who: "caller", text: t.heard || "(silence)" }, { who: "hivemind", text: t.reply });
   if (t.caller_name && s.caller === "Unknown caller") s.caller = t.caller_name;
   if (t.reason) s.reason = t.reason;
   s.urgent ||= t.urgent;
-  if (t.done) await finish(supabase, s);
+  if (t.done) close(s);
   await saveLog(supabase, items);
+  if (t.done) await tell(supabase, s);
   return { text: t.reply, done: t.done, heard: t.heard, ...(await say(t.reply, settings)) };
 }
 
@@ -169,14 +175,20 @@ export async function endScreen(supabase: SupabaseClient, room: Room, id: string
   const items = await listScreened(supabase);
   const s = items.find((x) => x.id === id && x.room === room.room);
   if (!s || s.done) return;
-  await finish(supabase, s);
+  close(s);
+  // Saved before telling the owner: a turn finishing at the same moment sees the call is already done.
   await saveLog(supabase, items);
+  await tell(supabase, s);
 }
 
-async function finish(supabase: SupabaseClient, s: Screened) {
+/** Marks the call finished and writes its one-line summary. */
+function close(s: Screened) {
   s.done = true;
   const said = s.lines.filter((l) => l.who === "caller").map((l) => l.text).join(" ");
   s.summary = s.reason || (said ? clip(said, 140) : "Hung up without leaving a message.");
+}
+
+async function tell(supabase: SupabaseClient, s: Screened) {
   await notify(supabase, {
     title: `${s.urgent ? "⚠️ Urgent · " : ""}📞 ${s.caller} called`,
     body: s.summary,
