@@ -165,6 +165,8 @@ export const web: Record<string, Tool> = {
         ctx.changed = true;
         return { deleted: n, note: "Tasks still working were kept." };
       }
+      // Nothing asked for deletes nothing: an empty text is "contained" in every goal, so it would delete the first task.
+      if (!words.trim()) return { error: "Which task? Say words from its goal, or 'finished' for the finished ones.", tasks: tasks.slice(0, 6).map((t) => t.goal) };
       const task = tasks.find((t) => t.goal.toLowerCase().includes(words)) ?? tasks.find((t) => words.split(/\s+/).every((w) => t.goal.toLowerCase().includes(w)));
       if (!task) return { error: `No web task matching "${words}".`, tasks: tasks.slice(0, 6).map((t) => t.goal) };
       if (ACTIVE.includes(task.status)) await decideTask(ctx.supabase, task.id, "cancel");
