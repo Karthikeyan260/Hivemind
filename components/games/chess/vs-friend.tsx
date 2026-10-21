@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { type Party, usePartyGame } from "@/lib/games/party";
+import { timeoutResult } from "@/lib/games/chess-time";
 import { usePeerGame } from "@/lib/games/peer-game";
 import { sfx } from "@/lib/sfx";
 import { Board, captured, Taken } from "./board";
@@ -187,7 +188,7 @@ export function ChessVsFriend({
       const c = new Chess();
       for (const m of cur.history) c.move(m);
       const turn = c.turn();
-      if (cur.clock[turn] - (Date.now() - turnStart.current) <= 0) apply((x) => ({ ...x, clock: { ...x.clock!, [turn]: 0 }, result: { winner: turn === "w" ? "b" : "w", reason: "time" }, seq: x.seq + 1 }));
+      if (cur.clock[turn] - (Date.now() - turnStart.current) <= 0) apply((x) => ({ ...x, clock: { ...x.clock!, [turn]: 0 }, result: timeoutResult(c, turn), seq: x.seq + 1 }));
     }, 200);
     return () => clearInterval(t);
   }, [isHost, s?.clock, s?.result, s?.paused, apply]);

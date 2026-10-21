@@ -7,6 +7,7 @@ import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { LEVELS, type Level } from "@/lib/games/chess-bot";
 import { think } from "@/lib/games/chess-think";
+import { timeoutResult } from "@/lib/games/chess-time";
 import { gameKey, recordResult } from "@/lib/games/record";
 import { sfx } from "@/lib/sfx";
 import { Board, captured, ClockFace, Taken } from "./board";
@@ -135,11 +136,11 @@ export function ChessVsBot({ myName }: { myName: string }) {
       const rem = left(g.clock![turn], true, g.turnStart, n);
       if (rem <= 0) {
         sfx.error();
-        save({ ...g, clock: { ...g.clock!, [turn]: 0 }, result: { winner: turn === "w" ? "b" : "w", reason: "time" } });
+        save({ ...g, clock: { ...g.clock!, [turn]: 0 }, result: timeoutResult(game, turn) });
       }
     }, 100);
     return () => clearInterval(t);
-  }, [g, turn, save]);
+  }, [g, turn, save, game]);
 
   // A finished game goes into the owner's record (once, even across reloads).
   useEffect(() => {
