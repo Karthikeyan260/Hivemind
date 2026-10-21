@@ -1,3 +1,4 @@
+import { localParts } from "@/lib/reminders";
 import "server-only";
 import { webSearch } from "@/lib/external/web";
 import { safeDecode } from "@/lib/safe-decode";
@@ -93,7 +94,7 @@ async function searchStores(query: string, stores: StoreId[]) {
   const names = stores.map((s) => STORES[s].name).join(", ");
   const domains = stores.map((s) => STORES[s].domain).join(", ");
   const res = await webSearch(query, {
-    prompt: `Find product listing pages for "${query}" on ${domains} (India). For each store (${names}) give the exact product name, the current price in ₹ and rating if shown. Be concise. Today is ${new Date().toISOString().slice(0, 10)}.`,
+    prompt: `Find product listing pages for "${query}" on ${domains} (India). For each store (${names}) give the exact product name, the current price in ₹ and rating if shown. Be concise. Today is ${localParts().date}.`,
     maxSources: 20,
   });
 

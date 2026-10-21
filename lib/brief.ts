@@ -1,3 +1,4 @@
+import { localParts } from "@/lib/reminders";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { webSearch } from "@/lib/external/web";
@@ -70,7 +71,7 @@ async function research(topic: string): Promise<BriefItem> {
 }
 
 async function webResearch(topic: string): Promise<BriefItem> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localParts().date;
   try {
     const r = await webSearch(topic, {
       maxSources: 3,

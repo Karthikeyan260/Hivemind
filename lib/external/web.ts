@@ -1,3 +1,4 @@
+import { localParts } from "@/lib/reminders";
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logActivity } from "@/lib/activity";
@@ -41,7 +42,7 @@ async function resolveLinks(sources: { title: string; url: string }[]) {
 }
 
 export async function webSearch(query: string, opts: { detailed?: boolean; prompt?: string; maxSources?: number } = {}): Promise<WebResult> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localParts().date;
   const prompt =
     opts.prompt ??
     (opts.detailed
