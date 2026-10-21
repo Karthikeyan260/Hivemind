@@ -66,6 +66,7 @@ export const schedule: Record<string, Tool> = {
     parameters: obj({ who: S }, ["who"]),
     async run(args, ctx) {
       const q = str(args.who).toLowerCase();
+      if (!q) return { error: "Whose birthday? Tell me the name." };
       const all = await listBirthdays(ctx.supabase);
       const b = all.find((x) => x.name.toLowerCase() === q) ?? all.find((x) => x.name.toLowerCase().includes(q));
       if (!b) return { error: `I don't have ${str(args.who)}'s birthday saved. Tell me the date first.` };

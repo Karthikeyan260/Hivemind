@@ -43,6 +43,8 @@ export async function deleteApp(supabase: SupabaseClient, id: string) {
 /** Find an app by words from its name ("petrol"). */
 export async function findApp(supabase: SupabaseClient, words: string) {
   const q = words.toLowerCase().trim();
+  // Nothing asked for finds nothing (an empty text is "contained" in every app: it would pick the first one).
+  if (!q) return null;
   const all = await listApps(supabase);
   return all.find((a) => a.name.toLowerCase() === q) ?? all.find((a) => `${a.name} ${a.description}`.toLowerCase().includes(q)) ?? all.find((a) => q.split(/\s+/).every((w) => `${a.name} ${a.description}`.toLowerCase().includes(w))) ?? null;
 }

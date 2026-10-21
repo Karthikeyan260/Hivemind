@@ -103,6 +103,8 @@ export async function addHabit(supabase: SupabaseClient, h: { name: string; emoj
 export function findHabit(all: Habit[], which: string, exact = false) {
   if (exact) return all.find((x) => x.id === which);
   const q = which.toLowerCase().trim();
+  // Nothing asked for matches nothing (an empty text is "contained" in every name: it would pick the first habit).
+  if (!q) return undefined;
   return all.find((x) => x.id === which) ?? all.find((x) => x.name.toLowerCase() === q) ?? all.find((x) => x.name.toLowerCase().includes(q) || q.includes(x.name.toLowerCase()));
 }
 
