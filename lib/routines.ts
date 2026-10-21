@@ -38,7 +38,8 @@ const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, " ").rep
 function clean(r: { name?: string; triggers?: unknown; steps?: unknown }) {
   const name = String(r.name ?? "").trim().slice(0, 60);
   const steps = (Array.isArray(r.steps) ? r.steps : String(r.steps ?? "").split(/\n|;/))
-    .map((x) => String(x).trim().replace(/^[-*\d.)\s]+/, ""))
+    // Only list markers ("- ", "1. ", "2) ") go; a number that is part of the step ("10 min stretch") stays.
+    .map((x) => String(x).trim().replace(/^(?:[-*•]\s*|\d+[.)]\s+)+/, ""))
     .filter(Boolean)
     .slice(0, MAX_STEPS)
     .map((x) => x.slice(0, 200));
