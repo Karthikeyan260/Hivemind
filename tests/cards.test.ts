@@ -127,4 +127,17 @@ describe("colour clash cards", () => {
       expect(total, `game ${g}: cards conserved`).toBe(108);
     }
   });
+
+  it("a called 'Last card!' doesn't survive being handed more cards (+2 / +4)", () => {
+    // Guest is down to one card and had called it; the host makes them draw 2.
+    let s = set([c(1, "red", "draw2"), c(2, "blue", "num", 3), c(3, "blue", "num", 4)], [c(10, "green", "num", 1)], { called: { guest: true } });
+    s = play(s, "host", 1, null, rand);
+    expect(s.hands.guest).toHaveLength(3);
+    expect(s.called.guest).toBe(false);
+    // So when they play back down to one card without calling again, they pay the penalty.
+    s = { ...s, turn: 1, hands: { ...s.hands, guest: [c(10, "green", "num", 1), c(11, "red", "num", 7)] }, discard: [c(900, "red", "num", 5)], color: "red", drew: null };
+    const before = s.hands.guest.length;
+    s = play(s, "guest", 11, null, rand);
+    expect(s.hands.guest.length).toBe(before - 1 + 2);
+  });
 });

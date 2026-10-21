@@ -94,6 +94,22 @@ describe("Draw & Guess at game night", () => {
     expect(rightGuess("banana", "umbrella")).toBe(false);
     expect(rightGuess("", "umbrella")).toBe(false);
   });
+  it("a longer word that only holds the answer is wrong: popcorn isn't corn", () => {
+    expect(rightGuess("popcorn", "corn")).toBe(false);
+    expect(rightGuess("pineapple", "apple")).toBe(false);
+    expect(rightGuess("clock", "lock")).toBe(false);
+    expect(rightGuess("pancake", "cake")).toBe(false);
+    expect(rightGuess("corn", "popcorn")).toBe(false);
+    expect(rightGuess("it is corn", "corn")).toBe(true);
+    expect(rightGuess("a red apple", "apple")).toBe(true);
+  });
+  it("spaces and plurals: icecream is ice cream, apples is apple, a plural inside a sentence", () => {
+    expect(rightGuess("icecream", "ice cream")).toBe(true);
+    expect(rightGuess("Ice  Cream!", "ice cream")).toBe(true);
+    expect(rightGuess("filter coffee please", "filter coffee")).toBe(true);
+    expect(rightGuess("two apples", "apple")).toBe(true);
+    expect(rightGuess("glass", "glass")).toBe(true);
+  });
   it("points: 50 plus the seconds left, never less than 50", () => {
     expect(guessPoints(30.4)).toBe(80);
     expect(guessPoints(-3)).toBe(50);

@@ -121,7 +121,8 @@ function take(s: CardsState, id: string, n: number, rand: Rand): CardsState {
     }
     got.push(deck.shift()!);
   }
-  return { ...s, deck, discard, hands: { ...s.hands, [id]: [...s.hands[id], ...got] } };
+  // Handed more cards (a draw, a +2/+4, a penalty): a "Last card!" called earlier no longer counts.
+  return { ...s, deck, discard, hands: { ...s.hands, [id]: [...s.hands[id], ...got] }, called: got.length ? { ...s.called, [id]: false } : s.called };
 }
 
 /** The current player plays a card (a Wild needs the colour they choose). */

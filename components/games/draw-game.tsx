@@ -5,6 +5,7 @@ import { Bot, Eraser, Mic, MicOff, RotateCcw, Trash2, Trophy } from "lucide-reac
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
+import { rightGuess } from "@/lib/games/party-rules";
 import { gameKey, recordResult } from "@/lib/games/record";
 import { checkHost, proveHost } from "@/lib/peer-auth";
 
@@ -749,7 +750,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         if (!r.ok) return;
         const { guess: aiGuess } = (await r.json()) as { guess: string };
         if (!aiGuess || aiGuess === "???" || g.guessed || g.n !== n) return;
-        if (norm(aiGuess) === norm(g.word) || (norm(aiGuess).includes(norm(g.word)) && norm(g.word).length > 3)) {
+        if (rightGuess(aiGuess, g.word)) {
           g.aiGot = true;
           g.scores.ai += 50 + Math.max(0, Math.round((g.ends - Date.now()) / 1000));
           tell({ who: "HIVEMIND", text: "got it! 🤖 (keep going, humans)", kind: "ai" });

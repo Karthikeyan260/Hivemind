@@ -65,21 +65,26 @@ export function spokenPlayer<T extends { name: string }>(players: T[], said: str
 
 /* ── Draw & Guess ── */
 
-/** Lower case, letters and spaces only, a plural "s" dropped: "Umbrellas!" and "umbrella" match. */
+/** Lower case, letters and spaces only, and each word's plural "s" dropped: "Umbrellas!" and "umbrella" match. */
 export const normWord = (s: string) =>
   s
     .toLowerCase()
     .replace(/[^a-z ]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/s$/, "");
+    .split(/\s+/)
+    .map((t) => t.replace(/s$/, ""))
+    .filter(Boolean)
+    .join(" ");
 
-/** A right guess: the word itself, or a guess containing a word longer than 3 letters ("a big umbrella"). */
+/**
+ * A right guess: the word itself (spaces don't matter: "icecream"), or a guess that holds it as whole words
+ * ("a big umbrella"), for words longer than 3 letters. Never part of a longer word: "popcorn" is not "corn".
+ */
 export function rightGuess(guess: string, word: string) {
   const g = normWord(guess);
   const w = normWord(word);
   if (!g || !w) return false;
-  return g === w || (w.length > 3 && g.includes(w));
+  if (g === w || g.replace(/ /g, "") === w.replace(/ /g, "")) return true;
+  return w.length > 3 && ` ${g} `.includes(` ${w} `);
 }
 
 /** Points for a right guess: 50, plus a point for every second left. The drawer gets 25 for each friend who gets it. */
