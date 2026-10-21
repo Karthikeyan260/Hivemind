@@ -86,15 +86,3 @@ export const mistralProvider = makeProvider({
   supportsJsonMode: true,
   timeoutMs: 20_000,
 });
-
-// GitHub Models: free with a GitHub token ("Models: read"). Rate-limited per day, and free
-// requests are capped at about 8k tokens in and 4k out, so long prompts fall through to the next provider.
-export const githubProvider = makeProvider({
-  name: "github",
-  baseURL: "https://models.github.ai/inference",
-  keyEnv: "GITHUB_MODELS_TOKEN",
-  model: process.env.GITHUB_MODEL || "openai/gpt-4.1-mini",
-  supportsJsonMode: true,
-  timeoutMs: 20_000,
-  maxTokensCap: 4000,
-});

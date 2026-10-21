@@ -15,7 +15,7 @@ export default function SettingsPage() {
     { role: "Embeddings", note: "768-dim, switch models in System check", p: { ...providers.gemini, model: process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001" } },
     { role: "Fallback answers", p: providers.nvidia },
     { role: "Free fallback, Autopilot backup", p: providers.openrouter },
-    { role: "Free fallback, small tasks", p: providers.github },
+    { role: "Free fallback, small tasks", p: providers.mistral },
     { role: "Intent router, summaries & tags", p: providers.groq },
   ];
 

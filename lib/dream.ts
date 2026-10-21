@@ -65,7 +65,7 @@ export async function dream(supabase: SupabaseClient, date: string): Promise<Dre
   const listing = [...ids].map(([k, m]) => `[${k}] (${m.memory_type}) ${clip(m.title, 100)}: ${clip(m.content, 350)}`).join("\n");
   const r = await generateWithFallback(
     [{ role: "user", content: `MEMORIES:\n${listing}\n\nWHAT THEY SAID IN THE LAST DAY (oldest first):\n${said.length ? said.map((s) => `- ${s}`).join("\n") : "(nothing)"}` }],
-    { system: RULES, json: true, temperature: 0.1, maxTokens: 4000, order: ["gemini", "github", "openrouter", "mistral"] },
+    { system: RULES, json: true, temperature: 0.1, maxTokens: 4000, order: ["gemini", "openrouter", "mistral"] },
   );
   const plan = parseJson(r.text, Plan);
   if (!plan) {

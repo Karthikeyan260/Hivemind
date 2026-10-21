@@ -32,3 +32,20 @@ describe("safeDecode", () => {
     expect(safeDecode("caf%C3%A9")).toBe("café");
   });
 });
+
+describe("giving up after repeated failures", () => {
+  const step = (ok: boolean) => ({ at: "", thought: "", did: "x", ok });
+  it("needs three failures in a row: one or two hiccups don't end the task", async () => {
+    const { threeFailuresInARow } = await import("@/lib/web-agent/runner");
+    expect(threeFailuresInARow([])).toBe(false);
+    expect(threeFailuresInARow([step(false)])).toBe(false);
+    expect(threeFailuresInARow([step(false), step(false)])).toBe(false);
+    expect(threeFailuresInARow([step(true), step(false), step(false)])).toBe(false);
+  });
+  it("three in a row does", async () => {
+    const { threeFailuresInARow } = await import("@/lib/web-agent/runner");
+    expect(threeFailuresInARow([step(false), step(false), step(false)])).toBe(true);
+    expect(threeFailuresInARow([step(true), step(false), step(false), step(false)])).toBe(true);
+    expect(threeFailuresInARow([step(false), step(false), step(true), step(false)])).toBe(false);
+  });
+});

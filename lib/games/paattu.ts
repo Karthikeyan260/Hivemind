@@ -117,7 +117,7 @@ async function aiPicks(label: string, angle: string, avoid: string[], hard: bool
     json: true,
     temperature: 1,
     maxTokens: 3500,
-    order: ["gemini", "github", "openrouter", "nvidia"],
+    order: ["gemini", "openrouter", "nvidia"],
   });
   const S = z.object({ title: z.string(), film: z.string(), year: z.coerce.string().optional().default(""), hero: z.string().optional().default(""), singer: z.string().optional().default("") });
   const out = parseJson(r.text, z.object({ songs: z.array(S).max(30) }));

@@ -265,7 +265,7 @@ Played lately (choose mostly others): ${[...recent].slice(0, 15).join("; ")}` : 
       const res = await geminiClient().models.generateContent({ model: "gemini-2.5-flash", contents: [{ role: "user", parts: [{ text: user }] }], config: { systemInstruction: system, temperature: 0.8, responseMimeType: "application/json" } });
       if (res.text?.trim()) return res.text;
     } catch {}
-    return (await generateWithFallback([{ role: "user", content: user }], { system, json: true, temperature: 0.8, maxTokens: 900, order: ["github", "openrouter", "gemini", "nvidia"] })).text; // after 2.5 Flash, the next best-read (the small Gemini last)
+    return (await generateWithFallback([{ role: "user", content: user }], { system, json: true, temperature: 0.8, maxTokens: 900, order: ["openrouter", "gemini", "nvidia"] })).text; // after 2.5 Flash, the next best-read (the small Gemini last)
   })();
   const out = parseJson(text, z.object({ songs: z.array(z.object({ title: z.string(), film: z.string().optional().default(""), artist: z.string().optional().default("") })).max(15) }));
   if (!out) return [];

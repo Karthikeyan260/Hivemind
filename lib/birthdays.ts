@@ -98,7 +98,7 @@ export async function birthdayWish(supabase: SupabaseClient, id: string) {
           content: `Write a short, warm WhatsApp ${what(b)} wish (2-3 sentences, 1-2 emojis, casual Indian English, no hashtags, no quotes) from me to ${b.name}${b.relation ? ` (my ${b.relation})` : ""}${turning && b.kind === "birthday" ? `, who turns ${turning}` : ""}. Just the message.`,
         },
       ],
-      { temperature: 0.8, maxTokens: 150, order: ["groq", "mistral", "openrouter", "github", "gemini"] },
+      { temperature: 0.8, maxTokens: 150, order: ["groq", "mistral", "openrouter", "gemini"] },
     );
     if (r.text.trim()) text = r.text.trim().replace(/^["']|["']$/g, "");
   } catch {}

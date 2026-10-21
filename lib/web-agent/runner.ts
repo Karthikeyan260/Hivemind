@@ -32,6 +32,9 @@ const BLOCKER =
  * Would this action carry the owner's details off to a website? Emails, phone numbers, or facts the
  * agent looked up from the brain (task.notes), typed into a page or packed into a URL. Returns why.
  */
+/** The last three steps all failed (fewer than three steps is not "three in a row": one hiccup shouldn't end the task). */
+export const threeFailuresInARow = (steps: Step[]) => steps.length >= 3 && steps.slice(-3).every((s) => !s.ok);
+
 export function leaksOwnerData(task: WebTask, a: Action): string | null {
   const text = a.type === "type" ? a.text : a.type === "goto" ? safeDecode(a.url.replace(/\+/g, " ")) : "";
   if (!text) return null;
@@ -164,7 +167,7 @@ export async function runTask(supabase: SupabaseClient, id: string, origin: stri
       const d = await decide(supabase, task, snap);
       if (!d) {
         task.steps.push({ at: now(), thought: "", did: "think", ok: false, note: "AI gave no usable answer" });
-        if (task.steps.slice(-3).every((s) => !s.ok)) return finish(supabase, task, "failed", { error: "The AI couldn't decide what to do (providers busy?). Tap Retry later." });
+        if (threeFailuresInARow(task.steps)) return finish(supabase, task, "failed", { error: "The AI couldn't decide what to do (providers busy?). Tap Retry later." });
         continue;
       }
       const a = d.action;
@@ -317,7 +320,7 @@ export async function decide(supabase: SupabaseClient, task: WebTask, snap: Snap
       json: true,
       temperature: 0.1,
       maxTokens: 500,
-      order: ["gemini", "github", "openrouter", "nvidia", "mistral", "groq"],
+      order: ["gemini", "openrouter", "nvidia", "mistral", "groq"],
     });
     return parseJson(r.text, Decision);
   } catch (err) {
