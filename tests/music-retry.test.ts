@@ -15,3 +15,28 @@ describe("music: retries and artists", () => {
     expect(byArtist(list, "relaxing melody").map((s) => s.title)).toEqual(list.map((s) => s.title)); // no artist named
   });
 });
+
+import { recentMonths, titleRequest, type Song } from "@/lib/music";
+import { localParts } from "@/lib/reminders";
+
+const song = (title: string): Song => ({ id: title, title, artists: "", album: "", image: "", duration: 0, language: "tamil", year: "", media: "x" });
+
+describe("a song whose title sounds like a mood", () => {
+  it("'Love Today' is the song, not a love-songs playlist", () => {
+    expect(titleRequest([song("Love Today")], ["love", "today"])).toBe(true);
+    expect(titleRequest([song("Rain Rain Come Again")], ["rain", "rain", "come"])).toBe(true);
+  });
+  it("a one-word mood, or words that aren't all in the title, stay a mood", () => {
+    expect(titleRequest([song("Love Today")], ["love"])).toBe(false);
+    expect(titleRequest([song("Sad Song")], ["sad", "melody"])).toBe(false);
+    expect(titleRequest([], ["love", "today"])).toBe(false);
+  });
+});
+
+describe("the days a 'recently played' check looks back over", () => {
+  it("mid-month is just this month; the 2nd also reaches into last month", () => {
+    expect(recentMonths(new Date("2026-10-15T10:00:00+05:30"), 4, localParts)).toEqual(["2026-10"]);
+    expect(recentMonths(new Date("2026-10-02T10:00:00+05:30"), 4, localParts)).toEqual(["2026-09", "2026-10"]);
+    expect(recentMonths(new Date("2027-01-03T10:00:00+05:30"), 4, localParts)).toEqual(["2026-12", "2027-01"]);
+  });
+});

@@ -95,6 +95,17 @@ const MOOD =
 const FILLER = new Set(["song", "songs", "music", "track", "tracks", "play", "some", "the", "a", "an", "of", "or", "and", "for", "from", "by", "with", "in", "to", "on", "me", "my", "any", "hear", "listen", "want", "good", "best", "nice", "please", "pls", "list", "playlist", "video", ...["tamil", "telugu", "hindi", "malayalam", "kannada", "english", "punjabi", "bengali", "marathi"]]);
 const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9஀-௿ ]+/g, " ").split(/\s+/).filter((w) => w.length > 1 && !FILLER.has(w));
 
+/**
+ * The request is a song's own title even though it holds mood words ("Love Today", "Rain Rain Come Again"):
+ * two or more words, all of them in the best match's title. A single word ("love", "rain") stays a mood.
+ */
+export function titleRequest(found: Song[], topic: string[]) {
+  const first = found[0];
+  if (!first || topic.length < 2) return false;
+  const title = new Set(words(first.title));
+  return topic.every((w) => title.has(w));
+}
+
 type Pick = { songs: Song[]; how: "search" | "playlist" | "ai"; label?: string };
 
 /**
@@ -116,7 +127,7 @@ export async function smartSongs(query: string): Promise<Pick> {
     const h = hay(s);
     return topic.length > 0 && topic.every((w) => h.t.includes(w) || h.sounds.has(sound(w)));
   });
-  if (!MOOD.test(query) && (named || !topic.length) && direct.length) return { songs: direct, how: "search" };
+  if (direct.length && ((!MOOD.test(query) && (named || !topic.length)) || titleRequest(direct, topic))) return { songs: direct, how: "search" };
 
   // Only the meaningful words: JioSaavn's playlist search gets lost on "song", "play", "some".
   const recent = await recentlyPlayed();
@@ -155,13 +166,20 @@ function shuffle<T>(xs: T[]) {
   return a;
 }
 
+const RECENT_DAYS = 4;
+
+/** The months ("2026-10") that the last `days` days touch: on the 1st or 2nd that includes last month. */
+export function recentMonths(now: Date, days: number, parts: (d: Date) => { date: string }): string[] {
+  return [...new Set([parts(new Date(now.getTime() - days * 86_400_000)).date.slice(0, 7), parts(now).date.slice(0, 7)])];
+}
+
 /** Song titles played in the last few days (lower case), so a mood doesn't start with the same song. */
 async function recentlyPlayed(): Promise<Set<string>> {
   try {
     const [{ db }, { listPlays }, { localParts }] = await Promise.all([import("@/lib/db"), import("@/lib/plays"), import("@/lib/reminders")]);
-    const plays = await listPlays(db(), localParts().date.slice(0, 7));
-    const since = Date.now() - 4 * 86_400_000;
-    return new Set(plays.filter((p) => +new Date(p.at) > since).map((p) => p.title.toLowerCase()));
+    const since = Date.now() - RECENT_DAYS * 86_400_000;
+    const lists = await Promise.all(recentMonths(new Date(), RECENT_DAYS, localParts).map((m) => listPlays(db(), m)));
+    return new Set(lists.flat().filter((p) => +new Date(p.at) > since).map((p) => p.title.toLowerCase()));
   } catch {
     return new Set();
   }
