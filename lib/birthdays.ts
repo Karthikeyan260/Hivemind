@@ -114,6 +114,9 @@ export async function runBirthdayAlerts(supabase: SupabaseClient, now = new Date
   if (!morning && !evening) return 0;
   const all = await listBirthdays(supabase);
   let sent = 0;
+  // Only the "alert sent" marks this run makes, merged into a fresh copy at the end: a birthday added, edited
+  // or removed while the pushes were going out isn't overwritten by this (older) list.
+  const marks = new Map<string, Partial<NonNullable<Birthday["sent"]>>>();
   for (const b of all) {
     const n = daysUntil(b, lp.date);
     b.sent ??= {};
@@ -127,11 +130,18 @@ export async function runBirthdayAlerts(supabase: SupabaseClient, now = new Date
           ? { title: `🎁 Tomorrow is ${b.name}'s ${what(b)}`, body: `${dateLabel(b)}${turning}. Don't forget!`, url: "/habits", tag: `bday-${b.id}` }
           : { title: `📅 ${b.name}'s ${what(b)} is in a week`, body: `${dateLabel(b)}${turning}. Time to plan a gift?`, url: "/habits", tag: `bday-${b.id}` };
     if ((await notify(supabase, notice)) > 0) {
-      b.sent[stage] = n.year;
+      marks.set(b.id, { ...marks.get(b.id), [stage]: n.year });
       sent++;
     }
   }
-  if (sent) await save(supabase, all);
+  if (marks.size) {
+    const fresh = await listBirthdays(supabase);
+    for (const b of fresh) {
+      const m = marks.get(b.id);
+      if (m) b.sent = { ...b.sent, ...m };
+    }
+    await save(supabase, fresh);
+  }
   return sent;
 }
 
