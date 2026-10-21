@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateWithFallback } from "@/lib/ai/providers";
 import { listCheckins, MOODS } from "@/lib/checkin";
+import { gameName } from "@/lib/games/names";
 import { listResults } from "@/lib/games/stats";
 import { listHabits } from "@/lib/habits";
 import { listPhotos } from "@/lib/photos";
@@ -29,7 +30,6 @@ export type Wrapped = {
   brain: { notes: number; memories: number; documents: number; chats: number; remindersDone: number; kurals: number };
 };
 
-const GAME_NAMES: Record<string, string> = { chess: "Chess", cards: "Colour Clash", ludo: "Ludo", draw: "Draw & Guess", dots: "Dots & Boxes" };
 
 /** "2026-10" → its days ("2026-10-01" … "2026-10-31") and the instants it starts and ends (home time). */
 function monthSpan(month: string) {
@@ -40,6 +40,18 @@ function monthSpan(month: string) {
   for (let d = first; d < next; d = addDays(d, 1)) days.push(d);
   const at = (date: string) => localDayStart(new Date(`${date}T12:00:00Z`));
   return { days, from: at(first), to: at(next), first, next };
+}
+
+/** The longest run of scheduled days done one after another (days the habit isn't scheduled don't break it, as in the app's streak). */
+export function longestRun(days: string[], done: Set<string>, weekdays: number[]) {
+  let run = 0;
+  let best = 0;
+  for (const d of days) {
+    if (!weekdays.includes(new Date(`${d}T00:00:00Z`).getUTCDay())) continue;
+    if (done.has(d)) best = Math.max(best, ++run);
+    else run = 0;
+  }
+  return best;
 }
 
 const inMonth = (iso: string, from: Date, to: Date) => +new Date(iso) >= +from && +new Date(iso) < +to;
@@ -101,13 +113,7 @@ export async function monthWrapped(supabase: SupabaseClient, month: string): Pro
     .map((h) => {
       const done = new Set(h.log.filter((d) => d.startsWith(month)));
       const scheduled = days.filter((d) => d <= today && d >= h.created.slice(0, 10) && h.days.includes(new Date(`${d}T00:00:00Z`).getUTCDay())).length;
-      let run = 0;
-      let bestRun = 0;
-      for (const d of days) {
-        if (done.has(d)) bestRun = Math.max(bestRun, ++run);
-        else run = 0;
-      }
-      return { name: h.name, emoji: h.emoji, done: done.size, scheduled, bestRun };
+      return { name: h.name, emoji: h.emoji, done: done.size, scheduled, bestRun: longestRun(days, done, h.days) };
     })
     .filter((h) => h.scheduled > 0)
     .sort((a, b) => b.done - a.done);
@@ -129,7 +135,7 @@ export async function monthWrapped(supabase: SupabaseClient, month: string): Pro
   const games = results.filter((r) => inMonth(r.at, from, to));
   const byGame: Wrapped["games"]["byGame"] = {};
   for (const r of games) {
-    const g = (byGame[GAME_NAMES[r.game] ?? r.game] ??= { won: 0, lost: 0, drawn: 0 });
+    const g = (byGame[gameName(r.game)] ??= { won: 0, lost: 0, drawn: 0 });
     if (r.outcome === "win") g.won++;
     else if (r.outcome === "loss") g.lost++;
     else g.drawn++;

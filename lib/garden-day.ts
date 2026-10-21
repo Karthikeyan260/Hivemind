@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HttpError } from "@/lib/api";
 import { listCheckins, MOODS } from "@/lib/checkin";
+import { gameName } from "@/lib/games/names";
 import { listResults } from "@/lib/games/stats";
 import { listHabits } from "@/lib/habits";
 import { festivalOn } from "@/lib/pet-looks";
@@ -27,7 +28,6 @@ export type GardenDay = {
   walked: boolean;
 };
 
-const GAME_NAME: Record<string, string> = { chess: "Chess", cards: "Colour Clash", ludo: "Ludo", draw: "Draw & Guess", dots: "Dots & Boxes" };
 
 export async function getGardenDay(supabase: SupabaseClient, date: string): Promise<GardenDay> {
   // A real calendar date (2026-02-30 is not).
@@ -69,7 +69,7 @@ export async function getGardenDay(supabase: SupabaseClient, date: string): Prom
     songs: songs.slice(0, 8),
     notes: (notes.data ?? []).filter((n) => n.id !== checkin?.noteId).map((n) => ({ title: n.title as string, summary: (n.summary as string | null) ?? undefined })),
     memories: (memories.data ?? []).map((m) => m.title as string),
-    wins: games.filter((g) => g.outcome === "win" && within(g.at)).map((g) => GAME_NAME[g.game] ?? g.game),
+    wins: games.filter((g) => g.outcome === "win" && within(g.at)).map((g) => gameName(g.game)),
     walked: (saved?.walks ?? []).includes(date),
   };
 }

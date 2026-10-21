@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listCheckins, nightDay } from "@/lib/checkin";
+import { GAME_HUES, gameName } from "@/lib/games/names";
 import { listResults } from "@/lib/games/stats";
 import { type Garden, type GardenItem, hueOf, visitorsFor } from "@/lib/garden-layout";
 import { listHabits, stats as habitStats } from "@/lib/habits";
@@ -25,8 +26,6 @@ const MUSIC_DAYS = 60;
 /** "Raja Raja Chozhan" → "raja-raja-chozhan" (a stable key for ids). */
 const slug = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "song";
 
-const GAME_NAME: Record<string, string> = { chess: "Chess", cards: "Colour Clash", ludo: "Ludo", draw: "Draw & Guess", dots: "Dots & Boxes" };
-const GAME_HUE: Record<string, number> = { chess: 200, cards: 330, ludo: 45, draw: 280, dots: 150 };
 
 export async function getGarden(supabase: SupabaseClient): Promise<Garden> {
   const today = localParts().date;
@@ -62,7 +61,7 @@ export async function getGarden(supabase: SupabaseClient): Promise<Garden> {
 
   const gems: GardenItem[] = games
     .filter((g) => g.outcome === "win" && localParts(new Date(g.at)).date >= since)
-    .map((g) => ({ kind: "gem" as const, id: `g:${g.key}`, date: localParts(new Date(g.at)).date, label: `💎 Won ${GAME_NAME[g.game] ?? g.game} · ${localParts(new Date(g.at)).date}`, hue: GAME_HUE[g.game] ?? 190 }));
+    .map((g) => ({ kind: "gem" as const, id: `g:${g.key}`, date: localParts(new Date(g.at)).date, label: `💎 Won ${gameName(g.game)} · ${localParts(new Date(g.at)).date}`, hue: GAME_HUES[g.game] ?? 190 }));
 
   // A flower for every song played (once per song), in its artist's bed: the garden shows your music taste.
   const musicSince = addDays(today, -MUSIC_DAYS);
