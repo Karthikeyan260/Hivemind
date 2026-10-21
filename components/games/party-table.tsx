@@ -38,12 +38,12 @@ export function PartyTable({ role, room, myName, hostName, onHostAway }: { role:
   // Voice: run game night by speaking ("let's play ludo", "back to the lobby", "who's here?", "mute me").
   useVoiceActions({
     party_game: {
-      description: "Game night page: switch everyone to a game (the owner only). input: the game: Colour Clash (cards/uno), Ludo, Draw & Guess, Dots & Boxes or Chess. Then the game's own voice actions start it.",
+      description: "Game night page: switch everyone to a game (the owner only). input: the game: Colour Clash (cards/uno), Ludo, Draw & Guess, Dots & Boxes, Chess, Snakes & Ladders, Business (monopoly) or Bingo (housie/tambola). Then the game's own voice actions start it.",
       run: ({ input }) => {
         if (!host) return { error: "Only the host picks the game." };
         const id = spokenGame(String(input ?? ""));
         const g = GAMES.find((x) => x.id === id);
-        if (!g) return { error: "Say a game: Colour Clash, Ludo, Draw & Guess, Dots & Boxes or Chess." };
+        if (!g) return { error: "Say a game: Colour Clash, Ludo, Draw & Guess, Dots & Boxes, Chess, Snakes & Ladders, Business or Bingo." };
         if (here(party.players).length < g.min) return { error: "Needs at least one friend here first." };
         party.startGame(g.id);
         return { opened: g.name, players: here(party.players).length };
