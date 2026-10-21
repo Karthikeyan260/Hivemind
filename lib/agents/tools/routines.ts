@@ -1,4 +1,5 @@
 import "server-only";
+import { GAME_NAMES } from "@/lib/games/names";
 import { getProfile } from "@/lib/profile";
 import { VOICE_PAGE_PATHS, VOICE_PAGES } from "@/lib/voice/pages";
 import { obj, S, str, askedToDelete } from "./shared";
@@ -128,8 +129,8 @@ export const routines: Record<string, Tool> = {
   },
   game_record: {
     name: "game_record",
-    description: "The owner's game record ('how many games did I win', 'what's my chess level', 'my last games'): wins / losses / draws per game (chess, Colour Clash, Ludo, Draw & Guess, Dots & Boxes), chess level vs HIVEMIND, and the latest results.",
-    parameters: obj({ game: { type: "string", enum: ["chess", "cards", "ludo", "draw", "dots"] } }),
+    description: `The owner's game record ('how many games did I win', 'what's my chess level', 'my last games'): wins / losses / draws per game (${Object.values(GAME_NAMES).join(", ")}), chess level vs HIVEMIND, and the latest results.`,
+    parameters: obj({ game: { type: "string", enum: Object.keys(GAME_NAMES) } }),
     async run(args, ctx) {
       const { listResults } = await import("@/lib/games/stats");
       const all = (await listResults(ctx.supabase)).reverse();
