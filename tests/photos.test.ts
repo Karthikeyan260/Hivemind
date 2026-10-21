@@ -52,3 +52,20 @@ describe("place nicknames", () => {
     expect(nickname("Chennai")).toBe("Chennai");
   });
 });
+
+describe("photo search: the same word, not just the same first letters", () => {
+  const pics = [
+    photo("tri", { title: "Playground", tags: ["triangle", "tribe", "trek"] }),
+    photo("trips", { title: "Weekend", tags: ["trips", "beaches", "birthdays"] }),
+  ];
+  it("'trip' doesn't match triangle, tribe or trek", () => {
+    expect(searchPhotos(pics, "trip", NOW).photos.map((p) => p.id)).toEqual(["trips"]);
+    expect(searchPhotos(pics, "tree", NOW).photos).toHaveLength(0);
+  });
+  it("plurals still match: trip ~ trips, beach ~ beaches, birthday ~ birthdays", () => {
+    expect(searchPhotos(pics, "trip", NOW).photos).toHaveLength(1);
+    expect(searchPhotos(pics, "beach", NOW).photos.map((p) => p.id)).toEqual(["trips"]);
+    expect(searchPhotos(pics, "birthday", NOW).photos.map((p) => p.id)).toEqual(["trips"]);
+    expect(searchPhotos(pics, "birthdays", NOW).photos.map((p) => p.id)).toEqual(["trips"]);
+  });
+});

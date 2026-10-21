@@ -213,6 +213,9 @@ export function nickname(place: string) {
   return place;
 }
 
+/** A word without its plural ending, so "birthdays", "beaches" and "parties" match "birthday", "beach" and "party", and "trip" doesn't match "triangle". */
+export const stem = (t: string) => (t.endsWith("ies") ? `${t.slice(0, -3)}y` : t.endsWith("ches") || t.endsWith("shes") || t.endsWith("sses") || t.endsWith("xes") ? t.slice(0, -2) : t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t);
+
 const STOP = new Set("a an the of in on at to for from with and or my me i photo photos pic pics picture pictures image images show find where was that this one some any all".split(" "));
 const words = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
@@ -261,7 +264,7 @@ export function searchPhotos(all: Photo[], q: string, now = new Date()) {
         // A word or its stem ("birthdays" ~ "birthday", "trip" ~ "trips").
         // The word, its everyday / official name ("ooty" ~ "udhagamandalam"), or its stem ("birthdays" ~ "birthday").
         const forms = [word, ...(ALIASES[word] ?? [])];
-        const same = (x: string, w: string) => x === w || (w.length > 3 && x.length > 3 && (x.startsWith(w.slice(0, -1)) || w.startsWith(x.slice(0, -1))));
+        const same = (x: string, w: string) => x === w || (w.length > 3 && x.length > 3 && stem(x) === stem(w));
         const hit = (list: string[]) => list.some((x) => forms.some((w) => same(x, w)));
         if (hit(hay.place)) score += 4;
         if (hit(hay.tags)) score += 3;
