@@ -224,7 +224,8 @@ export const brain: Record<string, Tool> = {
     description: "Delete an uploaded document. First call without confirm to name it and ask; call with confirm=true ONLY after the owner says yes.",
     parameters: obj({ which: S, confirm: { type: "boolean" } }, ["which"]),
     async run(args, ctx) {
-      const w = str(args.which).replace(/[%,()]/g, " ");
+      const w = str(args.which).replace(/[%,()]/g, " ").trim();
+      if (!w) return { error: "Which document? Say words from its file name." };
       const { data } = await ctx.supabase.from("documents").select("id, filename").ilike("filename", `%${w}%`).limit(1).maybeSingle();
       if (!data) return { error: `No document like "${str(args.which)}".` };
       if (args.confirm !== true || !(await askedToDelete(ctx, "document", data.id, data.filename))) return { needs_confirmation: true, document: data.filename, ask: `Delete the document "${data.filename}"? (Deletes only after the owner says yes in their next message.)` };
@@ -288,7 +289,9 @@ export const brain: Record<string, Tool> = {
     description: "Everything filed under one project: description plus its memories and notes.",
     parameters: obj({ name: S }, ["name"]),
     async run(args, ctx) {
-      const { data: p, error } = await ctx.supabase.from("projects").select("id, name, description, status").ilike("name", `%${str(args.name)}%`).limit(1).maybeSingle();
+      const name = str(args.name).replace(/[%,()]/g, " ").trim();
+      if (!name) return { error: "Which project? Say its name." };
+      const { data: p, error } = await ctx.supabase.from("projects").select("id, name, description, status").ilike("name", `%${name}%`).limit(1).maybeSingle();
       dbError(error);
       if (!p) return { error: `No project matching "${str(args.name)}".` };
       const [m, n] = await Promise.all([
