@@ -463,6 +463,12 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         playersRef.current = list;
         setPlayers(list);
         const ph = m.phase && (m.phase.screen === "lobby" || (isGame(m.phase.game) && Number.isInteger(m.phase.n))) ? m.phase : ({ screen: "lobby" } as PartyPhase);
+        // A new game starts from nothing: the last one's finished board must not flash up first.
+        const before = phaseRef.current;
+        if (ph.screen === "game" && (before.screen !== "game" || before.n !== ph.n) && states.current[ph.game] !== undefined) {
+          delete states.current[ph.game];
+          setSnap({ ...states.current });
+        }
         phaseRef.current = ph;
         setPhase(ph);
         setStage("lobby");
