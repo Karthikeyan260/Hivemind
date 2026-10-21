@@ -70,6 +70,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   const ready = sceneId > 0;
   const [sel, setSel] = useState<{ id: string; label: string } | null>(null);
   const [sky, setSky] = useState<Sky>("calm");
+  const [wind, setWind] = useState<number | null>(null);
   const [phase, setPhase] = useState<Phase>("day");
   const [walking, setWalking] = useState(false);
   const [facing, setFacing] = useState(0);
@@ -100,7 +101,12 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the clock and the sky, read on mount
     setPhase(phaseNow());
     setSky((window as unknown as { __hmSky?: Sky }).__hmSky ?? "calm");
-    const on = (e: Event) => setSky((e as CustomEvent<{ sky: Sky }>).detail?.sky ?? "calm");
+    setWind((window as unknown as { __hmWind?: number | null }).__hmWind ?? null);
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ sky: Sky; wind?: number | null }>).detail;
+      setSky(d?.sky ?? "calm");
+      setWind(d?.wind ?? null);
+    };
     window.addEventListener("hivemind:sky", on);
     const tick = setInterval(() => setPhase(phaseNow()), 5 * 60_000);
     const all = timers.current;
@@ -302,6 +308,10 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   useEffect(() => {
     scene.current?.setLook(inBed ? "night" : phase, inBed ? false : wet);
   }, [phase, wet, sceneId, inBed]);
+  // The real wind outside: the grass, flowers and trees sway as hard as it blows.
+  useEffect(() => {
+    scene.current?.setWind(wind);
+  }, [wind, sceneId]);
   useEffect(() => {
     const d = decorFor(asked);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the link, which can change while the page is open
@@ -329,7 +339,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     const paint = () => s()?.setMusic(playing() ? beat.currentRgb() : null);
     paint();
     // Development only: tests send beats without playing a real song (which would log a play).
-    if (process.env.NODE_ENV === "development") (window as unknown as { __hmGarden?: unknown }).__hmGarden = { focus: (id: string, d?: number, view?: "front" | "side") => s()?.debugFocus(id, d, view), beat: () => s()?.musicBeat(), drop: () => s()?.musicDrop(), level: (v: number) => s()?.setMusicLevel(v), music: (rgb: [number, number, number] | null) => s()?.setMusic(rgb) };
+    if (process.env.NODE_ENV === "development") (window as unknown as { __hmGarden?: unknown }).__hmGarden = { focus: (id: string, d?: number, view?: "front" | "side") => s()?.debugFocus(id, d, view), beat: () => s()?.musicBeat(), wind: () => s()?.windNow(), drop: () => s()?.musicDrop(), level: (v: number) => s()?.setMusicLevel(v), music: (rgb: [number, number, number] | null) => s()?.setMusic(rgb) };
     const offBeat = beat.onBeat(() => s()?.musicBeat());
     // The song's loudness, a few times a second, for the gentle sway and the fireflies.
     const lv = setInterval(() => playing() && s()?.setMusicLevel(beat.level()), 120);

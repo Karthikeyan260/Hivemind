@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useVoiceActions } from "@/components/voice/provider";
 import { FX_EVENT } from "@/lib/client-api";
 import { getFix } from "@/lib/location";
-import { type Sky, SKY_EVENT, skyFor, skyFromWords, THUNDER_EVENT } from "@/lib/sky";
+import { PREVIEW_WIND, type Sky, SKY_EVENT, skyFor, skyFromWords, THUNDER_EVENT } from "@/lib/sky";
 
 /**
  * The living sky: the weather outside, across the whole app. Rain falls over the screen when it rains
@@ -35,11 +35,14 @@ async function here(ask = false) {
 declare global {
   interface Window {
     __hmSky?: Sky;
+    /** The wind outside in km/h (null: unknown), for the garden. */
+    __hmWind?: number | null;
   }
 }
 
 export function LivingSky() {
   const [real, setReal] = useState<Sky>("calm");
+  const [realWind, setRealWind] = useState<number | null>(null);
   const [preview, setPreview] = useState<Sky | null>(null);
   const [off, setOff] = useState(false);
   const [flash, setFlash] = useState(0);
@@ -65,6 +68,7 @@ export function LivingSky() {
       const w = r?.ok ? await r.json().catch(() => null) : null;
       if (!alive || !w?.current) return;
       setReal(skyFor(Number(w.current.code ?? 3), w.current.is_day !== false, Number(w.current.rain_mm ?? 0)));
+      setRealWind(Number.isFinite(Number(w.current.wind_kmh)) ? Number(w.current.wind_kmh) : null);
       setWhere(fix ? "your location" : (w.place ?? "home"));
     };
     void load();
@@ -94,9 +98,12 @@ export function LivingSky() {
   // Tell the pet (and anything else) what the sky is doing.
   useEffect(() => {
     const shown = off ? "calm" : sky;
+    // A previewed sky blows its own wind; otherwise the real wind outside.
+    const wind = off ? null : preview ? PREVIEW_WIND[shown] : realWind;
     window.__hmSky = shown;
-    window.dispatchEvent(new CustomEvent(SKY_EVENT, { detail: { sky: shown } }));
-  }, [sky, off]);
+    window.__hmWind = wind;
+    window.dispatchEvent(new CustomEvent(SKY_EVENT, { detail: { sky: shown, wind } }));
+  }, [sky, off, preview, realWind]);
 
   // Lightning now and then in a storm: a flash, and the pet jumps.
   useEffect(() => {

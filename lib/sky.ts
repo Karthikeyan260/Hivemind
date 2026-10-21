@@ -27,3 +27,12 @@ export function skyFromWords(said: string): Sky | null {
   if (/calm|cloud|normal|plain/.test(t)) return "calm";
   return null;
 }
+
+/** How hard the garden's wind blows for the real wind speed (km/h): 1 is the usual breeze; no reading means the usual. */
+export function windStrength(kmh: number | null | undefined): number {
+  if (kmh === null || kmh === undefined || !Number.isFinite(kmh)) return 1;
+  return Math.min(2.2, Math.max(0.5, kmh / 16));
+}
+
+/** The wind to show for a previewed sky (?sky=thunder), when there is no real reading to follow. */
+export const PREVIEW_WIND: Record<Sky, number> = { thunder: 38, rain: 22, sunny: 12, night: 10, calm: 14 };

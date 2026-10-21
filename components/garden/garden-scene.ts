@@ -54,6 +54,7 @@ class GradeEffect extends Effect {
   }
 }
 import { type Phase } from "./phase";
+import { windStrength } from "@/lib/sky";
 import { fireflyCount, hash01, homeSpot, islandSize, pathX, POND_ANGLE, pondSpot, type Placed, type Season } from "@/lib/garden-layout";
 
 /**
@@ -130,11 +131,12 @@ function fbm(x: number, y: number, z: number, oct = 4) {
 /** The wind, shared by grass, flowers and trees (GLSL): a steady sway plus gusts rolling across. */
 const WIND_GLSL = /* glsl */ `
   uniform float uBeat;
+  uniform float uWind;
   float windAt(vec3 p, float t) {
     float gust = pow(sin(p.x * 0.22 + p.z * 0.08 - t * 1.25) * 0.5 + 0.5, 3.0) * 1.3;
     float sway = sin(t * 1.9 + p.x * 0.7 + p.z * 0.45) * 0.28 + sin(t * 1.1 + p.z * 0.33) * 0.18;
     // While a song plays, the sway grows gently with how loud it is (smoothed: no jolts).
-    return (sway + gust) * (1.0 + uBeat * 0.45);
+    return (sway + gust) * (1.0 + uBeat * 0.45) * uWind;
   }
 `;
 const WIND_DIR = "vec2(0.94, 0.34)";
@@ -352,6 +354,8 @@ export class GardenScene {
   private uPet = { value: new THREE.Vector3(0, 0, 999) };
   /* music: a beat (decays fast), a drop flash, and the music lights' colour while a song plays */
   private uBeat = { value: 0 };
+  /** The real wind: 1 is the usual breeze (see windStrength). */
+  private uWind = { value: 1 };
   /** Light rings on the grass: start time and strength of the last four. */
   private uRip = { value: [new THREE.Vector2(-99, 0), new THREE.Vector2(-99, 0), new THREE.Vector2(-99, 0), new THREE.Vector2(-99, 0)] };
   private ripNext = 0;
@@ -1549,6 +1553,7 @@ void main() {`);
     });
     this.grassMat.uniforms.uTime = this.uTime;
     this.grassMat.uniforms.uBeat = this.uBeat;
+    this.grassMat.uniforms.uWind = this.uWind;
     this.grassMat.uniforms.uRip = this.uRip;
     this.grassMat.uniforms.uMusicCol = this.uMusicCol;
     this.grassMat.uniforms.uMusicDay = this.uMusicDay;
@@ -1599,6 +1604,7 @@ void main() {`);
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uTime = this.uTime;
       sh.uniforms.uBeat = this.uBeat;
+      sh.uniforms.uWind = this.uWind;
       sh.uniforms.uKick = this.uKick;
       sh.vertexShader =
         `uniform float uTime;\nuniform float uKick;\n${WIND_GLSL}\n` +
@@ -3405,6 +3411,13 @@ void main() {`);
     for (const p of this.particleMats) p.mat.uniforms.uColor.value.copy(this.musicRgb ?? p.color);
   }
 
+  /** Blow as hard as the real wind (km/h); null = the usual breeze. */
+  setWind(kmh: number | null) {
+    this.uWind.value = windStrength(kmh);
+  }
+  windNow() {
+    return this.uWind.value;
+  }
   setLit(on: boolean) {
     this.lit = on;
     for (const m of this.windowMats) m.emissiveIntensity = on ? (this.phase === "night" ? 3.2 : 1.6) : 0;
