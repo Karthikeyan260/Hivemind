@@ -1,5 +1,6 @@
 import "server-only";
 import { webSearch } from "@/lib/external/web";
+import { safeDecode } from "@/lib/safe-decode";
 
 /**
  * Product lookup on Indian stores: the big marketplaces, and the quick-delivery apps (Zepto,
@@ -30,7 +31,7 @@ export type ProductLink = { store: string; title: string; url: string };
 /** "boat-airdopes-141-gen-2-bluetooth" → "Boat Airdopes 141 Gen 2 Bluetooth" (stores put the name in the path). */
 function nameFromUrl(u: URL) {
   const slug = u.pathname.split("/").filter((p) => /[a-z]{2,}[-_][a-z0-9]/i.test(p) && !/^[0-9a-f-]{20,}$/i.test(p)).sort((a, b) => b.length - a.length)[0] ?? "";
-  const words = decodeURIComponent(slug).replace(/[-_]+/g, " ").trim();
+  const words = safeDecode(slug).replace(/[-_]+/g, " ").trim();
   return words ? words.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 80) : "";
 }
 

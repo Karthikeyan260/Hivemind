@@ -2,6 +2,7 @@ import "server-only";
 import { getWeather, HOME_CITY, weatherHere } from "@/lib/external/weather";
 import { findProduct, STORE_IDS, type StoreId } from "@/lib/external/products";
 import { researchAndSave, webSearch } from "@/lib/external/web";
+import { safeDecode } from "@/lib/safe-decode";
 import { cite, obj, S, str } from "./shared";
 import type { Tool } from "../types";
 
@@ -34,7 +35,7 @@ export const web: Record<string, Tool> = {
       const label = (str(args.label) || u.hostname.replace(/^www\./, "")).slice(0, 50);
       // Opened by itself only when it's a plain link: a long address, or one carrying an email or a
       // phone number, could be a page's trick to send the owner's data away. Those wait for a tap.
-      const said = decodeURIComponent(u.href.replace(/\+/g, " "));
+      const said = safeDecode(u.href.replace(/\+/g, " "));
       const plain = u.search.length <= 150 && u.href.length <= 400 && !/[\w.+-]+@[\w-]+\.[\w.]+/.test(said) && !/(?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}\b/.test(said);
       ctx.actions.push({ label: `Open ${label}`, href: u.href, open: plain });
       return plain

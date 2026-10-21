@@ -6,6 +6,7 @@ import { generateWithFallback, parseJson } from "@/lib/ai/providers";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { getProfile, profileForPrompt } from "@/lib/profile";
 import { notify } from "@/lib/push";
+import { safeDecode } from "@/lib/safe-decode";
 import { searchKnowledge } from "@/lib/rag/retrieval";
 import { act, type Action, attach, describe, screenshot, snapshot, type Snapshot } from "./page";
 import { createSession, releaseSession, SESSION_MS } from "./steel";
@@ -32,7 +33,7 @@ const BLOCKER =
  * agent looked up from the brain (task.notes), typed into a page or packed into a URL. Returns why.
  */
 export function leaksOwnerData(task: WebTask, a: Action): string | null {
-  const text = a.type === "type" ? a.text : a.type === "goto" ? decodeURIComponent(a.url.replace(/\+/g, " ")) : "";
+  const text = a.type === "type" ? a.text : a.type === "goto" ? safeDecode(a.url.replace(/\+/g, " ")) : "";
   if (!text) return null;
   if (a.type === "goto") {
     const q = a.url.split("?")[1] ?? "";

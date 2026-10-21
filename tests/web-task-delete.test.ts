@@ -38,3 +38,18 @@ describe("deleting a web task needs a real target", () => {
     expect(deleted).toEqual(["t1"]);
   });
 });
+
+describe("open_link with a real-world address", () => {
+  it("a stray % in the link doesn't make the tool fail: it still offers the link", async () => {
+    const ctx = { supabase: {}, actions: [] as { href?: string; open?: boolean }[], changed: false };
+    const r = (await web.open_link.run({ url: "https://shop.example/sale?off=100%", label: "Sale" }, ctx as never)) as { error?: string };
+    expect(r.error).toBeUndefined();
+    expect(ctx.actions[0].href).toContain("shop.example/sale");
+    expect(ctx.actions[0].open).toBe(true);
+  });
+  it("an address carrying an email still waits for a tap", async () => {
+    const ctx = { supabase: {}, actions: [] as { open?: boolean }[], changed: false };
+    await web.open_link.run({ url: "https://x.example/?e=me@example.com&p=100%" }, ctx as never);
+    expect(ctx.actions[0].open).toBe(false);
+  });
+});
