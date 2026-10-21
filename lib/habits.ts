@@ -63,9 +63,9 @@ export function stats(h: Habit, today = localParts().date) {
 }
 
 export type HabitView = Habit & ReturnType<typeof stats>;
-export async function habitsWithStats(supabase: SupabaseClient): Promise<HabitView[]> {
-  const today = localParts().date;
-  return (await listHabits(supabase)).map((h) => ({ ...h, ...stats(h, today) }));
+/** Every habit with its streak and rate, as of `date` (default: the calendar's today; the night check-in passes the night's date). */
+export async function habitsWithStats(supabase: SupabaseClient, date = localParts().date): Promise<HabitView[]> {
+  return (await listHabits(supabase)).map((h) => ({ ...h, ...stats(h, date) }));
 }
 
 const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;

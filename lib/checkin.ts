@@ -44,7 +44,7 @@ export function nudgeDue(hour: number, today: string, lastNudged: string | undef
 /** What the evening card needs: done today?, unfinished reminders, habits still open, recent moods. */
 export async function checkinContext(supabase: SupabaseClient) {
   const today = nightDay();
-  const [all, a, habits] = await Promise.all([listCheckins(supabase), agenda(supabase, 1), habitsWithStats(supabase).catch(() => [])]);
+  const [all, a, habits] = await Promise.all([listCheckins(supabase), agenda(supabase, 1), habitsWithStats(supabase, today).catch(() => [])]);
   // Only what was due and didn't happen: a reminder later tonight (10 pm) is still to come.
   const now = Date.now();
   const unfinished = [...a.overdue, ...a.today].filter((r) => r.status === "pending" && (r.all_day || +new Date(r.due_at) <= now)).map((r) => ({ id: r.id, title: r.title, when: r.all_day ? "all day" : (r.when.split(", ").pop() ?? r.when), due_at: r.due_at, all_day: r.all_day }));
@@ -93,7 +93,8 @@ export async function saveCheckin(supabase: SupabaseClient, input: { mood: Mood;
   );
   const ticked: string[] = [];
   for (const name of done) {
-    const r = await checkHabit(supabase, name, { exact: true }).catch(() => null);
+    // Credited to the night being described (before 4 am that is still yesterday), not the calendar's new day.
+    const r = await checkHabit(supabase, name, { exact: true, date: ctx.date }).catch(() => null);
     if (r) ticked.push(name);
   }
 
