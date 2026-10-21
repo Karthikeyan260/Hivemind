@@ -26,7 +26,11 @@ export type Contact = { name: string; phone: string; from: string; memory_id: st
  */
 export async function findContacts(supabase: SupabaseClient, who: string): Promise<Contact[]> {
   const name = who.trim();
-  const words = name.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
+  const all = name.toLowerCase().split(/\s+/).filter(Boolean);
+  // Initials ("K", "Dr") are dropped when a longer word is there; a name made only of them still counts.
+  const words = all.some((w) => w.length > 1) ? all.filter((w) => w.length > 1) : all;
+  // No name, no match: otherwise every phone number in the brain would be "theirs".
+  if (!words.length) return [];
   const hits = await searchKnowledge(supabase, `${name} phone number contact`, { limit: 12, minSimilarity: 0.25 });
   const out: Contact[] = [];
   const seen = new Set<string>();
