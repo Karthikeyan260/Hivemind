@@ -329,7 +329,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     const paint = () => s()?.setMusic(playing() ? beat.currentRgb() : null);
     paint();
     // Development only: tests send beats without playing a real song (which would log a play).
-    if (process.env.NODE_ENV === "development") (window as unknown as { __hmGarden?: unknown }).__hmGarden = { focus: (id: string, d?: number) => s()?.debugFocus(id, d), beat: () => s()?.musicBeat(), drop: () => s()?.musicDrop(), level: (v: number) => s()?.setMusicLevel(v), music: (rgb: [number, number, number] | null) => s()?.setMusic(rgb) };
+    if (process.env.NODE_ENV === "development") (window as unknown as { __hmGarden?: unknown }).__hmGarden = { focus: (id: string, d?: number, view?: "front" | "side") => s()?.debugFocus(id, d, view), beat: () => s()?.musicBeat(), drop: () => s()?.musicDrop(), level: (v: number) => s()?.setMusicLevel(v), music: (rgb: [number, number, number] | null) => s()?.setMusic(rgb) };
     const offBeat = beat.onBeat(() => s()?.musicBeat());
     // The song's loudness, a few times a second, for the gentle sway and the fireflies.
     const lv = setInterval(() => playing() && s()?.setMusicLevel(beat.level()), 120);

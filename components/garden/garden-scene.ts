@@ -568,14 +568,15 @@ export class GardenScene {
 
   private visitors = new Map<string, { g: THREE.Group; kind: "owl" | "deer"; ph: number; head: THREE.Object3D; eyes: THREE.Object3D; home: THREE.Vector3; legs: THREE.Object3D[]; state: "graze" | "look" | "walk"; until: number; target: THREE.Vector3; yaw: number; graze: number; sleep: number }>();
   /** (development only, from the test hook) Put the camera close in front of a visitor, to look at it. */
-  debugFocus(id: string, dist = 2.2) {
+  debugFocus(id: string, dist = 2.2, view: "front" | "side" = "front") {
     const v = this.visitors.get(id);
     if (!v) return;
     this.skipIntro();
     this.controls.minDistance = 0.3;
     const p = v.g.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, v.kind === "owl" ? 0.35 : 0.45, 0));
     this.controls.target.copy(p);
-    this.camera.position.copy(p).add(new THREE.Vector3(0.5, 0.2, dist));
+    const yaw = (this.visitors.get(id)?.yaw ?? 0) + (view === "side" ? Math.PI / 2 : 0.4);
+    this.camera.position.copy(p).add(new THREE.Vector3(Math.sin(yaw) * dist, 0.2, Math.cos(yaw) * dist));
     this.camera.lookAt(p);
     this.controls.autoRotate = false;
   }
@@ -699,12 +700,15 @@ export class GardenScene {
   }
 
   /**
-   * A fawn: a smooth warm-brown body (chest, belly and rump blended), a long curved neck, a proper head with a muzzle, a wet nose,
-   * big leaf ears and dark eyes with a gleam, slender jointed legs with dark hooves, a white tail and a spotted back.
+   * A fawn: one smooth body shaded warm brown on top to cream underneath, a long tapered neck, a head with a muzzle, a wet nose,
+   * big leaf ears and dark eyes with a gleam, long slim legs with a knee, a hoof and a white tail, and soft white spots on the back.
    */
   private makeDeer() {
     const g = new THREE.Group();
     const std = (color: string, rough = 0.88) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+    const shaded = new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.88 });
+    const furC = new THREE.Color("#b9824f");
+    const creamC = new THREE.Color("#efdcba");
     const fur = std("#b9824f");
     const furDark = std("#8e5c36");
     const light = std("#efdcba", 0.95);
@@ -713,45 +717,82 @@ export class GardenScene {
     const black = new THREE.MeshStandardMaterial({ color: "#120c09", roughness: 0.15 });
     const white = std("#ffffff", 0.3);
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = g) => this.visitorMesh(parent, geo, mat, x, y, z);
-    // The body: chest, middle and rump blended into one smooth shape, with a pale belly under it.
-    add(this.blob(0.17, 0.85, 0.95, 1.1), fur, 0, 0.5, 0.17);
-    add(this.blob(0.18, 0.86, 0.9, 1.5), fur, 0, 0.47, 0);
-    add(this.blob(0.165, 0.9, 0.95, 1.0), fur, 0, 0.48, -0.18);
-    add(this.blob(0.15, 0.75, 0.55, 1.5), light, 0, 0.37, 0.02);
-    // Soft white spots over the back and flanks.
-    for (let i = 0; i < 22; i++) {
-      const s = i % 2 ? 1 : -1;
-      const z = -0.27 + hash01(`dz${i}`) * 0.5;
-      const x = s * (0.03 + hash01(`dx${i}`) * 0.1);
-      const y = 0.5 + 0.145 * Math.sqrt(Math.max(0, 1 - (x / 0.155) ** 2)) - 0.012;
-      const sp = add(this.blob(0.0135, 1.2, 0.3, 1.0), spot, x, y, z);
-      sp.rotation.z = -x * 3;
+    /** Colour a geometry by `cream(nx, ny, nz)` (0 = fur, 1 = cream) from each vertex's own direction. */
+    const shade = (geo: THREE.BufferGeometry, cream: (nx: number, ny: number, nz: number) => number) => {
+      const p = geo.attributes.position as THREE.BufferAttribute;
+      const cols = new Float32Array(p.count * 3);
+      const c = new THREE.Color();
+      for (let i = 0; i < p.count; i++) {
+        const v = new THREE.Vector3(p.getX(i), p.getY(i), p.getZ(i));
+        const n = v.clone().normalize();
+        c.copy(furC).lerp(creamC, THREE.MathUtils.clamp(cream(n.x, n.y, n.z), 0, 1));
+        cols.set([c.r, c.g, c.b], i * 3);
+      }
+      geo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+      return geo;
+    };
+    // The body: one long egg, with the belly tucked up behind the deeper chest, shaded cream underneath.
+    const RX = 0.15;
+    const RY = 0.165;
+    const RZ = 0.36;
+    const BY = 0.64;
+    const bodyGeo = new THREE.SphereGeometry(1, 32, 22);
+    const bp = bodyGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < bp.count; i++) {
+      const nx = bp.getX(i);
+      const ny = bp.getY(i);
+      const nz = bp.getZ(i);
+      const tuck = ny < 0 ? 1 - 0.22 * Math.max(0, 1 - nz * nz) * (-ny) * 1.3 : 1;
+      const rump = nz < 0 ? 1 + 0.05 * -nz : 1;
+      bp.setXYZ(i, nx * RX * rump, ny * RY * tuck, nz * RZ);
     }
-    // Tail: short, white underneath, flicks up.
-    const tail = add(this.blob(0.04, 0.8, 1.15, 1.2), spot, 0, 0.55, -0.31);
-    tail.rotation.x = -0.7;
-    // Legs: each swings from the shoulder or hip; a shaped upper part, a slim shin, a dark hoof.
+    shade(bodyGeo, (_x, y) => (y < -0.15 ? (-y - 0.15) * 2.4 : 0));
+    bodyGeo.computeVertexNormals();
+    add(bodyGeo, shaded, 0, BY, 0);
+    // Soft white spots on the back and flanks, sitting on the body's surface.
+    for (let i = 0; i < 24; i++) {
+      const s = i % 2 ? 1 : -1;
+      const z = (-0.7 + hash01(`dz${i}`) * 1.3) * RZ;
+      const x = s * (0.02 + hash01(`dx${i}`) * 0.8) * RX;
+      const inside = 1 - (x / RX) ** 2 - (z / RZ) ** 2;
+      if (inside <= 0.06) continue;
+      const y = BY + RY * Math.sqrt(inside);
+      const sp = add(this.blob(0.0125, 1.25, 0.3, 1.0), spot, x, y - 0.004, z);
+      sp.rotation.z = -x * 3.4;
+      sp.rotation.x = z * 1.1;
+    }
+    // Tail: short, white, flicking up at the back.
+    const tail = add(this.blob(0.04, 0.8, 1.2, 1.3), spot, 0, BY + 0.1, -RZ - 0.01);
+    tail.rotation.x = -0.75;
+    // Legs: long and slim, each swinging from the shoulder or hip, with a knee and a dark hoof. The back legs are bent at the hock.
     const legs: THREE.Object3D[] = [];
     for (const [x, z, hind] of [[0.075, 0.2, 0], [-0.075, 0.2, 0], [0.075, -0.2, 1], [-0.075, -0.2, 1]] as const) {
       const leg = new THREE.Group();
-      leg.position.set(x, 0.4, z);
-      add(this.blob(0.04, 0.9, 2.6, 1.0), fur, 0, -0.1, hind ? -0.01 : 0.005, leg);
-      const shin = add(new THREE.CylinderGeometry(0.019, 0.012, 0.26, 8), furDark, 0, -0.28, hind ? -0.02 : 0, leg);
-      shin.rotation.x = hind ? 0.14 : -0.03;
-      add(new THREE.CylinderGeometry(0.013, 0.017, 0.04, 8), dark, 0, -0.405, hind ? -0.045 : -0.01, leg);
+      leg.position.set(x, BY - 0.06, z);
+      const upper = add(new THREE.CylinderGeometry(0.034, 0.02, 0.28, 10), hind ? fur : fur, 0, -0.13, 0, leg);
+      upper.rotation.x = hind ? 0.22 : -0.04;
+      upper.position.z = hind ? -0.015 : 0;
+      const knee = new THREE.Group();
+      knee.position.set(0, -0.265, hind ? -0.055 : -0.01);
+      knee.rotation.x = hind ? -0.42 : 0.06;
+      leg.add(knee);
+      add(new THREE.CylinderGeometry(0.019, 0.011, 0.28, 8), furDark, 0, -0.14, 0, knee);
+      add(new THREE.CylinderGeometry(0.0135, 0.018, 0.045, 8), dark, 0, -0.29, 0, knee);
       g.add(leg);
       legs.push(leg);
     }
-    // The neck: a chain of spheres from the shoulder up and forward, getting slimmer, on a pivot that dips to graze.
+    // The neck: one tapered tube leaning forward from the shoulder, on a pivot that dips to graze, with a cream throat.
     const neck = new THREE.Group();
-    neck.position.set(0, 0.54, 0.21);
+    neck.position.set(0, BY + 0.05, 0.25);
     g.add(neck);
-    for (let i = 0; i <= 6; i++) {
-      const t = i / 6;
-      add(this.blob(0.074 - t * 0.03, 1, 1.05, 1.1), i % 3 === 2 ? light : fur, 0, 0.02 + t * 0.32, 0.02 + t * 0.13, neck);
-    }
+    const stemGeo = new THREE.CylinderGeometry(0.043, 0.078, 0.42, 16, 5);
+    stemGeo.translate(0, 0.21, 0);
+    shade(stemGeo, (_x, _y, z) => (z > 0.55 ? (z - 0.55) * 1.6 : 0));
+    const stem = add(stemGeo, shaded, 0, 0, 0, neck);
+    stem.rotation.x = 0.5;
     const head = new THREE.Group();
-    head.position.set(0, 0.36, 0.16);
+    head.position.set(0, 0.42 * Math.cos(0.5) + 0.01, 0.42 * Math.sin(0.5) + 0.03);
+    head.rotation.x = 0.55;
     neck.add(head);
     add(this.blob(0.058, 0.88, 0.95, 1.2), fur, 0, 0, 0, head);
     add(this.blob(0.036, 0.85, 0.82, 1.55), fur, 0, -0.022, 0.07, head);
@@ -768,7 +809,7 @@ export class GardenScene {
       inner.rotation.z = -s * 0.85;
       inner.rotation.x = -0.15;
     }
-    // The neck pivot is returned as "head": it dips (rotation.x towards 1.2) to graze.
+    // The neck pivot is returned as "head": it dips (rotation.x towards 1.0) to graze.
     return { g, head: neck, legs };
   }
 
@@ -789,7 +830,7 @@ export class GardenScene {
       if (spot) {
         const { g, head, legs } = this.makeDeer();
         g.position.copy(spot);
-        g.scale.setScalar(1.6);
+        g.scale.setScalar(2.1);
         g.userData.id = "visitor:deer";
         this.pickables.push(g);
         this.island.add(g);
@@ -818,7 +859,7 @@ export class GardenScene {
       v.sleep = THREE.MathUtils.lerp(v.sleep, night ? 1 : 0, 0.03);
       if (night && v.state === "walk") v.state = "graze";
       v.graze = THREE.MathUtils.lerp(v.graze, night || v.state === "graze" ? 1 : v.state === "walk" ? 0.1 : 0, 0.05);
-      v.head.rotation.x = v.graze * 1.15 + Math.sin(t * 1.4 + v.ph) * 0.02 * (1 - v.graze);
+      v.head.rotation.x = v.graze * 0.95 + Math.sin(t * 1.4 + v.ph) * 0.02 * (1 - v.graze);
       if (!night && t > v.until) {
         if (v.state === "graze") {
           v.state = "look";
@@ -864,7 +905,7 @@ export class GardenScene {
         }
       }
       v.g.rotation.y = v.yaw;
-      v.g.position.y = this.heightAt(v.g.position.x, v.g.position.z) - v.sleep * 0.45;
+      v.g.position.y = this.heightAt(v.g.position.x, v.g.position.z) - v.sleep * 0.88;
       v.legs.forEach((leg, i) => {
         const swing = moving ? Math.sin(t * 5.5 + (i === 0 || i === 3 ? 0 : Math.PI)) * 0.45 : 0;
         leg.rotation.x = THREE.MathUtils.lerp(leg.rotation.x, swing, 0.25);
