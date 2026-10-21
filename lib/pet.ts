@@ -50,6 +50,21 @@ export type Pet = {
 /** Growth points per thing done (music is capped so leaving a playlist on doesn't count much). */
 const XP = { habit: 10, checkin: 8, win: 6, game: 2, memory: 2, play: 1, playsPerDay: 10, walk: 5, walksPerDay: 3 } as const;
 
+/** Every month ("2026-07") from the one `from` falls in to the one `to` falls in, oldest first (at most 60). */
+export function monthsBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  let [y, m] = from.slice(0, 7).split("-").map(Number);
+  const [ty, tm] = to.slice(0, 7).split("-").map(Number);
+  while ((y < ty || (y === ty && m <= tm)) && out.length < 60) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    if (++m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return out.length ? out : [to.slice(0, 7)];
+}
+
 /** The owner looking at it (the app) marks today as seen; the scheduler checking on it (touch: false) doesn't. */
 export async function getPet(supabase: SupabaseClient, now = new Date(), opts: { touch?: boolean } = {}): Promise<Pet> {
   const today = localParts(now).date;
@@ -60,12 +75,12 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
   const away = saved ? Math.round((+new Date(`${today}T00:00:00Z`) - +new Date(`${saved.lastSeen}T00:00:00Z`)) / 86_400_000) : 0;
   if ((opts.touch ?? true) && (!saved || saved.lastSeen !== today)) await writeJSON(supabase, KEY, { ...saved, born, lastSeen: today } satisfies Saved).catch(() => {});
 
-  const months = [...new Set([born.slice(0, 7), today.slice(0, 7)])];
+  // Every month since it was born: songs from the months in between count too.
   const [habits, checkins, games, plays, memories] = await Promise.all([
     listHabits(supabase).catch(() => []),
     listCheckins(supabase).catch(() => []),
     listResults(supabase).catch(() => []),
-    Promise.all(months.map((m) => listPlays(supabase, m).catch(() => []))).then((x) => x.flat()),
+    Promise.all(monthsBetween(born, today).map((m) => listPlays(supabase, m).catch(() => []))).then((x) => x.flat()),
     supabase
       .from("memories")
       .select("id", { count: "exact", head: true })
