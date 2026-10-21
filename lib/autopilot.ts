@@ -345,14 +345,17 @@ export async function runAutopilot(supabase: SupabaseClient, opts: { manual?: bo
 
   const ms = Date.now() - started;
   const ranJobs = ctx.jobs !== null;
+  // Sending the pushes took a moment: read the feed once more, so an insight the owner dismissed meanwhile
+  // stays dismissed, and only this run's own news is added to it.
+  const latest = await readState(supabase);
   await writeJSON(supabase, STATE_KEY, {
-    ...state,
+    ...latest,
     running: undefined,
     lastRun: new Date().toISOString(),
     ...(ranJobs ? { lastJobSearch: new Date().toISOString() } : {}),
     pushes,
-    items: [...fresh, ...state.items].slice(0, KEEP),
-    runs: [{ at: new Date().toISOString(), ms, found: fresh.length, manual: !!opts.manual, ...(error ? { error } : {}) }, ...state.runs].slice(0, 20),
+    items: [...fresh, ...latest.items.filter((i) => !fresh.some((f) => f.key === i.key))].slice(0, KEEP),
+    runs: [{ at: new Date().toISOString(), ms, found: fresh.length, manual: !!opts.manual, ...(error ? { error } : {}) }, ...latest.runs].slice(0, 20),
   } satisfies State);
   if (fresh.length) await logActivity(supabase, "autopilot", `Autopilot noticed ${fresh.length} thing${fresh.length === 1 ? "" : "s"}: ${fresh.map((i) => i.title).join("; ")}`);
   return { insights: fresh, ms, ...(error ? { error } : {}) };
