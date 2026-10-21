@@ -84,3 +84,17 @@ describe("Nova's bedtime from chat (no AI)", () => {
     expect(quickGoodNight("good night pixel", "pixel")).toBe(true);
   });
 });
+
+describe("quick commands: word boundaries and polite endings", () => {
+  it("'rainbow' and 'brain' aren't 'rain': no monsoon garden", () => {
+    expect(quickGarden("open the rainbow garden")).toBeNull();
+    expect(quickGarden("show my brain garden")).toBeNull();
+    expect(quickGarden("garden in the rain")?.fest).toBe("monsoon");
+    expect(quickGarden("show the garden for the rainy season")?.fest).toBe("monsoon");
+  });
+  it("'please' on the end doesn't stop a colour request", () => {
+    expect(quickEffect("pink music lights please")?.args).toEqual({ effect: "music_lights", on: true, color: "pink" });
+    expect(quickEffect("please make the lights blue")?.args.color).toBe("blue");
+    expect(quickEffect("make the music lights green pls")?.args.color).toBe("green");
+  });
+});
