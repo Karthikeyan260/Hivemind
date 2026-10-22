@@ -7,7 +7,29 @@ export type GardenItem =
   | { kind: "flower"; id: string; date: string; label: string; hue: number }
   | { kind: "tree"; id: string; size: number; label: string }
   | { kind: "lamp"; id: string; date: string; label: string }
-  | { kind: "gem"; id: string; date: string; label: string; hue: number };
+  | { kind: "gem"; id: string; date: string; label: string; hue: number }
+  /** A habit growing: a seed, a sprout, a sapling, and (after 21 days in a row) a tree that stays. */
+  | { kind: "plant"; id: string; label: string; hue: number; stage: PlantStage; streak: number };
+
+/** 0 seed, 1 sprout (a week in a row), 2 sapling (two weeks), 3 tree (21 days in a row, kept for good). */
+export type PlantStage = 0 | 1 | 2 | 3;
+export const SPROUT_AT = 7;
+export const SAPLING_AT = 14;
+export const TREE_AT = 21;
+/** How far a habit has grown, from its running streak and its best streak ever: a tree once it has had 21 days in a row, whatever happened since. */
+export function plantStage(streak: number, best: number): PlantStage {
+  if (best >= TREE_AT) return 3;
+  return streak >= SAPLING_AT ? 2 : streak >= SPROUT_AT ? 1 : 0;
+}
+/** What tapping a plant says. */
+export function plantLabel(name: string, emoji: string, stage: PlantStage, streak: number, best: number): string {
+  const e = emoji || "🌱";
+  if (stage === 3) return `🌳 ${e} ${name} grew into a tree: ${best} days in a row${streak > 0 && streak < best ? ` (running: ${streak})` : ""}`;
+  const names = ["a seed", "a sprout", "a sapling"] as const;
+  const next = stage === 0 ? SPROUT_AT : stage === 1 ? SAPLING_AT : TREE_AT;
+  const left = next - streak;
+  return `🌱 ${e} ${name} is ${names[stage]}: ${streak} day${streak === 1 ? "" : "s"} in a row, ${left} more to ${stage === 2 ? "become a tree" : stage === 1 ? "a sapling" : "sprout"}`;
+}
 
 export type Garden = {
   items: GardenItem[];
@@ -18,7 +40,7 @@ export type Garden = {
   mood: 1 | 2 | 3 | 4 | 5 | null;
   /** Rare visitors earned by milestones: an owl for a long streak, a deer for many game wins. */
   visitors: Visitor[];
-  counts: { flowers: number; trees: number; lamps: number; gems: number; butterflies: number; music?: number };
+  counts: { flowers: number; trees: number; lamps: number; gems: number; butterflies: number; music?: number; /** Habits still growing (seed, sprout, sapling) and habits that became trees. */ seeds?: number; grown?: number };
   /** Name of the pet living there. */
   pet: string;
   stage: number;
@@ -130,7 +152,7 @@ export function layout(items: GardenItem[]): Placed[] {
   const inside = (x: number, y: number) => Math.hypot((x - cx) / rx, (y - cy) / ry) <= 0.94;
   // Flower beds: one per habit, spread evenly round the island (skipping the cottage at the back).
   const habit = (it: GardenItem) => it.id.split(":")[1] ?? "";
-  const habits = [...new Set(items.filter((i) => i.kind === "flower").map(habit))].sort();
+  const habits = [...new Set(items.filter((i) => i.kind === "flower" || i.kind === "plant").map(habit))].sort();
   const perHabit = new Map(habits.map((h) => [h, items.filter((i) => i.kind === "flower" && habit(i) === h).length]));
   const bed = new Map(
     habits.map((h, i) => {
@@ -140,7 +162,7 @@ export function layout(items: GardenItem[]): Placed[] {
     }),
   );
   // Trees first (they need the most room), then lamps, gems, flowers.
-  const order = { tree: 0, lamp: 1, gem: 2, flower: 3 } as const;
+  const order = { tree: 0, plant: 1, lamp: 2, gem: 3, flower: 4 } as const;
   const sorted = [...items].sort((a, b) => order[a.kind] - order[b.kind] || a.id.localeCompare(b.id));
   let lampNo = 0;
   const pathLen = cy + ry * 0.9 - (home.y + 26);
@@ -185,7 +207,19 @@ export function layout(items: GardenItem[]): Placed[] {
       }
       continue;
     }
-    const gap = it.kind === "tree" ? 70 : it.kind === "gem" ? 26 : 13;
+    // A habit's plant stands just inside its bed, towards the middle of the island, clear of the flowers.
+    if (it.kind === "plant") {
+      const pb = bed.get(habit(it));
+      if (pb) {
+        const x = Math.round(pb.x + (cx - pb.x) * 0.3);
+        const y = Math.round(pb.y + (cy - pb.y) * 0.3);
+        if (inside(x, y) && !blocked(n, x, y) && placed.every((p) => Math.hypot(p.x - x, (p.y - y) * 2.2) > 24)) {
+          placed.push({ ...it, x, y });
+          continue;
+        }
+      }
+    }
+    const gap = it.kind === "tree" ? 70 : it.kind === "plant" ? 40 : it.kind === "gem" ? 26 : 13;
     let best: { x: number; y: number; d: number } | null = null;
     const b = it.kind === "flower" ? bed.get(habit(it)) : undefined;
     // 16 tries where it belongs; if those all miss (a crowded bed), anywhere free on the island.

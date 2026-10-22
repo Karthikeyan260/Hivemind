@@ -433,6 +433,8 @@ export class GardenScene {
   private grass: THREE.InstancedMesh | null = null;
   private grassCount = 0;
   private grassOrig: Float32Array | null = null;
+  /** Bare earth round each habit plant, so a small seed is not lost in the grass. */
+  private plantClear: { x: number; z: number; r: number }[] = [];
   private grassXZ: Float32Array | null = null;
   private decorClear: { x: number; z: number; r: number }[] = [];
   private grassMat: THREE.ShaderMaterial | null = null;
@@ -2188,9 +2190,11 @@ void main() {`);
     const bark = new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.95 });
     for (const it of items) {
       if (it.kind === "tree") this.island.add(this.tree(it, bark));
+      if (it.kind === "plant") this.island.add(this.plant(it));
       if (it.kind === "lamp") this.island.add(this.lamp(it));
       if (it.kind === "gem") this.island.add(this.gem(it));
     }
+    this.clearGrass();
   }
 
   private tree(it: Placed & { kind: "tree" }, bark: THREE.Material) {
@@ -2342,6 +2346,87 @@ void main() {`);
     g.userData.id = it.id;
     this.pickables.push(g);
     this.trees.push({ g, base: g.scale.clone(), ph: hash01(it.id, 21) * 6 });
+    return g;
+  }
+
+  /** A habit's plant: a seed in a mound, a sprout, a sapling, and (21 days in a row) a full tree hung with its habit's colour. */
+  private plant(it: Placed & { kind: "plant" }) {
+    if (it.stage === 3) {
+      // A grown tree, with glowing fruit in the habit's own colour.
+      const g = this.tree({ ...it, kind: "tree", size: 0.3 } as unknown as Placed & { kind: "tree" }, new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.95 }));
+      const fruit = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(it.hue / 360, 0.85, 0.62), emissive: new THREE.Color().setHSL(it.hue / 360, 0.9, 0.5), emissiveIntensity: 1.4, roughness: 0.35 });
+      for (let k = 0; k < 9; k++) {
+        const a = hash01(it.id, 50 + k) * Math.PI * 2;
+        const r = 0.45 + hash01(it.id, 70 + k) * 0.3;
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), fruit);
+        m.position.set(Math.cos(a) * r, 1.35 + hash01(it.id, 90 + k) * 0.55, Math.sin(a) * r);
+        m.raycast = () => {};
+        g.add(m);
+      }
+      this.plantClear.push({ x: g.position.x, z: g.position.z, r: 0.5 });
+      return g;
+    }
+    const g = new THREE.Group();
+    const soil = new THREE.MeshStandardMaterial({ color: "#6a4a30", roughness: 1 });
+    const green = new THREE.MeshStandardMaterial({ color: "#5fae42", roughness: 0.7 });
+    const hueCol = new THREE.Color().setHSL(it.hue / 360, 0.85, 0.6);
+    const mound = new THREE.Mesh(new THREE.SphereGeometry(it.stage === 0 ? 0.17 : 0.13, 14, 8), soil);
+    mound.scale.set(1, 0.42, 1);
+    mound.castShadow = true;
+    mound.receiveShadow = true;
+    g.add(mound);
+    if (it.stage === 0) {
+      // The seed itself, pale on the soil, and a soft glow in the habit's colour so it can be found.
+      const seed = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshStandardMaterial({ color: "#d3b27a", roughness: 0.6 }));
+      seed.scale.set(1, 0.7, 1.3);
+      seed.position.set(0.02, 0.07, 0.01);
+      g.add(seed);
+    } else if (it.stage === 1) {
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.02, 0.3, 8), green);
+      stem.position.y = 0.17;
+      g.add(stem);
+      for (const s of [-1, 1]) {
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 6), green);
+        leaf.scale.set(1.3, 0.22, 0.6);
+        leaf.position.set(s * 0.09, 0.3, 0);
+        leaf.rotation.z = -s * 0.5;
+        leaf.castShadow = true;
+        g.add(leaf);
+      }
+    } else {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.045, 0.75, 8), new THREE.MeshStandardMaterial({ color: "#6b4a2f", roughness: 0.9 }));
+      trunk.position.y = 0.4;
+      trunk.rotation.z = 0.06;
+      trunk.castShadow = true;
+      g.add(trunk);
+      const leaves = this.windy(new THREE.MeshStandardMaterial({ color: "#4f9a3a", roughness: 0.75 }), 0.05);
+      for (const [x, y, z, r] of [[0, 0.88, 0, 0.22], [0.14, 0.76, 0.05, 0.16], [-0.12, 0.74, -0.06, 0.15]] as const) {
+        const b = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 2), leaves);
+        b.position.set(x, y, z);
+        b.castShadow = true;
+        g.add(b);
+      }
+      const bud = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), new THREE.MeshStandardMaterial({ color: hueCol, emissive: hueCol, emissiveIntensity: 1.2, roughness: 0.4 }));
+      bud.position.set(0.04, 1.1, 0);
+      g.add(bud);
+    }
+    // A soft glow in the habit's colour, so every plant can be found among the grass.
+    this.glowTex ??= puffTexture("glow");
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: hueCol.clone().multiplyScalar(1.6), transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.position.y = it.stage === 0 ? 0.12 : 0.35;
+    glow.scale.setScalar(it.stage === 0 ? 0.42 : 0.6);
+    glow.raycast = () => {};
+    g.add(glow);
+    // An invisible bigger target, so a small plant is easy to tap.
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 0.3;
+    g.add(hit);
+    g.position.copy(this.toWorld(it.x, it.y));
+    this.plantClear.push({ x: g.position.x, z: g.position.z, r: 0.55 });
+    g.scale.setScalar(1.8);
+    g.rotation.y = hash01(it.id, 4) * Math.PI * 2;
+    g.userData.id = it.id;
+    this.pickables.push(g);
     return g;
   }
 
@@ -3442,7 +3527,7 @@ void main() {`);
     const sx = cx - r.left;
     const sy = cy - r.top;
     for (const it of this.itemsById.values()) {
-      const q = this.toWorld(it.x, it.y).add(new THREE.Vector3(0, it.kind === "tree" ? 1.2 : 0.3, 0)).project(this.camera);
+      const q = this.toWorld(it.x, it.y).add(new THREE.Vector3(0, it.kind === "tree" ? 1.2 : it.kind === "plant" ? (it.stage === 3 ? 1.2 : 0.5) : 0.3, 0)).project(this.camera);
       if (q.z > 1) continue;
       const d = Math.hypot((q.x * 0.5 + 0.5) * r.width - sx, (-q.y * 0.5 + 0.5) * r.height - sy);
       if (d < bd) {
@@ -3504,7 +3589,7 @@ void main() {`);
     }
     const it = this.itemsById.get(id);
     if (!it) return;
-    this.tip = this.toWorld(it.x, it.y).add(new THREE.Vector3(0, it.kind === "tree" ? 2.6 : it.kind === "lamp" ? 1.25 : 0.55, 0));
+    this.tip = this.toWorld(it.x, it.y).add(new THREE.Vector3(0, it.kind === "tree" ? 2.6 : it.kind === "plant" ? (it.stage === 3 ? 2.6 : 0.5 + it.stage * 0.35) : it.kind === "lamp" ? 1.25 : 0.55, 0));
   }
   /**
    * Dress the island for the season or a festival: monsoon puddles and frogs, a kolam with sugarcane
@@ -3553,7 +3638,7 @@ void main() {`);
     for (let i = 0; i < this.grassCount; i++) {
       const x = this.grassXZ[i * 2];
       const z = this.grassXZ[i * 2 + 1];
-      if (this.decorClear.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) {
+      if (this.decorClear.some((c) => Math.hypot(x - c.x, z - c.z) < c.r) || this.plantClear.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) {
         // Squash the blade to nothing: scale its columns down.
         for (let j = 0; j < 12; j++) arr[i * 16 + j] *= 0.02;
       }

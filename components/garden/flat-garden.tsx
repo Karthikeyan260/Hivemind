@@ -944,6 +944,44 @@ function Thing({ p, night, picked }: { p: Placed; night: boolean; picked: boolea
       </g>
     );
   }
+  if (p.kind === "plant") {
+    const col = `hsl(${p.hue} 85% 62%)`;
+    const dirt = night ? "#3a2a1c" : "#5a4029";
+    return (
+      <g transform={`translate(${x} ${y}) scale(${p.stage === 3 ? 1.1 : 1})`}>
+        <ellipse cx="0" cy="2" rx={p.stage === 3 ? 16 : 11} ry="4" fill="#000" opacity="0.16" />
+        <ellipse cx="0" cy="0" rx="11" ry="4.5" fill={dirt} />
+        {p.stage === 0 && <ellipse cx="1" cy="-2" rx="3" ry="2" fill="#d3b27a" />}
+        {p.stage === 1 && (
+          <g className="garden-canopy" style={sway}>
+            <path d="M 0 0 L 0 -14" stroke="#4f9a3a" strokeWidth="2" />
+            <ellipse cx="-5" cy="-14" rx="5.5" ry="2.6" fill="#5fae42" transform="rotate(-25 -5 -14)" />
+            <ellipse cx="5" cy="-14" rx="5.5" ry="2.6" fill="#6fbf4a" transform="rotate(25 5 -14)" />
+          </g>
+        )}
+        {p.stage === 2 && (
+          <g className="garden-canopy" style={sway}>
+            <rect x="-1.8" y="-26" width="3.6" height="26" rx="1.5" fill="#6b4a2f" />
+            <circle cx="0" cy="-30" r="9" fill="#4f9a3a" />
+            <circle cx="-6" cy="-24" r="6" fill="#438a31" />
+            <circle cx="6" cy="-25" r="6" fill="#58a844" />
+            <circle cx="1" cy="-38" r="2.6" fill={col} />
+          </g>
+        )}
+        {p.stage === 3 && (
+          <g className="garden-canopy" style={sway}>
+            <rect x="-4" y="-34" width="8" height="34" rx="2" fill="#6b4226" />
+            <circle cx="0" cy="-48" r="21" fill={night ? "#2f6b3a" : "#3f9a4b"} />
+            <circle cx="-14" cy="-37" r="14" fill={night ? "#2a5f34" : "#378a42"} />
+            <circle cx="14" cy="-39" r="14" fill={night ? "#336f3e" : "#46a653"} />
+            {[[-10, -50], [8, -56], [14, -40], [-16, -38], [0, -42], [4, -64]].map(([fx, fy], k) => (
+              <circle key={k} cx={fx} cy={fy} r="2.6" fill={col} />
+            ))}
+          </g>
+        )}
+      </g>
+    );
+  }
   if (p.kind === "lamp")
     return (
       <g>

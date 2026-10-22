@@ -493,10 +493,10 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
       },
     },
     garden_find: {
-      description: "Nova's garden page: show one of the things that grew; Nova walks to it and its label shows (a flower opens its day too). input: 'flower', 'tree', 'lamp' or 'gem'.",
+      description: "Nova's garden page: show one of the things that grew; Nova walks to it and its label shows (a flower opens its day too). input: 'flower', 'tree', 'lamp', 'gem' or 'seed' (a habit's plant).",
       run: ({ input }) => {
         const t = String(input).toLowerCase();
-        const kind = /tree|maram/.test(t) ? "tree" : /lamp|lantern|vilakku/.test(t) ? "lamp" : /gem|diamond|win/.test(t) ? "gem" : "flower";
+        const kind = /seed|sprout|sapling|plant|habit/.test(t) ? "plant" : /tree|maram/.test(t) ? "tree" : /lamp|lantern|vilakku/.test(t) ? "lamp" : /gem|diamond|win/.test(t) ? "gem" : "flower";
         const list = placed.filter((x) => x.kind === kind);
         if (!list.length) return { none: `No ${kind}s on the island yet.` };
         const it = list[Math.floor(Math.random() * list.length)];
@@ -512,7 +512,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
       },
     },
     garden_describe: {
-      description: "Nova's garden page: what has grown on the island (flowers from habits, trees from night check-ins, lamps from lantern walks, gems from game wins, butterflies from songs).",
+      description: "Nova's garden page: what has grown on the island (flowers from habits, a seed for each habit that becomes a tree after 21 days in a row, trees from night check-ins, lamps from lantern walks, gems from game wins, butterflies from songs).",
       run: () => (g ? { ...g.counts, pet: g.pet, note: "Say it warmly in one or two sentences." } : { error: "The garden is still loading." }),
     },
   });
@@ -587,6 +587,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
             {[
               ["🌸", c?.flowers ?? 0, "Flowers", "a day a habit was done"],
               ["🌳", c?.trees ?? 0, "Trees", "4 night check-ins each"],
+              ["🌱", `${c?.grown ?? 0}/${(c?.grown ?? 0) + (c?.seeds ?? 0)}`, "Habit trees", "21 days in a row each"],
               ["🏮", c?.lamps ?? 0, "Lamps", "lantern walks"],
               ["💎", c?.gems ?? 0, "Gems", "games won"],
               ["🎵", c?.music ?? 0, "Music flowers", "a song you listened to"],

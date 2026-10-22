@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { listCheckins, nightDay } from "@/lib/checkin";
 import { GAME_HUES, gameName } from "@/lib/games/names";
 import { listResults } from "@/lib/games/stats";
-import { type Garden, type GardenItem, hueOf, visitorsFor } from "@/lib/garden-layout";
+import { type Garden, type GardenItem, hueOf, plantLabel, plantStage, visitorsFor } from "@/lib/garden-layout";
 import { listHabits, stats as habitStats } from "@/lib/habits";
 import { getPet } from "@/lib/pet";
 import { listPlays } from "@/lib/plays";
@@ -49,6 +49,13 @@ export async function getGarden(supabase: SupabaseClient): Promise<Garden> {
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, MAX_FLOWERS);
 
+  // Every habit is a plant: a seed when it starts, a tree after 21 days in a row (and the tree stays).
+  const plants: GardenItem[] = habits.map((h) => {
+    const s = habitStats(h, today);
+    const stage = plantStage(s.streak, s.best);
+    return { kind: "plant" as const, id: `p:${h.id}`, label: plantLabel(h.name, h.emoji, stage, s.streak, s.best), hue: hueOf(h.id), stage, streak: s.streak };
+  });
+
   const nights = checkins.filter((c) => c.date >= since).length;
   const full = Math.floor(nights / CHECKINS_PER_TREE);
   const growing = nights % CHECKINS_PER_TREE;
@@ -89,12 +96,12 @@ export async function getGarden(supabase: SupabaseClient): Promise<Garden> {
   const mood = lastNight && lastNight.date >= addDays(nightDay(), -1) ? lastNight.mood : null;
 
   return {
-    items: [...trees, ...lamps, ...gems, ...flowers, ...music],
+    items: [...trees, ...plants, ...lamps, ...gems, ...flowers, ...music],
     butterflies,
     streak,
     mood,
     visitors: visitorsFor(streak, gems.length),
-    counts: { flowers: flowers.length, trees: full + (growing ? 1 : 0), lamps: lamps.length, gems: gems.length, butterflies, music: music.length },
+    counts: { flowers: flowers.length, trees: full + (growing ? 1 : 0), lamps: lamps.length, gems: gems.length, butterflies, music: music.length, seeds: plants.filter((p) => p.kind === "plant" && p.stage < 3).length, grown: plants.filter((p) => p.kind === "plant" && p.stage === 3).length },
     pet: pet?.name ?? "Nova",
     stage: pet?.stage ?? 0,
   };
