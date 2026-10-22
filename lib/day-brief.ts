@@ -4,6 +4,7 @@ import { upcomingBirthdays } from "@/lib/birthdays";
 import { briefHeadline, getBrief } from "@/lib/brief";
 import { habitsWithStats } from "@/lib/habits";
 import { agenda, localParts, type Reminder } from "@/lib/reminders";
+import { weekReview, type WeekReview } from "@/lib/week";
 
 /**
  * "Your day": what's on today, in one place and one short spoken script. Reminders (overdue, today,
@@ -20,6 +21,8 @@ export type DayBrief = {
   habits: { name: string; emoji: string; streak: number; done: boolean }[];
   birthdays: { name: string; days: number; label: string; kind: string; turning: number | null }[];
   news: string | null;
+  /** Sundays only: how the last seven days went. */
+  week: WeekReview | null;
   speech: string;
 };
 
@@ -30,11 +33,13 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 export async function dayBrief(supabase: SupabaseClient, name?: string): Promise<DayBrief> {
   const { date, hour: h } = localParts();
-  const [a, habits, birthdays, news] = await Promise.all([
+  const sunday = new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
+  const [a, habits, birthdays, news, week] = await Promise.all([
     agenda(supabase, 2),
     habitsWithStats(supabase).catch(() => []),
     upcomingBirthdays(supabase, 7).catch(() => []),
     getBrief(supabase, date).catch(() => null),
+    sunday ? weekReview(supabase, date).catch(() => null) : Promise.resolve(null),
   ]);
   const greeting = `${h < 4 ? "Hello" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"}${name ? `, ${name}` : ""}`;
   const day: Omit<DayBrief, "speech"> = {
@@ -46,6 +51,7 @@ export async function dayBrief(supabase: SupabaseClient, name?: string): Promise
     habits: habits.filter((x) => x.dueToday).map((x) => ({ name: x.name, emoji: x.emoji, streak: x.streak, done: x.doneToday })),
     birthdays: birthdays.map((b) => ({ name: b.name, days: b.days, label: b.label, kind: b.kind, turning: b.turning })),
     news: news ? briefHeadline(news) : null,
+    week,
   };
   return { ...day, speech: speak(day) };
 }
@@ -65,6 +71,7 @@ function speak(d: Omit<DayBrief, "speech">) {
     const what = b.kind === "anniversary" ? "anniversary" : "birthday";
     s.push(b.days === 0 ? `It's ${b.name}'s ${what} today${b.turning ? `, turning ${b.turning}` : ""}. Don't forget to wish them.` : `${b.name}'s ${what} is ${b.days === 1 ? "tomorrow" : `in ${b.days} days`}.`);
   }
+  if (d.week) s.push(`Your week: ${d.week.speech}`);
   if (d.tomorrow.length) s.push(`Tomorrow: ${list(d.tomorrow.slice(0, 3).map((r) => r.title))}.`);
   if (d.news) s.push(`In the news you follow: ${d.news}`);
   return s.join(" ");

@@ -20,7 +20,7 @@ export const routines: Record<string, Tool> = {
       const { dayBrief } = await import("@/lib/day-brief");
       const [settings, day] = await Promise.all([getBriefSettings(ctx.supabase), dayBrief(ctx.supabase)]);
       ctx.actions.push({ label: "Open the brief", href: "/brief" });
-      const your_day = { overdue: day.overdue, today: day.today, tomorrow: day.tomorrow, habits: day.habits, birthdays: day.birthdays };
+      const your_day = { overdue: day.overdue, today: day.today, tomorrow: day.tomorrow, habits: day.habits, birthdays: day.birthdays, ...(day.week ? { week: day.week.speech } : {}) };
       if (!settings.topics.length) return { date: day.date, your_day, news: null, note: "Say their day short (today, overdue, habits to do, birthdays). No news topics yet: offer to add some (brief_topics)." };
       const b = (await getBrief(ctx.supabase, today)) ?? (await makeBrief(ctx.supabase, today));
       return { date: b?.date ?? day.date, your_day, news: (b?.items ?? []).map((i) => ({ topic: i.topic, points: i.points })), note: "Read it out short: their day first (today, overdue, habits to do, birthdays), then each news topic in a line or two." };

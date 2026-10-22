@@ -74,6 +74,18 @@ export function YourDay({ day, compact }: { day: DayBrief; compact?: boolean }) 
           </span>
         </p>
       ))}
+      {day.week && (
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-widest text-data">Your week · {day.week.headline}</div>
+          <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
+            {day.week.due > 0 && <span className="rounded-full border border-line px-2 py-0.5">✅ {day.week.done}/{day.week.due} habit days</span>}
+            {day.week.checkins > 0 && <span className="rounded-full border border-line px-2 py-0.5">🌙 {day.week.checkins} check-in{day.week.checkins === 1 ? "" : "s"}</span>}
+            {day.week.wins > 0 && <span className="rounded-full border border-line px-2 py-0.5">🏆 {day.week.wins} won</span>}
+            {day.week.played > 0 && <span className="rounded-full border border-line px-2 py-0.5">🎵 {day.week.played} songs</span>}
+            {day.week.best && day.week.best.done > 0 && <span className="rounded-full border border-ok/40 px-2 py-0.5 text-ok">{day.week.best.emoji} {day.week.best.name} {day.week.best.done}/{day.week.best.due}</span>}
+          </div>
+        </div>
+      )}
       {day.news && <p className="line-clamp-2 text-[12.5px] text-soft">📰 {day.news}</p>}
     </div>
   );
