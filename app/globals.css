@@ -848,6 +848,15 @@ body {
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) { .wrapped-in { animation: none; } }
+/* The Wrapped garden card: the season's petals, leaves or frost drifting down. */
+.wrapped-fall { animation: wrapped-fall 7s linear infinite; opacity: 0; }
+@keyframes wrapped-fall {
+  0% { transform: translate(0, -10%) rotate(0deg); opacity: 0; }
+  12% { opacity: 0.85; }
+  50% { transform: translate(14px, 320px) rotate(140deg); }
+  100% { transform: translate(-8px, 660px) rotate(300deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .wrapped-fall { animation: none; display: none; } }
 
 /* ---------- Nova, the pocket pet ---------- */
 @keyframes pet-float { 50% { transform: translateY(-4px); } }

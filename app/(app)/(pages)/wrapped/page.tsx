@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { cx, ErrorText, PageHeader } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { useFetch } from "@/lib/client-api";
+import { gardenGrew, SEASON_LOOK, seasonOfMonth } from "@/lib/garden-layout";
 import type { Wrapped } from "@/lib/wrapped";
 
 type Feed = { wrapped: Wrapped; months: string[] };
@@ -369,6 +370,50 @@ function buildCards(w: Wrapped): Card[] {
       </div>
     ),
   });
+  const grew = gardenGrew(w);
+  if (grew.flowers + grew.trees + grew.gems + grew.songs > 0) {
+    const season = SEASON_LOOK[seasonOfMonth(w.month)];
+    const SEASON_BG = { spring: "from-[#f472b6] to-[#14532d]", summer: "from-[#f59e0b] to-[#0c4a6e]", autumn: "from-[#c2410c] to-[#3b1d0a]", winter: "from-[#7dd3fc] to-[#1e1b4b]" }[seasonOfMonth(w.month)];
+    cards.push({
+      key: "garden",
+      bg: `bg-gradient-to-br ${SEASON_BG}`,
+      body: (
+        <div className="relative flex flex-1 flex-col justify-center overflow-hidden">
+          {/* What the season drifts down: petals, sparkles, leaves or frost. */}
+          {Array.from({ length: 12 }, (_, k) => (
+            <span key={k} aria-hidden className="wrapped-fall pointer-events-none absolute top-0 text-lg" style={{ left: `${(k * 83) % 96}%`, animationDelay: `${-(k * 0.9) % 7}s`, animationDuration: `${6 + (k % 5)}s` }}>
+              {season.fall}
+            </span>
+          ))}
+          <Kicker>Nova&apos;s garden</Kicker>
+          <Big>
+            {season.icon} {season.name}
+          </Big>
+          <p className="mt-3 text-lg font-semibold">{season.line}</p>
+          <p className="mt-1 text-sm text-white/80">This is what {w.label.split(" ")[0]} grew{so}:</p>
+          <div className="mt-5 grid grid-cols-2 gap-4">
+            {(
+              [
+                [grew.flowers, "🌼", "flowers from habit days"],
+                [grew.trees, "🌳", "night check-ins"],
+                [grew.gems, "💎", "games won"],
+                [grew.songs, "🦋", "songs for the butterflies"],
+              ] as const
+            )
+              .filter(([n]) => n > 0)
+              .map(([n, icon, label]) => (
+                <div key={label}>
+                  <div className="text-4xl font-black">
+                    {icon} {n}
+                  </div>
+                  <div className="text-xs text-white/75">{label}</div>
+                </div>
+              ))}
+          </div>
+        </div>
+      ),
+    });
+  }
   cards.push({
     key: "outro",
     bg: "bg-gradient-to-br from-[#111827] via-[#1f2937] to-[#f5b400]",

@@ -42,6 +42,19 @@ export type Season = "spring" | "summer" | "autumn" | "winter";
 export const SEASONS: Season[] = ["spring", "summer", "autumn", "winter"];
 /** The season for a month (0 = January): spring March to May, summer June to August, autumn September to November, winter December to February. */
 export const seasonOf = (month: number): Season => (month >= 2 && month <= 4 ? "spring" : month >= 5 && month <= 7 ? "summer" : month >= 8 && month <= 10 ? "autumn" : "winter");
+/** The season a "YYYY-MM" month falls in. */
+export const seasonOfMonth = (month: string): Season => seasonOf(Number(month.slice(5, 7)) - 1);
+/** How each season looks in the garden, for the Wrapped garden card. */
+export const SEASON_LOOK: Record<Season, { icon: string; name: string; line: string; fall: string }> = {
+  spring: { icon: "🌸", name: "Spring", line: "Blossom time on the island", fall: "🌸" },
+  summer: { icon: "☀️", name: "Summer", line: "Long warm days in the garden", fall: "✨" },
+  autumn: { icon: "🍂", name: "Autumn", line: "Leaves drifting over the grass", fall: "🍂" },
+  winter: { icon: "❄️", name: "Winter", line: "A frosty glow on the island", fall: "❄️" },
+};
+/** What a month grew in the garden, from the month's own numbers: a flower per habit day, a tree for the night check-ins, a gem per game won, and the songs that brought the butterflies. */
+export function gardenGrew(m: { habits: { done: number }[]; moods: { count: number }; games: { won: number }; music: { plays: number } }) {
+  return { flowers: m.habits.reduce((n, h) => n + h.done, 0), trees: m.moods.count, gems: m.games.won, songs: m.music.plays };
+}
 /** How many streak fireflies a streak earns (4 a day, up to 48). */
 export const fireflyCount = (streak: number) => Math.max(0, Math.min(48, Math.round(streak * 4)));
 
