@@ -848,6 +848,19 @@ body {
   to { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) { .wrapped-in { animation: none; } }
+/* Connect Four: a new disc drops in from above; the winning four pulse. */
+.c4-fall { animation: c4-fall 0.5s cubic-bezier(0.5, 0, 0.9, 0.6); }
+@keyframes c4-fall {
+  from { transform: translateY(var(--from)); }
+  to { transform: none; }
+}
+.c4-win { animation: c4-win 0.9s ease-in-out infinite alternate; }
+@keyframes c4-win {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .c4-fall, .c4-win { animation: none; } }
+
 /* The Wrapped garden card: the season's petals, leaves or frost drifting down. */
 .wrapped-fall { animation: wrapped-fall 7s linear infinite; opacity: 0; }
 @keyframes wrapped-fall {

@@ -5,6 +5,7 @@ import { CardsGame } from "@/components/games/cards-game";
 import { ChessVsFriend } from "@/components/games/chess/vs-friend";
 import { DotsGame } from "@/components/games/dots-game";
 import { BingoGame } from "@/components/games/bingo-game";
+import { Connect4Game } from "@/components/games/connect4-game";
 import { BusinessGame } from "@/components/games/business-game";
 import { LudoGame } from "@/components/games/ludo-game";
 import { SnakesGame } from "@/components/games/snakes-game";
@@ -27,6 +28,7 @@ const GAMES: { id: PartyGameKind; name: string; emoji: string; min: number; max:
   { id: "chess", name: "Chess", emoji: "♟️", min: 2, max: 6, about: "You pick a friend to play; everyone else watches live.", ready: true },
   { id: "snakes", name: "Snakes & Ladders", emoji: "🐍", min: 1, max: 6, about: "Climb the ladders, dodge the snakes, first to 100 wins. Everyone plays (add HIVEMIND bots if you like).", ready: true },
   { id: "bingo", name: "Bingo", emoji: "🎱", min: 1, max: 6, about: "Fill your 5×5 card with 1–25 your way, take turns calling numbers, and spell B-I-N-G-O with five complete lines first. Add HIVEMIND bots if you like.", ready: true },
+  { id: "connect4", name: "Connect Four", emoji: "🔴", min: 1, max: 2, about: "Drop discs, four in a row wins. Two play (the first two in the lobby, or you against HIVEMIND); everyone else watches.", ready: true },
   { id: "business", name: "Business", emoji: "🏦", min: 1, max: 6, about: "Buy Indian cities, charge rent, build hotels, bankrupt your friends. Pick a round limit for a quicker game.", ready: true },
 ];
 
@@ -349,7 +351,7 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
   const me = party.players.find((p) => p.id === party.me);
   const props = { role: party.role, room, myName: me?.name ?? "You", hostName: party.hostName, party };
   // Ludo seats four: the rest of the lobby watches.
-  const watching = (game === "ludo" || game === "dots") && !here.slice(0, 4).some((p) => p.id === party.me);
+  const watching = ((game === "ludo" || game === "dots") && !here.slice(0, 4).some((p) => p.id === party.me)) || (game === "connect4" && here.length >= 2 && !here.slice(0, 2).some((p) => p.id === party.me));
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-panel px-3 py-2 text-sm">
@@ -372,7 +374,7 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
         </span>
         <VoiceChip party={party} />
       </div>
-      {watching && <p className="text-sm text-soft">{game === "ludo" ? "Ludo" : "Dots & Boxes"} seats four: you&apos;re watching this one. You&apos;ll be in the next game.</p>}
+      {watching && <p className="text-sm text-soft">{game === "connect4" ? "Connect Four seats two" : game === "ludo" ? "Ludo seats four" : "Dots & Boxes seats four"}: you&apos;re watching this one. You&apos;ll be in the next game.</p>}
       {game === "cards" ? (
         <CardsGame key={`cards-${n}`} {...props} />
       ) : game === "ludo" ? (
@@ -383,6 +385,8 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
         <SnakesGame key={`snakes-${n}`} myName={me?.name ?? "You"} party={party} />
       ) : game === "bingo" ? (
         <BingoGame key={`bingo-${n}`} myName={me?.name ?? "You"} party={party} />
+      ) : game === "connect4" ? (
+        <Connect4Game key={`connect4-${n}`} myName={me?.name ?? "You"} party={party} />
       ) : game === "business" ? (
         <BusinessGame key={`business-${n}`} myName={me?.name ?? "You"} party={party} />
       ) : game === "chess" ? (
