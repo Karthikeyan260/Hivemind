@@ -9,6 +9,11 @@ import { getProfile, profileForPrompt } from "@/lib/profile";
 import { searchKnowledge } from "@/lib/rag/retrieval";
 
 export const CAREER_SOURCE = "career";
+/**
+ * PostgREST filter for "not a job analysis or the master resume". A plain `not ... in (...)` drops every
+ * memory with no `source` at all (NULL never matches), which is every memory the owner saved by hand.
+ */
+export const NOT_CAREER_FILTER = `metadata->>source.is.null,metadata->>source.not.in.(${CAREER_SOURCE},resume-master)`;
 const JOB_PROJECT = "Job Search";
 
 /** Knowledge search that skips saved job analyses: they hold pasted job descriptions, not evidence about me. */

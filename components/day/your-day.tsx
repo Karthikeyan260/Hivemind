@@ -6,6 +6,9 @@ import { cx } from "@/components/ui";
 import type { DayBrief } from "@/lib/day-brief";
 import { isReading, onReading, readAloud, stopReading } from "@/lib/read-aloud";
 
+/** "3 months ago", "5 weeks ago": how long ago a memory was saved. */
+export const ago = (d: number) => (d >= 60 ? `${Math.round(d / 30)} months ago` : d >= 14 ? `${Math.round(d / 7)} weeks ago` : `${d} days ago`);
+
 /** Is there anything worth showing? */
 export const hasAnything = (d: DayBrief) => !!(d.overdue.length || d.today.length || d.tomorrow.length || d.habits.length || d.birthdays.length || d.news);
 
@@ -74,6 +77,13 @@ export function YourDay({ day, compact }: { day: DayBrief; compact?: boolean }) 
           </span>
         </p>
       ))}
+      {day.memory && (
+        <a href={`/memories?open=${day.memory.id}`} className="block rounded-lg border border-line px-2.5 py-2 hover:border-core/60">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-core">💭 From your brain · {ago(day.memory.ageDays)}</div>
+          <div className="mt-0.5 truncate font-medium">{day.memory.title}</div>
+          <p className="line-clamp-2 text-xs text-soft">{day.memory.snippet}</p>
+        </a>
+      )}
       {day.week && (
         <div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-data">Your week · {day.week.headline}</div>

@@ -1,7 +1,7 @@
 import "server-only";
 import { logActivity } from "@/lib/activity";
 import { dbError, toVector } from "@/lib/api";
-import { CAREER_SOURCE } from "@/lib/career";
+import { NOT_CAREER_FILTER } from "@/lib/career";
 import { createMemory, createNote, deleteMemory, updateMemory } from "@/lib/knowledge";
 import { embedOne } from "@/lib/ai/embeddings";
 import { extractMetadata } from "@/lib/ai/metadata";
@@ -142,7 +142,7 @@ export const brain: Record<string, Tool> = {
       const { data, error } = await ctx.supabase
         .from("memories")
         .select("title, memory_type, created_at")
-        .not("metadata->>source", "in", `(${CAREER_SOURCE},resume-master)`)
+        .or(NOT_CAREER_FILTER)
         .order("created_at", { ascending: false })
         .limit(Math.min(Number(args.limit) || 8, 20));
       dbError(error);

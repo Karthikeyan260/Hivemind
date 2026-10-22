@@ -4,6 +4,7 @@ import { upcomingBirthdays } from "@/lib/birthdays";
 import { briefHeadline, getBrief } from "@/lib/brief";
 import { habitsWithStats } from "@/lib/habits";
 import { agenda, localParts, type Reminder } from "@/lib/reminders";
+import { resurfacedToday, type Resurfaced } from "@/lib/resurface";
 import { weekReview, type WeekReview } from "@/lib/week";
 
 /**
@@ -23,6 +24,8 @@ export type DayBrief = {
   news: string | null;
   /** Sundays only: how the last seven days went. */
   week: WeekReview | null;
+  /** An older memory from the brain, one a day. */
+  memory: Resurfaced | null;
   speech: string;
 };
 
@@ -34,12 +37,13 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 export async function dayBrief(supabase: SupabaseClient, name?: string): Promise<DayBrief> {
   const { date, hour: h } = localParts();
   const sunday = new Date(`${date}T00:00:00Z`).getUTCDay() === 0;
-  const [a, habits, birthdays, news, week] = await Promise.all([
+  const [a, habits, birthdays, news, week, memory] = await Promise.all([
     agenda(supabase, 2),
     habitsWithStats(supabase).catch(() => []),
     upcomingBirthdays(supabase, 7).catch(() => []),
     getBrief(supabase, date).catch(() => null),
     sunday ? weekReview(supabase, date).catch(() => null) : Promise.resolve(null),
+    resurfacedToday(supabase, date).catch(() => null),
   ]);
   const greeting = `${h < 4 ? "Hello" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"}${name ? `, ${name}` : ""}`;
   const day: Omit<DayBrief, "speech"> = {
@@ -52,6 +56,7 @@ export async function dayBrief(supabase: SupabaseClient, name?: string): Promise
     birthdays: birthdays.map((b) => ({ name: b.name, days: b.days, label: b.label, kind: b.kind, turning: b.turning })),
     news: news ? briefHeadline(news) : null,
     week,
+    memory,
   };
   return { ...day, speech: speak(day) };
 }
