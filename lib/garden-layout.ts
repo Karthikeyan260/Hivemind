@@ -102,6 +102,8 @@ export function islandSize(n: number) {
 }
 
 export type Placed = GardenItem & { x: number; y: number };
+/** Habit plants that get a place in the habit garden by the cottage (the rest are scattered). */
+const HABIT_SLOTS = 10;
 
 /** The pet's cottage (its door), at the back of the island's middle. */
 export function homeSpot(n: number) {
@@ -169,6 +171,8 @@ export function layout(items: GardenItem[]): Placed[] {
   // Each flower's place in its bed: the oldest first, so a new flower never moves an old one.
   const rank = new Map<string, number>();
   for (const h of habits) items.filter((i) => i.kind === "flower" && habit(i) === h).map((i) => i.id).sort().forEach((id, k) => rank.set(id, k));
+  const plantRank = new Map<string, number>();
+  items.filter((i) => i.kind === "plant").map((i) => i.id).sort().forEach((id, k) => plantRank.set(id, k));
   const gemRank = new Map<string, number>();
   items.filter((i) => i.kind === "gem").map((i) => i.id).sort().forEach((id, k) => gemRank.set(id, k));
   for (const it of sorted) {
@@ -207,13 +211,16 @@ export function layout(items: GardenItem[]): Placed[] {
       }
       continue;
     }
-    // A habit's plant stands just inside its bed, towards the middle of the island, clear of the flowers.
+    // A habit's plant stands in the habit garden by the cottage door: rows either side of the path, in
+    // a fixed order, so it is easy to find among the flower beds and never moves.
     if (it.kind === "plant") {
-      const pb = bed.get(habit(it));
-      if (pb) {
-        const x = Math.round(pb.x + (cx - pb.x) * 0.3);
-        const y = Math.round(pb.y + (cy - pb.y) * 0.3);
-        if (inside(x, y) && !blocked(n, x, y) && placed.every((p) => Math.hypot(p.x - x, (p.y - y) * 2.2) > 24)) {
+      const k = plantRank.get(it.id) ?? 0;
+      if (k < HABIT_SLOTS) {
+        // Out past the lamps and clear of the pet's yard in the middle, a little wider on each row down.
+        const row = Math.floor(k / 2);
+        const y = Math.round(home.y + ry * (0.24 + row * 0.13));
+        const x = Math.round(pathX(n, y) + (k % 2 ? 1 : -1) * rx * (0.26 + row * 0.025));
+        if (inside(x, y) && !blocked(n, x, y)) {
           placed.push({ ...it, x, y });
           continue;
         }
