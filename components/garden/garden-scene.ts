@@ -235,6 +235,42 @@ function leafTexture() {
  * A kolam drawn into a canvas: a dot grid looped with white rice-flour lines (Pongal), or a round
  * rangoli in festival colours (Deepavali).
  */
+/** The Indian flag: saffron, white and green bands with the navy chakra. */
+function flagTexture() {
+  const c = document.createElement("canvas");
+  c.width = 384;
+  c.height = 256;
+  const g = c.getContext("2d")!;
+  const band = c.height / 3;
+  g.fillStyle = "#ff9933";
+  g.fillRect(0, 0, c.width, band);
+  g.fillStyle = "#f8f8f4";
+  g.fillRect(0, band, c.width, band);
+  g.fillStyle = "#138808";
+  g.fillRect(0, band * 2, c.width, band);
+  g.translate(c.width / 2, c.height / 2);
+  g.strokeStyle = "#000080";
+  g.lineWidth = 3;
+  g.beginPath();
+  g.arc(0, 0, 34, 0, Math.PI * 2);
+  g.stroke();
+  g.lineWidth = 1.6;
+  for (let k = 0; k < 24; k++) {
+    const a = (k / 24) * Math.PI * 2;
+    g.beginPath();
+    g.moveTo(Math.cos(a) * 6, Math.sin(a) * 6);
+    g.lineTo(Math.cos(a) * 34, Math.sin(a) * 34);
+    g.stroke();
+  }
+  g.fillStyle = "#000080";
+  g.beginPath();
+  g.arc(0, 0, 5, 0, Math.PI * 2);
+  g.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function kolamTexture(kind: "pulli" | "rangoli") {
   const c = document.createElement("canvas");
   c.width = c.height = 512;
@@ -2838,6 +2874,153 @@ void main() {`);
     this.decor.add(pot);
   }
 
+  /** Christmas: a lit fir tree with a star and a few gifts beside the cottage. */
+  private buildChristmas() {
+    const n = this.opts.n;
+    const home = this.toWorld(homeSpot(n).x, homeSpot(n).y);
+    const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25);
+    const x = home.x + 1.45 * S;
+    const z = home.z + 0.55 * S;
+    const base = this.heightAt(x, z);
+    const tree = new THREE.Group();
+    const fir = this.windy(new THREE.MeshStandardMaterial({ color: "#1f5a35", roughness: 0.85 }), 0.04);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.3, 8), new THREE.MeshStandardMaterial({ color: "#5a3a22", roughness: 0.9 }));
+    trunk.position.y = 0.15;
+    tree.add(trunk);
+    // Three tiers, each a little narrower and higher.
+    const tiers: [number, number, number][] = [[0.62, 0.78, 0.5], [0.5, 0.7, 0.98], [0.36, 0.62, 1.4]];
+    for (const [r, h, y] of tiers) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(r, h, 16), fir);
+      cone.position.y = y;
+      cone.castShadow = true;
+      tree.add(cone);
+    }
+    // The star on top.
+    const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.1, 0), new THREE.MeshStandardMaterial({ color: "#ffd84a", emissive: "#ffcf33", emissiveIntensity: 2.2, roughness: 0.4 }));
+    star.position.y = 1.86;
+    star.scale.set(1, 1.3, 0.5);
+    tree.add(star);
+    // Fairy lights winding round it: tiny glowing bulbs that flicker a little.
+    this.glowTex ??= puffTexture("glow");
+    const colors = ["#ff5d5d", "#ffd84a", "#6ec1ff", "#7dff9a", "#ff9bf0"];
+    const bulbs = 26;
+    for (let k = 0; k < bulbs; k++) {
+      const t = k / bulbs;
+      const y = 0.38 + t * 1.38;
+      const r = (0.6 - t * 0.5) * 0.92;
+      const a = t * Math.PI * 7;
+      const bulb = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: new THREE.Color(colors[k % colors.length]).multiplyScalar(2.6), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      bulb.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+      bulb.scale.setScalar(0.11);
+      bulb.userData.ph = k * 1.7;
+      bulb.raycast = () => {};
+      this.flames.push(bulb);
+      tree.add(bulb);
+    }
+    tree.position.set(x, base, z);
+    tree.scale.setScalar(1.25);
+    this.decorClear.push({ x, z, r: 0.8 });
+    this.decor.add(tree);
+    // Gifts at its foot.
+    const wraps = ["#d63b3b", "#2f7fe8", "#f5b400"];
+    const ribbon = new THREE.MeshStandardMaterial({ color: "#f4f1e8", roughness: 0.5 });
+    [[0.62, 0.16, 0.2], [0.42, 0.62, 0.15], [0.78, 0.5, 0.13]].forEach(([dx, dz, s], i) => {
+      const gx = x + dx * S;
+      const gz = z + dz * S;
+      const box = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(s * 1.5, s * 1.1, s * 1.5), new THREE.MeshStandardMaterial({ color: wraps[i % 3], roughness: 0.6 }));
+      body.position.y = s * 0.55;
+      const band = new THREE.Mesh(new THREE.BoxGeometry(s * 1.56, s * 1.14, s * 0.28), ribbon);
+      band.position.y = s * 0.55;
+      const band2 = new THREE.Mesh(new THREE.BoxGeometry(s * 0.28, s * 1.14, s * 1.56), ribbon);
+      band2.position.y = s * 0.55;
+      box.add(body, band, band2);
+      box.position.set(gx, this.heightAt(gx, gz), gz);
+      box.rotation.y = i * 0.7;
+      box.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+      this.decorClear.push({ x: gx, z: gz, r: 0.18 });
+      this.decor.add(box);
+    });
+  }
+
+  /** Tamil New Year (Puthandu): a kolam, a mango-leaf toran over the door, and a plate of mangoes. */
+  private buildPuthandu() {
+    this.buildKolam("pulli");
+    const n = this.opts.n;
+    const home = this.toWorld(homeSpot(n).x, homeSpot(n).y);
+    const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25);
+    const leaf = this.windy(new THREE.MeshStandardMaterial({ color: "#4f8f2e", roughness: 0.65, side: THREE.DoubleSide }), 0.12);
+    const flower = new THREE.MeshStandardMaterial({ color: "#ffb02e", emissive: "#ff9a00", emissiveIntensity: 0.25, roughness: 0.6 });
+    // The toran: mango leaves hanging in a sagging row across the doorway, with marigolds between.
+    const halfW = 0.46 * S;
+    const doorY = 1.3;
+    const zz = home.z + 0.98 * S;
+    const strand = new THREE.Group();
+    const count = 15;
+    for (let k = 0; k <= count; k++) {
+      const t = k / count;
+      const px = home.x + (t - 0.5) * 2 * halfW;
+      const py = doorY - Math.sin(t * Math.PI) * 0.1;
+      const l = new THREE.Mesh(new THREE.PlaneGeometry(0.075, 0.2), leaf);
+      l.geometry.translate(0, -0.1, 0);
+      l.position.set(px, py, zz);
+      l.rotation.z = (t - 0.5) * 0.5;
+      strand.add(l);
+      if (k % 3 === 1) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), flower);
+        m.position.set(px + 0.02, py - 0.015, zz + 0.01);
+        strand.add(m);
+      }
+    }
+    strand.position.y = this.heightAt(home.x, zz);
+    this.decor.add(strand);
+    // A plate of mangoes, left of the kolam.
+    const px = home.x - 1.05 * S;
+    const pz = home.z + 1.25 * S;
+    const plate = new THREE.Group();
+    const dish = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.03, 18), new THREE.MeshStandardMaterial({ color: "#b8863a", roughness: 0.4, metalness: 0.5 }));
+    dish.position.y = 0.015;
+    plate.add(dish);
+    const skin = new THREE.MeshStandardMaterial({ color: "#f2b53a", roughness: 0.55 });
+    const blush = new THREE.MeshStandardMaterial({ color: "#e0602c", roughness: 0.55 });
+    [[0, 0, 0], [0.09, 0.05, 1], [-0.07, 0.07, 0], [0.01, -0.09, 1]].forEach(([dx, dz, b], i) => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), b ? blush : skin);
+      m.scale.set(1, 0.85, 1.25);
+      m.position.set(dx, 0.1 + (i === 3 ? 0.03 : 0), dz);
+      m.rotation.y = i;
+      plate.add(m);
+    });
+    plate.position.set(px, this.heightAt(px, pz), pz);
+    plate.scale.setScalar(1.5);
+    plate.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+    this.decorClear.push({ x: px, z: pz, r: 0.4 });
+    this.decor.add(plate);
+  }
+
+  /** India (15 August, 26 January): the tricolour on a pole beside the cottage, waving in the garden's wind. */
+  private buildIndia() {
+    const n = this.opts.n;
+    const home = this.toWorld(homeSpot(n).x, homeSpot(n).y);
+    const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25);
+    const x = home.x + 1.5 * S;
+    const z = home.z + 0.7 * S;
+    const base = this.heightAt(x, z);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.025, 2.1, 8), new THREE.MeshStandardMaterial({ color: "#d9d4c7", roughness: 0.35, metalness: 0.6 }));
+    pole.position.set(x, base + 1.05, z);
+    pole.castShadow = true;
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), new THREE.MeshStandardMaterial({ color: "#f5c542", roughness: 0.3, metalness: 0.7 }));
+    knob.position.set(x, base + 2.12, z);
+    this.decor.add(pole, knob);
+    const tex = flagTexture();
+    const flagMat = this.windy(new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.8 }), 0.35);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.52, 14, 8), flagMat);
+    flag.geometry.translate(0.39, 0, 0);
+    flag.position.set(x + 0.02, base + 1.82, z);
+    flag.castShadow = true;
+    this.decor.add(flag);
+    this.decorClear.push({ x, z, r: 0.3 });
+  }
+
   /** A kolam (or rangoli) on the ground in front of the cottage door. */
   private buildKolam(kind: "pulli" | "rangoli") {
     const n = this.opts.n;
@@ -3348,6 +3531,9 @@ void main() {`);
     this.decorClear = [];
     if (monsoon) this.buildMonsoon();
     if (festival === "pongal") this.buildPongal();
+    if (festival === "puthandu") this.buildPuthandu();
+    if (festival === "christmas") this.buildChristmas();
+    if (festival === "india") this.buildIndia();
     if (festival === "karthigai") this.buildLamps(1);
     if (festival === "deepavali") {
       this.buildLamps(0.6);
@@ -3411,6 +3597,17 @@ void main() {`);
     for (const p of this.particleMats) p.mat.uniforms.uColor.value.copy(this.musicRgb ?? p.color);
   }
 
+  /** The scene as it looks right now, as a PNG data URL (the frame is drawn again first, so it is read straight away). */
+  snapshot(): string | null {
+    if (this.disposed) return null;
+    if (this.composer) this.composer.render(0);
+    else this.renderer.render(this.scene, this.camera);
+    try {
+      return this.renderer.domElement.toDataURL("image/png");
+    } catch {
+      return null;
+    }
+  }
   /** Blow as hard as the real wind (km/h); null = the usual breeze. */
   setWind(kmh: number | null) {
     this.uWind.value = windStrength(kmh);

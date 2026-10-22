@@ -10,6 +10,7 @@ import { MUSIC_EVENT, MUSIC_STATE_EVENT, useFetch } from "@/lib/client-api";
 import type { GoodNight } from "@/lib/goodnight";
 import type { GardenDay } from "@/lib/garden-day";
 import { type Garden, homeSpot, islandSize, layout, type Season, SEASONS, seasonOf, type Visitor } from "@/lib/garden-layout";
+import { composeSnapshot, shareSnapshot, snapshotName } from "@/lib/garden-snapshot";
 import { festivalById, festivalOn } from "@/lib/pet-looks";
 import type { Sky } from "@/lib/sky";
 import type { GardenScene } from "./garden-scene";
@@ -23,8 +24,8 @@ import { type Phase, phaseNow } from "./phase";
 type Pt = { x: number; y: number };
 const PHASE_NAME: Record<Phase, string> = { dawn: "Dawn", day: "Daytime", golden: "Golden hour", dusk: "Dusk", night: "Night" };
 /** Festivals the island dresses up for (others only change Nova's outfit). */
-const DECOR = ["pongal", "karthigai", "deepavali"] as const;
-const DECOR_ICON: Record<string, string> = { pongal: "🌾", karthigai: "🪔", deepavali: "🎆", monsoon: "🌧️" };
+const DECOR = ["pongal", "karthigai", "deepavali", "puthandu", "christmas", "india"] as const;
+const DECOR_ICON: Record<string, string> = { pongal: "🌾", karthigai: "🪔", deepavali: "🎆", puthandu: "🥭", christmas: "🎄", india: "🇮🇳", monsoon: "🌧️" };
 /** How the last night went, for the title line (1 rough to 5 great). */
 const MOOD_TEXT = ["😞 a rough night", "😕 a meh night", "😐 an okay night", "🙂 a good night", "😄 a great night"];
 const SEASON_ICON: Record<Season, string> = { spring: "🌸", summer: "☀️", autumn: "🍂", winter: "❄️" };
@@ -356,6 +357,29 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     };
   }, [sceneId]);
 
+  // A picture of the garden to send to a friend (the share sheet on a phone, a download on a laptop).
+  const [sharing, setSharing] = useState("");
+  async function shareGarden() {
+    const frame = scene.current?.snapshot();
+    if (!frame || !g) return setSharing("Couldn't take the picture.");
+    try {
+      const cc = g.counts;
+      const date = todayLocal();
+      const card = {
+        title: `${g.pet}'s garden`,
+        sub: `${SEASON_ICON[season]} ${season} · ${PHASE_NAME[phase].toLowerCase()}${g.streak > 0 ? ` · 🔥 ${g.streak}-day streak` : ""}`,
+        stats: [`🌸 ${cc.flowers}`, `🌳 ${cc.trees}`, `💎 ${cc.gems}`, `🦋 ${cc.butterflies}`],
+        date: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }),
+      };
+      const blob = await composeSnapshot(frame, card);
+      const done = await shareSnapshot(blob, snapshotName(g.pet, date), `${g.pet}'s garden 🌱`);
+      setSharing(done === "saved" ? "Saved the picture." : "");
+    } catch (e) {
+      setSharing(e instanceof Error ? e.message : "Couldn't share the picture.");
+    }
+    setTimeout(() => setSharing(""), 3500);
+  }
+
   async function goodNight() {
     const me = ++bedtimeRun.current;
     setHint(false);
@@ -430,7 +454,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
       },
     },
     garden_festival: {
-      description: "Nova's garden page: dress the island for a festival or season to preview it. input: 'deepavali' (lamps, rangoli, fireworks), 'karthigai' (oil lamps along the path), 'pongal' (kolam, sugarcane, pongal pot), 'monsoon' (puddles, frogs) or 'today' (back to today's).",
+      description: "Nova's garden page: dress the island for a festival or season to preview it. input: 'deepavali' (lamps, rangoli, fireworks), 'karthigai' (oil lamps along the path), 'pongal' (kolam, sugarcane, pongal pot), 'puthandu' (kolam, mango-leaf toran, mangoes), 'christmas' (a lit tree and gifts), 'india' (the tricolour flag), 'monsoon' (puddles, frogs) or 'today' (back to today's).",
       run: ({ input }) => {
         const t = String(input).toLowerCase();
         if (/monsoon|rain|mazhai/.test(t)) {
@@ -583,9 +607,17 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         {ready && hint && <div className="pointer-events-none absolute inset-x-0 top-[38%] text-center text-xs text-white/85 drop-shadow transition-opacity sm:top-auto sm:right-8 sm:bottom-8 sm:left-auto sm:text-right">Drag to look around · pinch to zoom · tap anything</div>}
         {day && <DayCard day={day} onClose={() => setDay(null)} />}
         {ready && g && !bedtime && (
-          <button onClick={() => void goodNight()} className="absolute top-5 right-5 z-10 flex items-center gap-1.5 rounded-full border border-indigo-200/30 bg-[#0d1024]/70 px-3.5 py-2 text-xs font-medium text-indigo-100 shadow-lg backdrop-blur-md transition hover:bg-[#161a3a]/80 sm:top-7 sm:right-8">
-            🌙 Good night
-          </button>
+          <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
+            <div className="flex gap-2">
+              <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/40 px-3.5 py-2 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-black/55">
+                📸 Share
+              </button>
+              <button onClick={() => void goodNight()} className="flex items-center gap-1.5 rounded-full border border-indigo-200/30 bg-[#0d1024]/70 px-3.5 py-2 text-xs font-medium text-indigo-100 shadow-lg backdrop-blur-md transition hover:bg-[#161a3a]/80">
+                🌙 Good night
+              </button>
+            </div>
+            {sharing && <p className="rounded-full bg-black/55 px-3 py-1 text-[11px] text-white/90 backdrop-blur-md">{sharing}</p>}
+          </div>
         )}
         {bedtime && (
           <div className="absolute inset-x-3 bottom-3 z-10 sm:inset-x-auto sm:bottom-6 sm:left-1/2 sm:w-[520px] sm:-translate-x-1/2">

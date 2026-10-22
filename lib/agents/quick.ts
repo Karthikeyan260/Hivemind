@@ -21,6 +21,9 @@ export function quickGarden(raw: string): GardenQuick | null {
     [/deepavali|diwali|deewali|தீபாவளி/, "deepavali", "🎆", "Deepavali: clay lamps, a rangoli and fireworks"],
     [/karthigai|karthikai|deepam|கார்த்திகை/, "karthigai", "🪔", "Karthigai Deepam: oil lamps all along the path"],
     [/pongal|sankranti|பொங்கல்/, "pongal", "🌾", "Pongal: a kolam, sugarcane and a pongal pot"],
+    [/puthandu|tamil new year|varusha ?pirappu|புத்தாண்டு/, "puthandu", "🥭", "Puthandu: a kolam, a mango-leaf toran and mangoes"],
+    [/christmas|xmas|கிறிஸ்துமஸ்/, "christmas", "🎄", "Christmas: a lit tree and gifts"],
+    [/independence day|republic day|jai hind|15 august|26 january/, "india", "🇮🇳", "the tricolour flying beside the cottage"],
     [/monsoon|\brain(y)?\b|mazhai|மழை/, "monsoon", "🌧️", "the monsoon: puddles and frogs"],
   ];
   for (const [re, fest, icon, what] of pick) if (re.test(m)) return { fest, label: `${icon} Open the garden`, reply: `${icon} Here's Nova's garden for ${what}.` };

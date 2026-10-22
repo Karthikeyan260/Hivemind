@@ -45,7 +45,38 @@ export type Pet = {
   /** The accessory it wears (only one it has unlocked) and the ones it can. */
   wear: AccessoryId | null;
   unlocked: AccessoryId[];
+  /** The last seven days (today included): habit days done of those due, night check-ins and games won. */
+  week: WeekStats;
 };
+
+export type WeekStats = { done: number; due: number; checkins: number; wins: number };
+
+/** The last seven days up to `today`: habits done of those scheduled, check-ins, games won. */
+export function weekStats(habits: { days: number[]; created: string; log: string[] }[], checkinDates: string[], winDates: string[], today: string): WeekStats {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
+  let done = 0;
+  let due = 0;
+  for (const d of days) {
+    const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+    for (const h of habits) {
+      if (!h.days.includes(dow) || h.created.slice(0, 10) > d) continue;
+      due++;
+      if (h.log.includes(d)) done++;
+    }
+  }
+  return { done, due, checkins: checkinDates.filter((d) => days.includes(d)).length, wins: winDates.filter((d) => days.includes(d)).length };
+}
+
+/** What Nova says about the week (Sunday): how the habits went, in a line. Null when no habit was due. */
+export function weekLine(w: WeekStats): string | null {
+  if (!w.due) return null;
+  const rate = w.done / w.due;
+  const extra = [w.checkins ? `${w.checkins} night check-in${w.checkins === 1 ? "" : "s"} 🌙` : "", w.wins ? `${w.wins} game win${w.wins === 1 ? "" : "s"} 🏆` : ""].filter(Boolean).join(", ");
+  const tail = extra ? ` Plus ${extra}` : "";
+  if (rate >= 0.85) return `Intha vaaram ${w.done}/${w.due} habits… semma week! 🌟${tail}`;
+  if (rate >= 0.5) return `Intha vaaram ${w.done}/${w.due} habits. Adutha vaaram innum nalla pannalaam 💪${tail}`;
+  return `Intha vaaram ${w.done}/${w.due} dhaan… Monday-la oru fresh start? 🌱${tail}`;
+}
 
 /** Growth points per thing done (music is capped so leaving a playlist on doesn't count much). */
 const XP = { habit: 10, checkin: 8, win: 6, game: 2, memory: 2, play: 1, playsPerDay: 10, walk: 5, walksPerDay: 3 } as const;
@@ -122,6 +153,7 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
     const due = habits.filter((h) => h.days.includes(w) && h.created.slice(0, 10) <= d && d >= born);
     return due.length > 0 && due.every((h) => !h.log.includes(d));
   };
+  const week = weekStats(habits, checkins.map((c) => c.date), myGames.filter((g) => g.outcome === "win").map((g) => localParts(new Date(g.at)).date), today);
   const sulking = missedDay(addDays(today, -1)) && missedDay(addDays(today, -2)) && doneToday.length === 0;
   const hour = localParts(now).hour;
   const mood: PetMood = away >= 3 ? "missed" : sulking ? "sulking" : dueToday.length > doneToday.length && doneToday.length === 0 && hour >= 11 ? "hungry" : "happy";
@@ -140,7 +172,9 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
     today: todayList,
     wear: saved?.wear && unlocked(stage).includes(saved.wear) ? saved.wear : null,
     unlocked: unlocked(stage),
-    line: petLine(mood, dueToday.length - doneToday.length, away),
+    week,
+    // Sundays, when nothing else is wrong, it talks about the week.
+    line: (mood === "happy" && dow === 0 && weekLine(week)) || petLine(mood, dueToday.length - doneToday.length, away),
   };
 }
 

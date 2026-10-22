@@ -92,6 +92,13 @@ describe("quick commands: word boundaries and polite endings", () => {
     expect(quickGarden("garden in the rain")?.fest).toBe("monsoon");
     expect(quickGarden("show the garden for the rainy season")?.fest).toBe("monsoon");
   });
+  it("opens the garden dressed for Puthandu, Christmas and Independence Day", () => {
+    expect(quickGarden("show the garden for puthandu")?.fest).toBe("puthandu");
+    expect(quickGarden("garden for tamil new year")?.fest).toBe("puthandu");
+    expect(quickGarden("show the garden for christmas")?.fest).toBe("christmas");
+    expect(quickGarden("garden for independence day")?.fest).toBe("india");
+    expect(quickGarden("christmas photos")).toBeNull();
+  });
   it("'please' on the end doesn't stop a colour request", () => {
     expect(quickEffect("pink music lights please")?.args).toEqual({ effect: "music_lights", on: true, color: "pink" });
     expect(quickEffect("please make the lights blue")?.args.color).toBe("blue");
