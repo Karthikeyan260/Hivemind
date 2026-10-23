@@ -13,10 +13,10 @@ export const PATCH = handle(async (req: Request) => {
   const raw = await req.json().catch(() => null);
   const wear = z.object({ wear: z.enum(["none", ...ACCESSORY_IDS]) }).safeParse(raw);
   if (wear.success) {
-    await wearAccessory(db(), wear.data.wear).catch((e) => {
+    const pet = await wearAccessory(db(), wear.data.wear).catch((e) => {
       throw new HttpError(400, e instanceof Error ? e.message : "Couldn't put it on.");
     });
-    return NextResponse.json({ pet: await getPet(db()) });
+    return NextResponse.json({ pet });
   }
   const body = z.object({ name: z.string().max(60) }).safeParse(raw);
   if (!body.success) throw new HttpError(400, "Send a name.");

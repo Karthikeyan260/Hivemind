@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Creature } from "@/components/pet/creature";
 import { ErrorText } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { petSay } from "@/components/pet/talk";
+import { petHush, petSay } from "@/components/pet/talk";
 import * as beat from "@/lib/beat";
 import { MUSIC_EVENT, MUSIC_STATE_EVENT, useFetch } from "@/lib/client-api";
 import type { GoodNight } from "@/lib/goodnight";
@@ -425,13 +425,21 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   }
   function wakeUp() {
     bedtimeRun.current++;
+    petHush();
     beat.setTempColor(null);
     setBedtime(null);
     busy.current = 0;
     comeOut();
   }
   // Leaving the page ends bedtime's warm glow (the owner's own colour comes back).
-  useEffect(() => () => beat.setTempColor(null), []);
+  // ...and so does Nova's voice: a line it is saying must not carry on over the next page.
+  useEffect(
+    () => () => {
+      beat.setTempColor(null);
+      petHush();
+    },
+    [],
+  );
   // ?goodnight=1 (from chat or voice): once the island is ready.
   const bedtimeStarted = useRef(false);
   useEffect(() => {

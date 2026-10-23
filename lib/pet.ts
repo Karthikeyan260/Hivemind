@@ -285,11 +285,12 @@ export async function runPetNudges(supabase: SupabaseClient, now = new Date()) {
 /** The pet's current name (the default until renamed). */
 export const petName = async (supabase: SupabaseClient) => (await readJSON<Saved | null>(supabase, KEY, null).catch(() => null))?.name || DEFAULT_NAME;
 
-/** Puts on an unlocked accessory (or none). */
+/** Puts on an earned accessory (or none) and returns the pet as it is now (one read of everything, not two: the card waits for this). */
 export async function wearAccessory(supabase: SupabaseClient, wear: AccessoryId | "none") {
   const pet = await getPet(supabase);
   if (wear !== "none" && !pet.unlocked.includes(wear)) throw new Error("Not earned yet: see the Wear list on its card for how each one is earned.");
   const saved = await readJSON<Saved | null>(supabase, KEY, null);
   const today = localParts().date;
   await writeJSON(supabase, KEY, { ...saved, born: saved?.born ?? today, lastSeen: saved?.lastSeen ?? today, wear: wear === "none" ? undefined : wear } satisfies Saved);
+  return { ...pet, wear: wear === "none" ? null : wear };
 }

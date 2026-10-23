@@ -43,15 +43,28 @@ function pickVoice() {
 }
 
 let mine = false;
+/** Bumped by petHush: lines still waiting for their turn from before it are dropped. */
+let gen = 0;
+
+/** Stops the pet's own voice at once, and drops any line of its that is still waiting: leaving a page must not leave it talking. Someone else's speech is left alone. */
+export function petHush() {
+  gen++;
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  if (mine) {
+    speechSynthesis.cancel();
+    mine = false;
+  }
+}
 
 /**
  * Says a line in the pet's voice. A new line cuts off its own previous one; if something else is
  * speaking (HIVEMIND reading aloud in the browser voice), it waits its turn (up to ~8 s), never interrupts.
  */
-export function petSay(line: string, waited = 0) {
+export function petSay(line: string, waited = 0, from = gen) {
+  if (from !== gen) return;
   if (!petVoiceOn() || typeof window === "undefined" || !("speechSynthesis" in window)) return;
   if (speechSynthesis.speaking && !mine) {
-    if (waited < 8000) setTimeout(() => petSay(line, waited + 400), 400);
+    if (waited < 8000) setTimeout(() => petSay(line, waited + 400, from), 400);
     return;
   }
   const text = speakable(line);
