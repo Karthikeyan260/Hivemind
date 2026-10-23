@@ -34,6 +34,14 @@ export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSee
         </div>
       </div>
       <p className="mt-3 rounded-lg bg-white/5 px-3 py-2 text-[13px] leading-snug">“{line}”</p>
+      <p className={`mt-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-snug ${pet.wish.done ? "border-ok/40 bg-ok/10 text-ok" : "border-amber-300/30 bg-amber-300/5"}`}>
+        <span className="text-base leading-none">{pet.wish.done ? "✅" : pet.wish.icon}</span>
+        <span>
+          <b className="font-mono text-[10px] uppercase tracking-[0.18em] opacity-70">{pet.wish.done ? "Wish granted · +8" : "Nova's wish today"}</b>
+          <br />
+          {pet.wish.text}
+        </span>
+      </p>
 
       <Bar label="Growth" value={pet.progress} color={GLOW[mood]} note={pet.toNext === null ? "Fully grown 👑" : `${pet.toNext} to evolve`} />
       <Bar label="Fed today" value={fedPct / 100} color="#8ce99a" note={pet.fed.due ? `${pet.fed.done} / ${pet.fed.due} habits` : "No habits today: add one to feed it"} />

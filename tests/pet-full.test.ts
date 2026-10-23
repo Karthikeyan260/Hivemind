@@ -195,7 +195,7 @@ describe("lantern walks and fireflies", () => {
     await recordFireflies(supabase, 14);
     await recordFireflies(supabase, 9);
     expect(store.get("pet")).toMatchObject({ name: "Pixel", wear: "bow", walks: ["2026-10-14"], fireflies: { best: 14, plays: 2 } });
-    expect((await getPet(supabase, at("2026-10-15"))).fireflies).toEqual({ best: 14, plays: 2 });
+    expect((await getPet(supabase, at("2026-10-15"))).fireflies).toMatchObject({ best: 14, plays: 2 });
   });
 });
 
@@ -214,5 +214,60 @@ describe("its own notifications", () => {
     expect(await runPetNudges(supabase, at("2026-10-15", "10:00"))).toBe(1);
     expect(sent[0].title).toContain("evolved");
     expect(await runPetNudges(supabase, at("2026-10-15", "11:00"))).toBe(0);
+  });
+});
+
+describe("Nova's wish of the day", () => {
+  /** A day whose wish is the given one (the pick depends on the date). */
+  const dayWith = async (id: string) => {
+    for (let d = 1; d <= 28; d++) {
+      const date = `2026-11-${String(d).padStart(2, "0")}`;
+      store.clear();
+      store.set("pet", { born: "2026-10-01", lastSeen: date, name: "Nova" });
+      if ((await getPet(supabase, at(date), { touch: false })).wish.id === id) return date;
+    }
+    throw new Error(`no day with a ${id} wish`);
+  };
+  it("asks for one thing a day, the same all day", async () => {
+    store.set("pet", { born: "2026-10-01", lastSeen: "2026-10-14", name: "Nova" });
+    const a = await getPet(supabase, at("2026-10-15", "08:00"));
+    const b = await getPet(supabase, at("2026-10-15", "20:00"));
+    expect(a.wish.id).toBe(b.wish.id);
+    expect(a.wish.text.length).toBeGreaterThan(5);
+    expect(a.wish.done).toBe(false);
+  });
+  it("is done by doing it: growth points, the day's list, and kept for good", async () => {
+    const date = await dayWith("song");
+    store.clear();
+    store.set("pet", { born: "2026-10-01", lastSeen: date, name: "Nova" });
+    const before = (await getPet(supabase, at(date), { touch: false })).xp;
+    store.set("plays/2026-11", [{ title: "s", artists: "a", at: `${date}T10:00:00.000Z` }]);
+    const p = await getPet(supabase, at(date));
+    expect(p.wish.done).toBe(true);
+    expect(p.xp).toBe(before + 8 + 1); // the wish, and the song itself
+    expect(p.today.some((t) => t.includes("Wish done"))).toBe(true);
+    expect((store.get("pet") as { wishes?: string[] }).wishes).toEqual([date]);
+    // Counted once, and still counted later.
+    await getPet(supabase, at(date, "21:00"));
+    expect((store.get("pet") as { wishes?: string[] }).wishes).toEqual([date]);
+    store.delete("plays/2026-11");
+    const later = await getPet(supabase, at("2026-12-20"));
+    expect(later.xp).toBe(before + 8);
+  });
+  it("the scheduler looking in does not record it", async () => {
+    const date = await dayWith("song");
+    store.clear();
+    store.set("pet", { born: "2026-10-01", lastSeen: date, name: "Nova" });
+    store.set("plays/2026-11", [{ title: "s", artists: "a", at: `${date}T10:00:00.000Z` }]);
+    await getPet(supabase, at(date), { touch: false });
+    expect((store.get("pet") as { wishes?: string[] }).wishes).toBeUndefined();
+  });
+  it("fireflies played today finish a fireflies wish", async () => {
+    const date = await dayWith("fireflies");
+    store.clear();
+    store.set("pet", { born: "2026-10-01", lastSeen: date, name: "Nova", fireflies: { best: 9, plays: 1, last: date } });
+    expect((await getPet(supabase, at(date))).wish.done).toBe(true);
+    store.set("pet", { born: "2026-10-01", lastSeen: date, name: "Nova", fireflies: { best: 9, plays: 1, last: "2026-11-01" } });
+    expect((await getPet(supabase, at(date))).wish.done).toBe(date === "2026-11-01");
   });
 });

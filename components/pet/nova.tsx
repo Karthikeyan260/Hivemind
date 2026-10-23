@@ -921,6 +921,8 @@ export function Nova() {
       {catching && pet && (
         <FireflyGame
           name={pet.name}
+          stage={pet.stage}
+          wear={pet.wear}
           best={pet.fireflies.best}
           onClose={() => setCatching(false)}
           onFinish={async (score) => {

@@ -4,6 +4,7 @@ import { listCheckins } from "@/lib/checkin";
 import { listResults } from "@/lib/games/stats";
 import { listHabits, stats as habitStats } from "@/lib/habits";
 import { listPlays } from "@/lib/plays";
+import { type Wish, wishFor, WISH_XP } from "@/lib/pet-wishes";
 import { type AccessoryId, bestWinStreak, earnedAccessories, festivalOn, isWinter } from "@/lib/pet-looks";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { addDays, localParts } from "@/lib/reminders";
@@ -15,7 +16,7 @@ import { addDays, localParts } from "@/lib/reminders";
  */
 /** walks: the local date of each finished lantern walk (all sparks found). */
 /** missedFor / stageNotified: which absence and which stage already got a push (so each one goes once). */
-type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; missedFor?: string; stageNotified?: number; wear?: AccessoryId; /** Opened in winter once (the scarf), and the festivals it was here for (their hats). Kept for good. */ winter?: boolean; festivals?: string[]; /** The firefly game: the best score and how many times it was played. */ fireflies?: { best: number; plays: number } };
+type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; missedFor?: string; stageNotified?: number; wear?: AccessoryId; /** Opened in winter once (the scarf), and the festivals it was here for (their hats). Kept for good. */ winter?: boolean; festivals?: string[]; /** The firefly game: the best score and how many times it was played. */ fireflies?: { best: number; plays: number; /** The day it was last played. */ last?: string }; /** The days Nova's wish of the day was done. */ wishes?: string[] };
 export const DEFAULT_NAME = "Nova";
 const KEY = "pet";
 
@@ -49,6 +50,8 @@ export type Pet = {
   week: WeekStats;
   /** The firefly game: best score and rounds played. */
   fireflies: { best: number; plays: number };
+  /** Today's wish and whether it is done. */
+  wish: Wish;
 };
 
 export type WeekStats = { done: number; due: number; checkins: number; wins: number };
@@ -138,7 +141,26 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
   }
   const playXp = [...playsByDay.values()].reduce((a, n) => a + Math.min(n, XP.playsPerDay) * XP.play, 0);
   const wins = myGames.filter((g) => g.outcome === "win").length;
-  const xp = habitDays.length * XP.habit + myCheckins.length * XP.checkin + wins * XP.win + myGames.length * XP.game + memories * XP.memory + playXp + walks.length * XP.walk;
+  // Today: what is due and done (also what Nova's wish of the day asks about).
+  const dow = new Date(`${today}T00:00:00Z`).getUTCDay();
+  const dueToday = habits.filter((h) => h.days.includes(dow) && h.created.slice(0, 10) <= today);
+  const doneToday = dueToday.filter((h) => h.log.includes(today));
+  const wish = wishFor(today, {
+    habitsDue: dueToday.length,
+    habitsDone: doneToday.length,
+    songs: playsByDay.get(today) ?? 0,
+    wins: myGames.filter((g) => localParts(new Date(g.at)).date === today && g.outcome === "win").length,
+    walks: walks.filter((d) => d === today).length,
+    checkin: myCheckins.some((c) => c.date === today),
+    fireflies: saved?.fireflies?.last === today,
+  });
+  const wishDays = new Set([...(saved?.wishes ?? []), ...(wish.done ? [today] : [])]);
+  // The owner being here when it is done keeps it for good (the scheduler looking in does not).
+  if (touch && wish.done && !(saved?.wishes ?? []).includes(today)) {
+    const fresh = await readJSON<Saved | null>(supabase, KEY, null);
+    if (fresh) await writeJSON(supabase, KEY, { ...fresh, wishes: [...new Set([...(fresh.wishes ?? []), today])].slice(-400) } satisfies Saved).catch(() => {});
+  }
+  const xp = wishDays.size * WISH_XP + habitDays.length * XP.habit + myCheckins.length * XP.checkin + wins * XP.win + myGames.length * XP.game + memories * XP.memory + playXp + walks.length * XP.walk;
 
   const stage = STAGES.reduce((s, x, i) => (xp >= x.at ? i : s), 0);
   const earned = earnedAccessories({
@@ -153,14 +175,12 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
   const progress = next ? (xp - STAGES[stage].at) / (next.at - STAGES[stage].at) : 1;
 
   // Today: what fed it, and how hungry it still is.
-  const dow = new Date(`${today}T00:00:00Z`).getUTCDay();
-  const dueToday = habits.filter((h) => h.days.includes(dow) && h.created.slice(0, 10) <= today);
-  const doneToday = dueToday.filter((h) => h.log.includes(today));
   const todayList = [
     ...doneToday.map((h) => `${h.emoji || "✅"} ${h.name} (+${XP.habit})`),
     ...(myCheckins.some((c) => c.date === today) ? [`🌙 Night check-in (+${XP.checkin})`] : []),
     ...myGames.filter((g) => localParts(new Date(g.at)).date === today && g.outcome === "win").map((g) => `🏆 Won ${g.game} (+${XP.win + XP.game})`),
     ...(walks.filter((d) => d === today).length ? [`🏮 ${walks.filter((d) => d === today).length} lantern walk${walks.filter((d) => d === today).length === 1 ? "" : "s"} (+${walks.filter((d) => d === today).length * XP.walk})`] : []),
+    ...(wish.done ? [`${wish.icon} Wish done (+${WISH_XP})`] : []),
     ...(playsByDay.get(today) ? [`🎵 ${playsByDay.get(today)} songs (+${Math.min(playsByDay.get(today)!, XP.playsPerDay)})`] : []),
   ];
 
@@ -191,6 +211,7 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
     unlocked: earned,
     week,
     fireflies: saved?.fireflies ?? { best: 0, plays: 0 },
+    wish,
     // Sundays, when nothing else is wrong, it talks about the week.
     line: (mood === "happy" && dow === 0 && weekLine(week)) || petLine(mood, dueToday.length - doneToday.length, away),
   };
@@ -241,8 +262,8 @@ export async function recordFireflies(supabase: SupabaseClient, rawScore: number
   const score = Math.max(0, Math.min(500, Math.round(Number(rawScore) || 0)));
   const saved = await readJSON<Saved | null>(supabase, KEY, null);
   const was = saved?.fireflies ?? { best: 0, plays: 0 };
-  const next = { best: Math.max(was.best, score), plays: was.plays + 1 };
   const today = localParts().date;
+  const next = { best: Math.max(was.best, score), plays: was.plays + 1, last: today };
   await writeJSON(supabase, KEY, { ...saved, born: saved?.born ?? today, lastSeen: today, fireflies: next } satisfies Saved);
   return { score, best: next.best, plays: next.plays, newBest: score > was.best };
 }

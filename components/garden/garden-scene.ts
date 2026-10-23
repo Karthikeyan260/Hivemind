@@ -615,10 +615,10 @@ export class GardenScene {
     if (!v) return;
     this.skipIntro();
     this.controls.minDistance = 0.3;
-    const p = v.g.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, v.kind === "owl" ? 0.35 : 0.45, 0));
+    const p = v.g.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, v.kind === "owl" ? 0.35 : 0.8, 0));
     this.controls.target.copy(p);
     const yaw = (this.visitors.get(id)?.yaw ?? 0) + (view === "side" ? Math.PI / 2 : 0.4);
-    this.camera.position.copy(p).add(new THREE.Vector3(Math.sin(yaw) * dist, 0.2, Math.cos(yaw) * dist));
+    this.camera.position.copy(p).add(new THREE.Vector3(Math.sin(yaw) * dist, v.kind === "owl" ? 0.2 : dist * 0.28, Math.cos(yaw) * dist));
     this.camera.lookAt(p);
     this.controls.autoRotate = false;
   }
@@ -742,116 +742,130 @@ export class GardenScene {
   }
 
   /**
-   * A fawn: one smooth body shaded warm brown on top to cream underneath, a long tapered neck, a head with a muzzle, a wet nose,
-   * big leaf ears and dark eyes with a gleam, long slim legs with a knee, a hoof and a white tail, and soft white spots on the back.
+   * A deer, stylised to match the island: a deep-chested body shaded brown on the back to cream underneath, a cream rump patch and
+   * short tail, sturdy tapered legs with knees, a hock on the back ones and dark hooves, a thick neck with a pale throat, a long
+   * head with a dark muzzle, big leaf ears, dark eyes with a gleam, and a pair of branching antlers.
    */
   private makeDeer() {
     const g = new THREE.Group();
     const std = (color: string, rough = 0.88) => new THREE.MeshStandardMaterial({ color, roughness: rough });
-    const shaded = new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.88 });
-    const furC = new THREE.Color("#b9824f");
-    const creamC = new THREE.Color("#efdcba");
-    const fur = std("#b9824f");
-    const furDark = std("#8e5c36");
-    const light = std("#efdcba", 0.95);
-    const spot = std("#fff3dc", 0.9);
-    const dark = std("#2a1d16", 0.5);
-    const black = new THREE.MeshStandardMaterial({ color: "#120c09", roughness: 0.15 });
+    const shaded = new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.86 });
+    const backC = new THREE.Color("#8f5a31");
+    const furC = new THREE.Color("#b07a44");
+    const creamC = new THREE.Color("#ecd7b2");
+    const fur = std("#b07a44");
+    const furDark = std("#7a4a28");
+    const cream = std("#ecd7b2", 0.92);
+    const hoof = std("#2b1f18", 0.5);
+    const muzzle = std("#3a2a20", 0.7);
+    const black = new THREE.MeshStandardMaterial({ color: "#100b08", roughness: 0.15 });
     const white = std("#ffffff", 0.3);
+    const horn = std("#cfb98f", 0.7);
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = g) => this.visitorMesh(parent, geo, mat, x, y, z);
-    /** Colour a geometry by `cream(nx, ny, nz)` (0 = fur, 1 = cream) from each vertex's own direction. */
-    const shade = (geo: THREE.BufferGeometry, cream: (nx: number, ny: number, nz: number) => number) => {
+    /** Colours a geometry from each vertex's own direction: `tone(nx, ny, nz)` is 0 = back brown .. 0.5 = flank .. 1 = cream. */
+    const shade = (geo: THREE.BufferGeometry, tone: (nx: number, ny: number, nz: number) => number) => {
       const p = geo.attributes.position as THREE.BufferAttribute;
       const cols = new Float32Array(p.count * 3);
       const c = new THREE.Color();
       for (let i = 0; i < p.count; i++) {
-        const v = new THREE.Vector3(p.getX(i), p.getY(i), p.getZ(i));
-        const n = v.clone().normalize();
-        c.copy(furC).lerp(creamC, THREE.MathUtils.clamp(cream(n.x, n.y, n.z), 0, 1));
+        const n = new THREE.Vector3(p.getX(i), p.getY(i), p.getZ(i)).normalize();
+        const t = THREE.MathUtils.clamp(tone(n.x, n.y, n.z), 0, 1);
+        if (t < 0.5) c.copy(backC).lerp(furC, t * 2);
+        else c.copy(furC).lerp(creamC, (t - 0.5) * 2);
         cols.set([c.r, c.g, c.b], i * 3);
       }
       geo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
       return geo;
     };
-    // The body: one long egg, with the belly tucked up behind the deeper chest, shaded cream underneath.
-    const RX = 0.15;
-    const RY = 0.165;
-    const RZ = 0.36;
-    const BY = 0.64;
-    const bodyGeo = new THREE.SphereGeometry(1, 32, 22);
+    // The body: one long egg, the chest deeper than the waist, shaded brown on top, tan on the flanks, cream beneath.
+    const RX = 0.17;
+    const RY = 0.185;
+    const RZ = 0.4;
+    const BY = 0.5;
+    const bodyGeo = new THREE.SphereGeometry(1, 36, 24);
     const bp = bodyGeo.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < bp.count; i++) {
       const nx = bp.getX(i);
       const ny = bp.getY(i);
       const nz = bp.getZ(i);
-      const tuck = ny < 0 ? 1 - 0.22 * Math.max(0, 1 - nz * nz) * (-ny) * 1.3 : 1;
-      const rump = nz < 0 ? 1 + 0.05 * -nz : 1;
-      bp.setXYZ(i, nx * RX * rump, ny * RY * tuck, nz * RZ);
+      const chest = nz > 0 ? 1 + 0.12 * nz * Math.max(0, -ny + 0.4) : 1;
+      const waist = nz < 0.2 && ny < 0 ? 1 - 0.16 * -ny * (1 - Math.abs(nz)) : 1;
+      const rump = nz < 0 ? 1 + 0.06 * -nz : 1;
+      bp.setXYZ(i, nx * RX * rump, ny * RY * chest * waist, nz * RZ);
     }
-    shade(bodyGeo, (_x, y) => (y < -0.15 ? (-y - 0.15) * 2.4 : 0));
+    shade(bodyGeo, (_x, y) => (y > 0.25 ? 0.05 : y > -0.2 ? 0.4 + (0.25 - y) * 0.4 : 0.75 + (-y - 0.2) * 1.2));
     bodyGeo.computeVertexNormals();
     add(bodyGeo, shaded, 0, BY, 0);
-    // Soft white spots on the back and flanks, sitting on the body's surface.
-    for (let i = 0; i < 24; i++) {
-      const s = i % 2 ? 1 : -1;
-      const z = (-0.7 + hash01(`dz${i}`) * 1.3) * RZ;
-      const x = s * (0.02 + hash01(`dx${i}`) * 0.8) * RX;
-      const inside = 1 - (x / RX) ** 2 - (z / RZ) ** 2;
-      if (inside <= 0.06) continue;
-      const y = BY + RY * Math.sqrt(inside);
-      const sp = add(this.blob(0.0125, 1.25, 0.3, 1.0), spot, x, y - 0.004, z);
-      sp.rotation.z = -x * 3.4;
-      sp.rotation.x = z * 1.1;
-    }
-    // Tail: short, white, flicking up at the back.
-    const tail = add(this.blob(0.04, 0.8, 1.2, 1.3), spot, 0, BY + 0.1, -RZ - 0.01);
-    tail.rotation.x = -0.75;
-    // Legs: long and slim, each swinging from the shoulder or hip, with a knee and a dark hoof. The back legs are bent at the hock.
+    // A cream rump patch and a short tail that flicks up.
+    const rumpPatch = add(this.blob(0.075, 1.05, 1.15, 0.5), cream, 0, BY + 0.03, -RZ + 0.015);
+    rumpPatch.rotation.x = 0.1;
+    const tail = add(this.blob(0.04, 0.7, 1.35, 0.9), cream, 0, BY + 0.11, -RZ - 0.02);
+    tail.rotation.x = -0.7;
+    // Legs: sturdy and tapered, swinging from the shoulder or hip, with a knee and a hoof. The back legs bend at the hock.
     const legs: THREE.Object3D[] = [];
-    for (const [x, z, hind] of [[0.075, 0.2, 0], [-0.075, 0.2, 0], [0.075, -0.2, 1], [-0.075, -0.2, 1]] as const) {
+    for (const [x, z, hind] of [[0.085, 0.22, 0], [-0.085, 0.22, 0], [0.085, -0.23, 1], [-0.085, -0.23, 1]] as const) {
       const leg = new THREE.Group();
-      leg.position.set(x, BY - 0.06, z);
-      const upper = add(new THREE.CylinderGeometry(0.034, 0.02, 0.28, 10), hind ? fur : fur, 0, -0.13, 0, leg);
-      upper.rotation.x = hind ? 0.22 : -0.04;
-      upper.position.z = hind ? -0.015 : 0;
+      leg.position.set(x, BY - 0.07, z);
+      const upper = add(new THREE.CylinderGeometry(hind ? 0.05 : 0.04, 0.026, 0.25, 10), fur, 0, -0.115, 0, leg);
+      upper.rotation.x = hind ? 0.32 : -0.03;
+      upper.position.z = hind ? -0.03 : 0;
       const knee = new THREE.Group();
-      knee.position.set(0, -0.265, hind ? -0.055 : -0.01);
-      knee.rotation.x = hind ? -0.42 : 0.06;
+      knee.position.set(0, -0.235, hind ? -0.06 : -0.005);
+      knee.rotation.x = hind ? -0.5 : 0.05;
       leg.add(knee);
-      add(new THREE.CylinderGeometry(0.019, 0.011, 0.28, 8), furDark, 0, -0.14, 0, knee);
-      add(new THREE.CylinderGeometry(0.0135, 0.018, 0.045, 8), dark, 0, -0.29, 0, knee);
+      add(new THREE.CylinderGeometry(0.026, 0.0155, 0.27, 8), furDark, 0, -0.13, 0, knee);
+      add(new THREE.CylinderGeometry(0.0165, 0.021, 0.05, 8), hoof, 0, -0.275, 0.004, knee);
+      add(this.blob(0.024, 1, 0.9, 1), furDark, 0, 0.0, 0, knee);
       g.add(leg);
       legs.push(leg);
     }
-    // The neck: one tapered tube leaning forward from the shoulder, on a pivot that dips to graze, with a cream throat.
+    // The neck: a thick tapered tube leaning forward from the shoulder, on a pivot that dips to graze, with a pale throat.
     const neck = new THREE.Group();
-    neck.position.set(0, BY + 0.05, 0.25);
+    neck.position.set(0, BY + 0.07, 0.29);
     g.add(neck);
-    const stemGeo = new THREE.CylinderGeometry(0.043, 0.078, 0.42, 16, 5);
-    stemGeo.translate(0, 0.21, 0);
-    shade(stemGeo, (_x, _y, z) => (z > 0.55 ? (z - 0.55) * 1.6 : 0));
+    const NL = 0.36;
+    const LEAN = 0.72;
+    const stemGeo = new THREE.CylinderGeometry(0.05, 0.088, NL, 18, 5);
+    stemGeo.translate(0, NL / 2, 0);
+    shade(stemGeo, (_x, y, z) => (z > 0.6 ? 0.7 + (z - 0.6) * 0.7 : y > 0.3 ? 0.2 : 0.35));
     const stem = add(stemGeo, shaded, 0, 0, 0, neck);
-    stem.rotation.x = 0.5;
+    stem.rotation.x = LEAN;
     const head = new THREE.Group();
-    head.position.set(0, 0.42 * Math.cos(0.5) + 0.01, 0.42 * Math.sin(0.5) + 0.03);
-    head.rotation.x = 0.55;
+    head.position.set(0, NL * Math.cos(LEAN) + 0.01, NL * Math.sin(LEAN) + 0.02);
+    head.rotation.x = 0.85;
     neck.add(head);
-    add(this.blob(0.058, 0.88, 0.95, 1.2), fur, 0, 0, 0, head);
-    add(this.blob(0.036, 0.85, 0.82, 1.55), fur, 0, -0.022, 0.07, head);
-    add(this.blob(0.03, 0.85, 0.7, 1.2), light, 0, -0.04, 0.052, head);
-    add(this.blob(0.017, 1.1, 0.85, 0.9), black, 0, -0.018, 0.123, head);
-    add(this.blob(0.006, 1, 0.8, 0.8), white, 0.006, -0.012, 0.133, head);
+    // Skull, a long muzzle, a dark nose, a pale chin.
+    add(this.blob(0.064, 0.92, 0.98, 1.2), fur, 0, 0, 0, head);
+    add(this.blob(0.042, 0.82, 0.78, 1.75), fur, 0, -0.022, 0.085, head);
+    add(this.blob(0.034, 0.8, 0.62, 1.35), cream, 0, -0.046, 0.07, head);
+    add(this.blob(0.022, 1.15, 0.9, 0.95), muzzle, 0, -0.016, 0.152, head);
+    add(this.blob(0.0065, 1, 0.8, 0.8), white, 0.008, -0.009, 0.163, head);
     for (const s of [-1, 1]) {
-      add(this.blob(0.0135, 1, 1.1, 0.7), black, s * 0.048, 0.016, 0.045, head);
-      add(this.blob(0.004, 1, 1, 0.6), white, s * 0.046, 0.021, 0.056, head);
-      const ear = add(this.blob(0.05, 0.28, 1.35, 0.85), fur, s * 0.074, 0.056, -0.028, head);
-      ear.rotation.z = -s * 0.85;
-      ear.rotation.x = -0.15;
-      const inner = add(this.blob(0.036, 0.18, 1.15, 0.65), light, s * 0.0745, 0.054, -0.021, head);
-      inner.rotation.z = -s * 0.85;
-      inner.rotation.x = -0.15;
+      // Eyes on the sides, with a gleam.
+      add(this.blob(0.015, 1, 1.15, 0.75), black, s * 0.054, 0.018, 0.05, head);
+      add(this.blob(0.0045, 1, 1, 0.6), white, s * 0.052, 0.024, 0.062, head);
+      // Big leaf ears, lined with cream.
+      const ear = add(this.blob(0.058, 0.26, 1.45, 0.85), fur, s * 0.082, 0.062, -0.03, head);
+      ear.rotation.z = -s * 0.95;
+      ear.rotation.x = -0.12;
+      const inner = add(this.blob(0.042, 0.18, 1.2, 0.65), cream, s * 0.0835, 0.06, -0.022, head);
+      inner.rotation.z = -s * 0.95;
+      inner.rotation.x = -0.12;
+      // Antlers: a main beam sweeping back and up, with tines.
+      const antler = new THREE.Group();
+      antler.position.set(s * 0.036, 0.062, -0.012);
+      antler.rotation.set(-0.35, 0, -s * 0.32);
+      head.add(antler);
+      const beam = add(new THREE.CylinderGeometry(0.0085, 0.0125, 0.27, 7), horn, 0, 0.135, 0, antler);
+      beam.rotation.x = -0.28;
+      for (const [y, len, ang] of [[0.07, 0.11, 0.5], [0.14, 0.13, 0.42], [0.21, 0.1, 0.36]] as const) {
+        const tine = add(new THREE.CylinderGeometry(0.005, 0.009, len, 6), horn, 0, 0, 0, antler);
+        tine.position.set(s * 0.004, y, -y * 0.28);
+        tine.rotation.set(0.2, 0, -s * ang);
+        tine.translateY(len / 2);
+      }
     }
-    // The neck pivot is returned as "head": it dips (rotation.x towards 1.0) to graze.
+    // The neck pivot is returned as "head": it dips (rotation.x towards 1.1) to graze.
     return { g, head: neck, legs };
   }
 
@@ -872,7 +886,7 @@ export class GardenScene {
       if (spot) {
         const { g, head, legs } = this.makeDeer();
         g.position.copy(spot);
-        g.scale.setScalar(2.1);
+        g.scale.setScalar(1.9);
         g.userData.id = "visitor:deer";
         this.pickables.push(g);
         this.island.add(g);
@@ -901,7 +915,7 @@ export class GardenScene {
       v.sleep = THREE.MathUtils.lerp(v.sleep, night ? 1 : 0, 0.03);
       if (night && v.state === "walk") v.state = "graze";
       v.graze = THREE.MathUtils.lerp(v.graze, night || v.state === "graze" ? 1 : v.state === "walk" ? 0.1 : 0, 0.05);
-      v.head.rotation.x = v.graze * 0.95 + Math.sin(t * 1.4 + v.ph) * 0.02 * (1 - v.graze);
+      v.head.rotation.x = v.graze * 1.1 + Math.sin(t * 1.4 + v.ph) * 0.02 * (1 - v.graze);
       if (!night && t > v.until) {
         if (v.state === "graze") {
           v.state = "look";
