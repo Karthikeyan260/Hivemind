@@ -162,7 +162,7 @@ export function PartyTable({ role, room, myName, hostName, onHostAway }: { role:
       ) : ph.screen === "game" && (party.role === "host" || party.live) ? (
         <GameScreen party={party} game={ph.game} n={ph.n} room={room} />
       ) : (
-        <Lobby party={party} pals={<PetPals party={party} guest={guestControls} />} />
+        <Lobby party={party} pals={<PetPals party={party} guest={guestControls} mine={myPet} />} />
       )}
       {(host ? party.stage !== "error" : party.live) && (
         <>

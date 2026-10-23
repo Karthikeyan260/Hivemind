@@ -28,9 +28,10 @@ export type GuestControls = {
   gotFlower: boolean;
 };
 
-export function PetPals({ party, guest }: { party: Party; guest?: GuestControls }) {
-  const pals = party.players.filter((p) => (p.online || p.host) && p.pet);
-  const mine = party.players.find((p) => p.id === party.me)?.pet;
+export function PetPals({ party, guest, mine }: { party: Party; guest?: GuestControls; /** This player's own pet as this device knows it (shown at once, even before the table has heard of it). */ mine?: PartyPet | null }) {
+  // Everyone's pets as the table knows them, with this player's own first (it counts even while still joining).
+  const known = party.players.filter((p) => (p.online || p.host) && p.pet);
+  const pals = mine && !known.some((p) => p.id === party.me) ? [{ id: party.me, name: "you", online: true, pet: mine }, ...known] : known;
   const [open, setOpen] = useState<string | null>(null);
   // The pet that just got a flower (a flower floats up from it for a moment).
   const [bloom, setBloom] = useState<string | null>(null);
