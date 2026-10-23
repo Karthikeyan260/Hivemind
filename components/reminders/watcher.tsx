@@ -36,6 +36,9 @@ export function ReminderWatcher() {
   const busy = useRef(false);
   const briefed = useRef<string | null>(null);
   const locked = isPublicPage(path);
+  // On the garden the morning card is a slim strip (it would cover the island): tap to open it.
+  const onGarden = path.startsWith("/garden");
+  const [open, setOpen] = useState<Record<string, boolean>>({});
 
   const dismiss = (key: string) => setToasts((t) => t.filter((x) => x.key !== key));
 
@@ -117,7 +120,7 @@ export function ReminderWatcher() {
   if (locked || !toasts.length) return null;
 
   return (
-    <div className="pointer-events-none fixed right-4 top-[max(1rem,env(safe-area-inset-top))] z-[60] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2">
+    <div className={cx("pointer-events-none fixed right-4 z-[60] flex flex-col gap-2", onGarden ? "top-[8.4rem] w-[min(21rem,calc(100vw-2rem))] sm:top-[7.4rem]" : "top-[max(1rem,env(safe-area-inset-top))] w-[min(24rem,calc(100vw-2rem))]")}>
       {toasts.map((t) => (
         <div
           key={t.key}
@@ -165,12 +168,21 @@ export function ReminderWatcher() {
                 </span>
                 <ListenButton day={t.day} />
               </div>
-              <YourDay day={t.day} compact />
-              {/* Mornings only: the day's kural, chosen from last night. */}
-              {new Date().getHours() >= 4 && new Date().getHours() < 12 && (
-                <div className="mt-2.5">
-                  <TodaysKural compact />
-                </div>
+              {(!onGarden || open[t.key]) && (
+                <>
+                  <YourDay day={t.day} compact />
+                  {/* Mornings only: the day's kural, chosen from last night. */}
+                  {new Date().getHours() >= 4 && new Date().getHours() < 12 && (
+                    <div className="mt-2.5">
+                      <TodaysKural compact />
+                    </div>
+                  )}
+                </>
+              )}
+              {onGarden && (
+                <button type="button" onClick={() => setOpen((o) => ({ ...o, [t.key]: !o[t.key] }))} className="mt-1 font-mono text-[10px] uppercase tracking-widest text-data hover:text-fg">
+                  {open[t.key] ? "Show less" : "Show my day"}
+                </button>
               )}
             </div>
           )}

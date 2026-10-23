@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import type { Pet } from "@/lib/pet";
 import { ACCESSORIES, type AccessoryId, type Festival } from "@/lib/pet-looks";
 import { GLOW, type Look } from "./shared";
 
 /** The pet's card: how it's doing, what fed it, what it wears, and what to play. */
 export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSeek, onWalk, onFireflies, voiceOn, onVoice, festival, onWear, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: React.CSSProperties; sheet: boolean; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; onFireflies: () => void; voiceOn: boolean; onVoice: () => void; festival: Festival | null; onWear: (w: AccessoryId | "none") => void; onClose: () => void; onHide: () => void }) {
+  // The line under the accessories: what was just tapped (how to earn it, or that it is on).
+  const [hint, setHint] = useState("");
   const fedPct = pet.fed.due ? Math.round((pet.fed.done / pet.fed.due) * 100) : 0;
   return (
     <div
@@ -61,8 +64,13 @@ export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSee
           ✨ Today&apos;s look: {festival.name}
         </p>
       )}
-      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-faint">Wear</p>
-      <div className="mt-1 flex flex-wrap gap-1.5">
+      <div className="mt-3 flex items-baseline justify-between">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-faint">Wear</p>
+        <span className="font-mono text-[10px] text-faint">
+          {pet.unlocked.length}/{ACCESSORIES.length} earned
+        </span>
+      </div>
+      <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]">
         {[...ACCESSORIES].sort((a, b) => Number(pet.unlocked.includes(b.id)) - Number(pet.unlocked.includes(a.id))).map((a) => {
           const has = pet.unlocked.includes(a.id);
           const on = pet.wear === a.id;
@@ -70,17 +78,22 @@ export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSee
             <button
               key={a.id}
               type="button"
-              disabled={!has}
-              onClick={() => onWear(on ? "none" : a.id)}
+              aria-label={has ? `${a.name}${on ? " (wearing)" : ""}` : `${a.name}, locked`}
+              onClick={() => {
+                if (!has) return setHint(`🔒 ${a.name}: ${a.how}`);
+                setHint(on ? `Took off the ${a.name.toLowerCase()}` : `Wearing the ${a.name.toLowerCase()}`);
+                onWear(on ? "none" : a.id);
+              }}
               title={has ? (on ? "Take it off" : `Wear the ${a.name.toLowerCase()}`) : `Earn it: ${a.how}`}
-              className={`rounded-full border px-2.5 py-1 text-xs ${on ? "border-amber-300 bg-amber-300/15 text-amber-200" : "border-line"} ${has ? "hover:border-line-strong" : "cursor-not-allowed opacity-40"}`}
+              className={`relative grid size-10 shrink-0 place-items-center rounded-full border text-lg transition ${on ? "border-amber-300 bg-amber-300/20 shadow-[0_0_14px_-2px_rgba(252,211,77,.7)]" : has ? "border-line hover:border-line-strong" : "border-line/60 opacity-45 grayscale"}`}
             >
-              {a.emoji} {a.name}
-              {!has && " 🔒"}
+              {a.emoji}
+              {!has && <span className="absolute -right-0.5 -top-0.5 text-[9px] leading-none">🔒</span>}
             </button>
           );
         })}
       </div>
+      <p className="mt-1 min-h-4 text-[11px] text-soft">{hint || "Tap one to wear it, or a locked one to see how to earn it."}</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button type="button" onClick={onSeek} className="rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
           🙈 Hide and seek

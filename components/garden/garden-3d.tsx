@@ -578,14 +578,14 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/55 to-transparent" />
 
         {/* Title. */}
-        <div className="pointer-events-none absolute top-5 left-5 sm:top-7 sm:left-8">
-          <p className="font-mono text-[10px] tracking-[0.35em] text-white/60 uppercase">Pocket pet · {bedtime ? "🌙 Bedtime" : PHASE_NAME[phase]}
+        <div className="pointer-events-none absolute top-5 left-5 max-w-[52%] sm:top-7 sm:left-8 sm:max-w-none">
+          <p className="hidden font-mono text-[10px] tracking-[0.35em] text-white/60 uppercase sm:block">Pocket pet · {bedtime ? "🌙 Bedtime" : PHASE_NAME[phase]}
             {fest ? ` · ${DECOR_ICON[fest] ?? ""} ${festivalById(fest)?.name ?? fest}` : monsoon || wet ? ` · ${DECOR_ICON.monsoon} Monsoon` : ""}
             {` · ${SEASON_ICON[season]} ${season}`}
             {g && g.streak > 0 ? ` · 🔥 ${g.streak}-day streak` : ""}
             {mood !== null ? ` · ${MOOD_TEXT[mood - 1]}` : ""}
           </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)] sm:text-5xl">{g?.pet ?? "Nova"}&apos;s garden</h1>
+          <h1 className="mt-1 text-2xl leading-tight font-semibold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)] sm:text-5xl">{g?.pet ?? "Nova"}&apos;s garden</h1>
           <p className="mt-2 max-w-sm text-sm text-white/75 drop-shadow">Everything you keep up with grows here.</p>
         </div>
 
@@ -601,13 +601,13 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
               ["🎵", c?.music ?? 0, "Music flowers", "a song you listened to"],
               ["🦋", c?.butterflies ?? 0, "Butterflies", "songs you played"],
             ].map(([e, num, what, why]) => (
-              <div key={String(what)} className="min-w-[104px] shrink-0 rounded-2xl border border-white/15 bg-white/10 px-3.5 py-2.5 text-white shadow-lg backdrop-blur-xl sm:min-w-[132px] sm:px-4 sm:py-3" title={String(why)}>
+              <div key={String(what)} className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white shadow-lg backdrop-blur-xl sm:block sm:min-w-[132px] sm:rounded-2xl sm:px-4 sm:py-3" title={String(why)}>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-base sm:text-lg">{e}</span>
-                  <span className="text-xl font-semibold tabular-nums sm:text-2xl">{num}</span>
+                  <span className="text-sm sm:text-lg">{e}</span>
+                  <span className="text-base font-semibold tabular-nums sm:text-2xl">{num}</span>
                 </div>
-                <p className="text-[11px] font-medium text-white/90">{what}</p>
-                <p className="text-[10px] text-white/55">{why}</p>
+                <p className="whitespace-nowrap text-[11px] font-medium text-white/90">{what}</p>
+                <p className="hidden text-[10px] text-white/55 sm:block">{why}</p>
               </div>
             ))}
           </div>
@@ -619,7 +619,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
           <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
             <div className="flex gap-2">
               <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/40 px-3.5 py-2 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-black/55">
-                📸 Share
+                📸<span className="hidden sm:inline"> Share</span>
               </button>
               <button onClick={() => void goodNight()} className="flex items-center gap-1.5 rounded-full border border-indigo-200/30 bg-[#0d1024]/70 px-3.5 py-2 text-xs font-medium text-indigo-100 shadow-lg backdrop-blur-md transition hover:bg-[#161a3a]/80">
                 🌙 Good night

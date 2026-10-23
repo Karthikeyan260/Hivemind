@@ -214,11 +214,11 @@ export class GardenLife {
     const { R, island, dayOnly, quality } = this.c;
     // [model, wingspan to scale to, turn it to face along +z]
     const plan: [string, number, number][] = [
-      ["Parrot", 0.9, 0],
-      ["Stork", 1.25, 0],
-      ["Flamingo", 1.2, 0],
-      ["Parrot", 0.8, 0],
-      ["Stork", 1.1, 0],
+      ["Parrot", 1.2, 0],
+      ["Stork", 1.6, 0],
+      ["Flamingo", 1.5, 0],
+      ["Parrot", 1.05, 0],
+      ["Stork", 1.4, 0],
     ].slice(0, quality === "high" ? 5 : 3) as [string, number, number][];
     const loader = new GLTFLoader();
     const models = new Map<string, Promise<{ scene: THREE.Object3D; clip: THREE.AnimationClip } | null>>();
@@ -273,7 +273,7 @@ export class GardenLife {
     const n = quality === "high" ? 5 : 3;
     for (let i = 0; i < n; i++) {
       const rig = this.makeBird(SPECIES[i % SPECIES.length], i * 1.9);
-      rig.g.scale.setScalar(2.7);
+      rig.g.scale.setScalar(3.3);
       this.birds.push({ ...rig, a0: i * 0.5 + hash01(`bird${i}`) * 0.2, rad: R * (0.85 + (i % 3) * 0.17), h: 4.5 + (i % 3) * 0.9 + hash01(`birdh${i}`) * 0.5, sp: 0.1 + (i % 2) * 0.03, dir: i % 2 ? -1 : 1 });
       dayOnly.push(rig.g);
       island.add(rig.g);
@@ -284,7 +284,7 @@ export class GardenLife {
     for (let i = 0; i < perches && i < spots.length; i++) {
       const p = spots[i * 2 < spots.length ? i * 2 : i];
       const rig = this.makeBird(SPECIES[(i + 1) % SPECIES.length], 7 + i * 2.3);
-      rig.g.scale.setScalar(2.4);
+      rig.g.scale.setScalar(3);
       // Wings folded back along the sides.
       rig.wl.rotation.set(0.05, 1.45, -0.18);
       rig.wr.rotation.set(0.05, -1.45, 0.18);
@@ -372,7 +372,7 @@ export class GardenLife {
         wl.push(a);
         wr.push(b);
       }
-      g.scale.setScalar(3.1);
+      g.scale.setScalar(4);
       const start = flowers[Math.floor(hash01(`bee${i}`) * flowers.length)];
       const from = start.clone().add(new THREE.Vector3(0, 0.42, 0));
       g.position.copy(from);
@@ -439,7 +439,7 @@ export class GardenLife {
         g.add(a);
         w.push(a);
       }
-      g.scale.setScalar(2.9);
+      g.scale.setScalar(3.6);
       this.dragons.push({ g, w, ph: i * 3.1, sp: 0.5 + i * 0.12 });
       dayOnly.push(g);
       island.add(g);
@@ -518,7 +518,7 @@ export class GardenLife {
         barbel.rotation.set(Math.PI / 2 - 0.4, 0, s * 0.5);
         g.add(barbel);
       }
-      g.scale.setScalar(1.7);
+      g.scale.setScalar(2.3);
       // Rings that spread out on the water behind it.
       const wakes = Array.from({ length: 3 }, () => {
         const m = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 32), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
