@@ -5,7 +5,7 @@ import { ACCESSORIES, type AccessoryId, type Festival } from "@/lib/pet-looks";
 import { GLOW, type Look } from "./shared";
 
 /** The pet's card: how it's doing, what fed it, what it wears, and what to play. */
-export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSeek, onWalk, voiceOn, onVoice, festival, onWear, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: React.CSSProperties; sheet: boolean; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; voiceOn: boolean; onVoice: () => void; festival: Festival | null; onWear: (w: AccessoryId | "none") => void; onClose: () => void; onHide: () => void }) {
+export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSeek, onWalk, onFireflies, voiceOn, onVoice, festival, onWear, onClose, onHide }: { pet: Pet; line: string; mood: Look; place: string; at: React.CSSProperties; sheet: boolean; roam: boolean; onRoam: () => void; onSeek: () => void; onWalk: () => void; onFireflies: () => void; voiceOn: boolean; onVoice: () => void; festival: Festival | null; onWear: (w: AccessoryId | "none") => void; onClose: () => void; onHide: () => void }) {
   const fedPct = pet.fed.due ? Math.round((pet.fed.done / pet.fed.due) * 100) : 0;
   return (
     <div
@@ -55,7 +55,7 @@ export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSee
       )}
       <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-faint">Wear</p>
       <div className="mt-1 flex flex-wrap gap-1.5">
-        {ACCESSORIES.map((a) => {
+        {[...ACCESSORIES].sort((a, b) => Number(pet.unlocked.includes(b.id)) - Number(pet.unlocked.includes(a.id))).map((a) => {
           const has = pet.unlocked.includes(a.id);
           const on = pet.wear === a.id;
           return (
@@ -64,7 +64,7 @@ export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSee
               type="button"
               disabled={!has}
               onClick={() => onWear(on ? "none" : a.id)}
-              title={has ? (on ? "Take it off" : `Wear the ${a.name.toLowerCase()}`) : `Unlocks at stage ${a.stage + 1}`}
+              title={has ? (on ? "Take it off" : `Wear the ${a.name.toLowerCase()}`) : `Earn it: ${a.how}`}
               className={`rounded-full border px-2.5 py-1 text-xs ${on ? "border-amber-300 bg-amber-300/15 text-amber-200" : "border-line"} ${has ? "hover:border-line-strong" : "cursor-not-allowed opacity-40"}`}
             >
               {a.emoji} {a.name}
@@ -79,6 +79,9 @@ export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSee
         </button>
         <button type="button" onClick={onRoam} className="rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
           {roam ? "📍 Stay here" : "✨ Wander around"}
+        </button>
+        <button type="button" onClick={onFireflies} className="col-span-2 rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
+          ✨ Catch fireflies{pet.fireflies.best > 0 ? ` · best ${pet.fireflies.best}` : ""}
         </button>
         <button type="button" onClick={onWalk} className="col-span-2 rounded-lg border border-line px-2 py-1.5 text-xs hover:border-line-strong">
           🏮 Lantern walk: find sparks in the dark

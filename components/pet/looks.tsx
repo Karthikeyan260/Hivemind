@@ -11,6 +11,8 @@ export function Looks({ festival, wear, sky = "calm" }: { festival: Festival | n
   const id = festival?.id;
   const wet = sky === "rain" || sky === "thunder";
   const hat = wet ? <Umbrella /> : id === "christmas" ? <SantaHat /> : id === "newyear" ? <PartyHat /> : null;
+  // What it wears on its head (one piece), chosen by the owner; a festival's own hat or the rain's umbrella wins on the day.
+  const headWear = wear === "bow" ? <Bow /> : wear === "crown" ? <Crown /> : wear === "cap" ? <Cap /> : wear?.startsWith("hat-") ? <KeptHat id={wear} /> : null;
   return (
     <svg viewBox="0 0 100 100" className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden>
       {/* Behind-and-around pieces first. */}
@@ -35,8 +37,10 @@ export function Looks({ festival, wear, sky = "calm" }: { festival: Festival | n
 
       {/* On the lantern. */}
       {wear === "garland" && <Garland />}
+      {wear === "scarf" && <Scarf />}
+      {wear === "headphones" && <Headphones />}
       {(wear === "shades" || sky === "sunny") && <Shades />}
-      {hat ?? (wear === "bow" ? <Bow /> : null)}
+      {hat ?? headWear}
     </svg>
   );
 }
@@ -50,6 +54,110 @@ function Bow() {
       <circle r="2.8" fill="#f06595" stroke="#c2255c" strokeWidth="0.8" />
     </g>
   );
+}
+
+function Crown() {
+  return (
+    <g transform="translate(50 15)">
+      <path d="M-13 6 L-14 -7 L-7 0 L0 -10 L7 0 L14 -7 L13 6 Z" fill="#ffd43b" stroke="#e67700" strokeWidth="0.9" strokeLinejoin="round" />
+      <rect x="-13" y="4" width="26" height="4" rx="1.5" fill="#fcc419" stroke="#e67700" strokeWidth="0.8" />
+      <circle cx="0" cy="-10" r="2" fill="#ff6b6b" stroke="#c92a2a" strokeWidth="0.5" />
+      <circle cx="-14" cy="-7" r="1.6" fill="#4dabf7" stroke="#1971c2" strokeWidth="0.5" />
+      <circle cx="14" cy="-7" r="1.6" fill="#4dabf7" stroke="#1971c2" strokeWidth="0.5" />
+      <circle cx="0" cy="6" r="1.5" fill="#69db7c" />
+    </g>
+  );
+}
+
+function Cap() {
+  return (
+    <g transform="translate(50 18)">
+      <path d="M-15 4 Q-14 -13 0 -14 Q14 -13 15 4 Z" fill="#339af0" stroke="#1864ab" strokeWidth="0.9" />
+      <path d="M5 3 Q22 1 24 7 Q14 8 4 6 Z" fill="#1c7ed6" stroke="#1864ab" strokeWidth="0.9" />
+      <circle cx="0" cy="-14" r="1.8" fill="#1864ab" />
+      <path d="M-3 -6 L3 -6" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" opacity="0.8" />
+    </g>
+  );
+}
+
+function Headphones() {
+  return (
+    <g>
+      <path d="M27 46 Q26 6 50 6 Q74 6 73 46" stroke="#343a40" strokeWidth="3.2" fill="none" strokeLinecap="round" />
+      <rect x="21" y="38" width="9" height="18" rx="4" fill="#e03131" stroke="#862e2e" strokeWidth="0.9" />
+      <rect x="70" y="38" width="9" height="18" rx="4" fill="#e03131" stroke="#862e2e" strokeWidth="0.9" />
+      <rect x="24" y="42" width="3" height="10" rx="1.5" fill="#ffa8a8" opacity="0.8" />
+      <rect x="73" y="42" width="3" height="10" rx="1.5" fill="#ffa8a8" opacity="0.8" />
+    </g>
+  );
+}
+
+function Scarf() {
+  return (
+    <g>
+      <path d="M26 68 Q50 80 74 68 L75 77 Q50 89 25 77 Z" fill="#e8590c" stroke="#9c3a05" strokeWidth="0.9" />
+      <path d="M34 74 l3 10 M46 78 l3 10 M58 78 l3 10 M68 74 l3 10" stroke="#ffd8a8" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+      <path d="M62 80 L66 98 L76 96 L72 78 Z" fill="#e8590c" stroke="#9c3a05" strokeWidth="0.9" />
+      <path d="M65 90 L74 88 M66 95 L75 93" stroke="#ffd8a8" strokeWidth="1.4" />
+    </g>
+  );
+}
+
+/** A festival hat the pet keeps after the day: worn on any day it was earned for. */
+function KeptHat({ id }: { id: string }) {
+  switch (id) {
+    case "hat-christmas":
+      return <SantaHat />;
+    case "hat-newyear":
+      return <PartyHat />;
+    case "hat-deepavali":
+      return (
+        <g>
+          <ellipse cx="50" cy="6" rx="18" ry="3.4" fill="#c2410c" stroke="#7c2d12" strokeWidth="0.8" />
+          <Diya x={34} y={5} small />
+          <Diya x={50} y={2} />
+          <Diya x={66} y={5} small delay={0.4} />
+        </g>
+      );
+    case "hat-karthigai":
+      return (
+        <g>
+          <path d="M36 14 Q50 24 64 14 L60 8 Q50 14 40 8 Z" fill="#b4562f" stroke="#7c2d12" strokeWidth="0.8" />
+          <Diya x={50} y={4} small />
+        </g>
+      );
+    case "hat-pongal":
+      return (
+        <g transform="translate(50 12) scale(0.75)">
+          <ellipse cy="2" rx="12" ry="9" fill="#c2410c" stroke="#7c2d12" strokeWidth="0.8" />
+          <path d="M-12 0 Q0 5 12 0" stroke="#ffd43b" strokeWidth="1.6" fill="none" />
+          <path d="M-8 -8 Q-10 -15 -4 -14 Q-1 -20 4 -15 Q10 -16 8 -9" fill="#fffdf5" stroke="#dee2e6" strokeWidth="0.7" />
+        </g>
+      );
+    case "hat-puthandu":
+      return (
+        <g>
+          {Array.from({ length: 7 }, (_, i) => {
+            const a = Math.PI + ((i + 0.5) / 7) * Math.PI;
+            const x = 50 + Math.cos(a) * 15;
+            const y = 20 + Math.sin(a) * 10;
+            return <path key={i} d={`M${x} ${y} q-2.4 -5 0 -10 q2.4 5 0 10`} transform={`rotate(${(a * 180) / Math.PI + 90} ${x} ${y})`} fill="#40c057" stroke="#2b8a3e" strokeWidth="0.6" />;
+          })}
+          <circle cx="50" cy="4" r="2.6" fill="#ffa94d" stroke="#e8590c" strokeWidth="0.6" />
+        </g>
+      );
+    case "hat-india":
+      return (
+        <g>
+          <rect x="29" y="27" width="42" height="3.4" rx="1.4" fill="#ff922b" />
+          <rect x="29" y="30.4" width="42" height="3.4" fill="#f8f9fa" />
+          <rect x="29" y="33.8" width="42" height="3.4" rx="1.4" fill="#2f9e44" />
+          <circle cx="50" cy="32" r="1.6" fill="none" stroke="#1c7ed6" strokeWidth="0.6" />
+        </g>
+      );
+    default:
+      return null;
+  }
 }
 
 function Garland() {

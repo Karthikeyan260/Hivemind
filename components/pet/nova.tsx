@@ -12,6 +12,7 @@ import type { Pet } from "@/lib/pet";
 import { type AccessoryId, accessoryFor, type Festival, festivalById, festivalOn } from "@/lib/pet-looks";
 import { judgeGuess } from "@/lib/pet-seek";
 import { PetCard } from "./card";
+import { FireflyGame } from "./fireflies";
 import { Creature } from "./creature";
 import { between, clamp, dayNow, GLOW, home, hourNow, type Look, pick, type Pos, reserve, SIZE, type Spot, store } from "./shared";
 import { coversControl, hidingSpot, PEEK_CLIP } from "./space";
@@ -94,6 +95,8 @@ export function Nova() {
   const [seek, setSeek] = useState<Seek | null>(null);
   const [say, setSay] = useState<string | null>(null);
   const [walk, setWalk] = useState<Walk | null>(null);
+  // The firefly game (a full-screen overlay).
+  const [catching, setCatching] = useState(false);
   const [clock, setClock] = useState(0);
   const [look, setLookAt] = useState({ x: 0, y: 0 });
   // The living sky outside (umbrella in the rain, shades in the sun), and a jump at thunder.
@@ -685,12 +688,15 @@ export function Nova() {
       },
     },
     nova_wear: {
-      description: "Dress the pet: input an accessory it has unlocked ('bow', 'malli garland', 'shades', or 'none' to take it off), or a festival to preview that look for a while ('Diwali', 'Karthigai Deepam', 'Pongal', 'Tamil New Year', 'Christmas', 'New Year', 'Independence Day'). Festival looks also appear on their own on those days.",
+      description: "Dress the pet: input an accessory it has earned ('bow', 'malli garland', 'shades', 'cap', 'crown', 'headphones', 'scarf', a kept festival hat like 'santa hat' or 'diya crown', or 'none' to take it off; each is earned by something the owner does, shown on its card), or a festival to preview that look for a while ('Diwali', 'Karthigai Deepam', 'Pongal', 'Tamil New Year', 'Christmas', 'New Year', 'Independence Day'). Festival looks also appear on their own on those days.",
       run: async ({ input }) => {
         touched();
         if (!pet) return { error: "The pet is still waking up." };
         const said = String(input ?? "");
-        const fest = FEST_WORDS.find(([re]) => re.test(said));
+        // "wear the santa hat" is an accessory the pet kept, not a festival preview.
+        const asked = accessoryFor(said);
+        const dressing = !!asked && asked !== "none" && /\b(wear|put on|hat|crown|band|cap|headphones?|scarf|muffler)\b/i.test(said);
+        const fest = dressing ? undefined : FEST_WORDS.find(([re]) => re.test(said));
         if (fest) {
           const f = festivalById(fest[1]);
           setPreview(f);
@@ -700,9 +706,9 @@ export function Nova() {
           return { previewing: f?.name, seconds: 20 };
         }
         const w = accessoryFor(said);
-        if (!w) return { error: "Say bow, garland, shades or none (or a festival to preview its look).", unlocked: pet.unlocked };
+        if (!w) return { error: "Say which accessory (bow, garland, shades, cap, crown, headphones, scarf, a festival hat) or none, or a festival to preview its look.", unlocked: pet.unlocked };
         const r = await wearIt(w);
-        if ("error" in r) return { ...r, unlocked: pet.unlocked, note: "Accessories unlock as it grows: bow at Baby, garland at Glowing, shades at Crowned." };
+        if ("error" in r) return { ...r, unlocked: pet.unlocked, note: "Each accessory is earned: bow, garland and shades by growing; a cap by a 7-day habit streak; a crown by 5 game wins in a row; headphones by 100 songs; a scarf by visiting in winter; a festival hat by being here on its day." };
         hop();
         speak(w === "none" ? "Simple-ah irukken 🙂" : "Eppadi irukku? 😎", 3000);
         return { wearing: w };
@@ -891,6 +897,10 @@ export function Nova() {
           }}
           onSeek={startSeek}
           onWalk={startWalk}
+          onFireflies={() => {
+            setOpen(false);
+            setCatching(true);
+          }}
           voiceOn={voiceOn}
           onVoice={() => {
             const next = !voiceOn;
@@ -905,6 +915,19 @@ export function Nova() {
             setHidden(true);
             setOpen(false);
             store.set(HIDE_KEY, "1");
+          }}
+        />
+      )}
+      {catching && pet && (
+        <FireflyGame
+          name={pet.name}
+          best={pet.fireflies.best}
+          onClose={() => setCatching(false)}
+          onFinish={async (score) => {
+            const r = await fetch("/api/pet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fireflies: score }) }).catch(() => null);
+            const data = r?.ok ? ((await r.json().catch(() => null)) as { best: number; newBest: boolean; pet?: Pet } | null) : null;
+            if (data?.pet) setPet(data.pet);
+            return data ? { best: data.best, newBest: data.newBest } : null;
           }}
         />
       )}

@@ -2,9 +2,9 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { listCheckins } from "@/lib/checkin";
 import { listResults } from "@/lib/games/stats";
-import { listHabits } from "@/lib/habits";
+import { listHabits, stats as habitStats } from "@/lib/habits";
 import { listPlays } from "@/lib/plays";
-import { type AccessoryId, unlocked } from "@/lib/pet-looks";
+import { type AccessoryId, bestWinStreak, earnedAccessories, festivalOn, isWinter } from "@/lib/pet-looks";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { addDays, localParts } from "@/lib/reminders";
 
@@ -15,7 +15,7 @@ import { addDays, localParts } from "@/lib/reminders";
  */
 /** walks: the local date of each finished lantern walk (all sparks found). */
 /** missedFor / stageNotified: which absence and which stage already got a push (so each one goes once). */
-type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; missedFor?: string; stageNotified?: number; wear?: AccessoryId };
+type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; missedFor?: string; stageNotified?: number; wear?: AccessoryId; /** Opened in winter once (the scarf), and the festivals it was here for (their hats). Kept for good. */ winter?: boolean; festivals?: string[]; /** The firefly game: the best score and how many times it was played. */ fireflies?: { best: number; plays: number } };
 export const DEFAULT_NAME = "Nova";
 const KEY = "pet";
 
@@ -47,6 +47,8 @@ export type Pet = {
   unlocked: AccessoryId[];
   /** The last seven days (today included): habit days done of those due, night check-ins and games won. */
   week: WeekStats;
+  /** The firefly game: best score and rounds played. */
+  fireflies: { best: number; plays: number };
 };
 
 export type WeekStats = { done: number; due: number; checkins: number; wins: number };
@@ -104,7 +106,14 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
   const name = saved?.name || DEFAULT_NAME;
   const walks = saved?.walks ?? [];
   const away = saved ? Math.round((+new Date(`${today}T00:00:00Z`) - +new Date(`${saved.lastSeen}T00:00:00Z`)) / 86_400_000) : 0;
-  if ((opts.touch ?? true) && (!saved || saved.lastSeen !== today)) await writeJSON(supabase, KEY, { ...saved, born, lastSeen: today } satisfies Saved).catch(() => {});
+  // Being here on a festival, or in winter, earns its accessory for good (only the owner looking counts, not the scheduler).
+  const touch = opts.touch ?? true;
+  const fest = touch ? festivalOn(today)?.id : undefined;
+  const festivals = fest && !saved?.festivals?.includes(fest) ? [...(saved?.festivals ?? []), fest] : (saved?.festivals ?? []);
+  const winterSeen = !!saved?.winter || (touch && isWinter(today));
+  if (touch && (!saved || saved.lastSeen !== today || festivals.length !== (saved.festivals ?? []).length || winterSeen !== !!saved.winter)) {
+    await writeJSON(supabase, KEY, { ...saved, born, lastSeen: today, winter: winterSeen || undefined, festivals: festivals.length ? festivals : undefined } satisfies Saved).catch(() => {});
+  }
 
   // Every month since it was born: songs from the months in between count too.
   const [habits, checkins, games, plays, memories] = await Promise.all([
@@ -132,6 +141,14 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
   const xp = habitDays.length * XP.habit + myCheckins.length * XP.checkin + wins * XP.win + myGames.length * XP.game + memories * XP.memory + playXp + walks.length * XP.walk;
 
   const stage = STAGES.reduce((s, x, i) => (xp >= x.at ? i : s), 0);
+  const earned = earnedAccessories({
+    stage,
+    bestStreak: habits.reduce((m, h) => Math.max(m, habitStats(h, today).best), 0),
+    winStreak: bestWinStreak([...games].sort((a, b) => a.at.localeCompare(b.at)).map((g) => g.outcome)),
+    songs: plays.length,
+    winter: winterSeen,
+    festivals,
+  });
   const next = STAGES[stage + 1];
   const progress = next ? (xp - STAGES[stage].at) / (next.at - STAGES[stage].at) : 1;
 
@@ -170,9 +187,10 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
     mood,
     fed: { done: doneToday.length, due: dueToday.length },
     today: todayList,
-    wear: saved?.wear && unlocked(stage).includes(saved.wear) ? saved.wear : null,
-    unlocked: unlocked(stage),
+    wear: saved?.wear && earned.includes(saved.wear) ? saved.wear : null,
+    unlocked: earned,
     week,
+    fireflies: saved?.fireflies ?? { best: 0, plays: 0 },
     // Sundays, when nothing else is wrong, it talks about the week.
     line: (mood === "happy" && dow === 0 && weekLine(week)) || petLine(mood, dueToday.length - doneToday.length, away),
   };
@@ -218,6 +236,17 @@ export async function logWalk(supabase: SupabaseClient) {
   return { counted: true, xp: XP.walk };
 }
 
+/** A finished firefly round: keeps the best score and the number of rounds. Returns the best and whether this was a new one. */
+export async function recordFireflies(supabase: SupabaseClient, rawScore: number) {
+  const score = Math.max(0, Math.min(500, Math.round(Number(rawScore) || 0)));
+  const saved = await readJSON<Saved | null>(supabase, KEY, null);
+  const was = saved?.fireflies ?? { best: 0, plays: 0 };
+  const next = { best: Math.max(was.best, score), plays: was.plays + 1 };
+  const today = localParts().date;
+  await writeJSON(supabase, KEY, { ...saved, born: saved?.born ?? today, lastSeen: today, fireflies: next } satisfies Saved);
+  return { score, best: next.best, plays: next.plays, newBest: score > was.best };
+}
+
 /**
  * The pet's own pushes (the scheduler runs this): "misses you" once the owner has been away 3 days
  * (once per absence, daytime only), and "evolved!" once per new stage. Its evening "hungry" nudge
@@ -259,7 +288,7 @@ export const petName = async (supabase: SupabaseClient) => (await readJSON<Saved
 /** Puts on an unlocked accessory (or none). */
 export async function wearAccessory(supabase: SupabaseClient, wear: AccessoryId | "none") {
   const pet = await getPet(supabase);
-  if (wear !== "none" && !pet.unlocked.includes(wear)) throw new Error(`Not unlocked yet: it comes at a later growth stage.`);
+  if (wear !== "none" && !pet.unlocked.includes(wear)) throw new Error("Not earned yet: see the Wear list on its card for how each one is earned.");
   const saved = await readJSON<Saved | null>(supabase, KEY, null);
   const today = localParts().date;
   await writeJSON(supabase, KEY, { ...saved, born: saved?.born ?? today, lastSeen: saved?.lastSeen ?? today, wear: wear === "none" ? undefined : wear } satisfies Saved);
