@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Screener } from "@/components/call/screener";
 import { cx } from "@/components/ui";
+import { PEER_OPTIONS } from "@/lib/ice";
 import { checkHost, proveHost } from "@/lib/peer-auth";
 
 type Stage = "ready" | "starting" | "waiting" | "connecting" | "live" | "ended" | "error";
@@ -144,7 +145,7 @@ function Call() {
     }
     const { default: PeerCtor } = await import("peerjs");
     if (isHost) {
-      const p = new PeerCtor(hostId);
+      const p = new PeerCtor(hostId, PEER_OPTIONS);
       peer.current = p;
       p.on("open", () => setStage("waiting"));
       // A caller first checks this really is the owner (their link's peer id is public): prove it.
@@ -166,7 +167,7 @@ function Call() {
         setStage("error");
       });
     } else {
-      const p = new PeerCtor();
+      const p = new PeerCtor(PEER_OPTIONS);
       peer.current = p;
       // Ring the owner's phone once (push notification), in case they aren't on the call screen yet.
       void fetch("/api/call/ring", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room, name: guestName.trim() || undefined }) })

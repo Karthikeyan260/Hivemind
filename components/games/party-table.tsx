@@ -367,7 +367,11 @@ function Lobby({ party, pals }: { party: Party; pals?: React.ReactNode }) {
         <p className="animate-pulse rounded-2xl border border-line bg-panel p-3 text-sm text-soft">Opening game night… (just after a reload this can take up to a minute)</p>
       )}
       {waiting ? (
-        <p className="animate-pulse rounded-2xl border border-line bg-panel p-4 text-sm text-soft">{party.stage === "reconnecting" ? `Waiting for ${party.hostName} to open game night… it connects as soon as they do.` : `Joining ${party.hostName}'s game night…`}</p>
+        <div className="rounded-2xl border border-line bg-panel p-4 text-sm text-soft">
+          <p className="animate-pulse">{party.stage === "reconnecting" ? `Waiting for ${party.hostName} to open game night… it connects as soon as they do.` : `Joining ${party.hostName}'s game night…`}</p>
+          {party.note && <p className="mt-2 text-xs text-faint">{party.note}</p>}
+          <p className="mt-2 text-[11px] text-faint">Still stuck? Both of you need to be on the same site, with {party.hostName} keeping the game night page open. Try a different browser, or turn off a VPN or &quot;block WebRTC&quot; setting.</p>
+        </div>
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2">
           {party.players.map((p) => (

@@ -2,6 +2,7 @@
 
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PEER_OPTIONS } from "@/lib/ice";
 import { checkHost, proveHost, type PeerKind } from "@/lib/peer-auth";
 
 /**
@@ -257,7 +258,7 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
       if (role === "host") {
         const open = (attempt: number) => {
           if (!alive) return;
-          const p = new PeerCtor(hostId);
+          const p = new PeerCtor(hostId, PEER_OPTIONS);
           peer.current = p;
           p.on("open", () => setStage((s) => (s === "connecting" ? "waiting" : s)));
           p.on("connection", wire);
@@ -291,7 +292,7 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
         } catch {
           myId.current ||= crypto.randomUUID();
         }
-        const p = new PeerCtor();
+        const p = new PeerCtor(PEER_OPTIONS);
         peer.current = p;
         let lastDial = 0;
         dial = () => {

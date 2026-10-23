@@ -2,6 +2,7 @@
 
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { PEER_OPTIONS } from "@/lib/ice";
 import { checkHost, proveHost } from "@/lib/peer-auth";
 import { callsFirst, CHAT_GAP_MS, cleanChat, cleanId, cleanName, cleanPet, GIFT_GAP_MS, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
 
@@ -71,6 +72,8 @@ export type Party = {
   phase: PartyPhase;
   stage: PartyStage;
   err: string;
+  /** Guest: what joining is doing right now ("Looking for the table…"), so a stuck join says where it is stuck. */
+  note: string;
   /** Host: friends can join (the table is open). Guest: connected to the owner. */
   live: boolean;
   /** Bumped whenever a game's state changes (so games re-render). */
@@ -114,6 +117,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
   const [phase, setPhase] = useState<PartyPhase>(saved?.phase ?? { screen: "lobby" });
   const [stage, setStage] = useState<PartyStage>(saved ? "reconnecting" : "connecting");
   const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
   // A copy of every game's state for rendering (the ref below is the source of truth for handlers).
   const [snap, setSnap] = useState<Record<string, unknown>>(() => saved?.states ?? {});
   const [voiceOn, setVoiceOn] = useState(false);
@@ -480,6 +484,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
             return;
           }
           verified.current = true;
+          setNote("Checked. Joining the lobby…");
           c.send({ t: "hello", name: opts.current.myName, id: me, peer: peer.current?.id, pet: opts.current.pet ?? undefined } satisfies Wire);
           const p = peer.current;
           if (p && mic.current) {
@@ -600,14 +605,21 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     window.addEventListener("pagehide", save);
 
     void (async () => {
-      mic.current = (await navigator.mediaDevices?.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).catch(() => null)) ?? null;
+      // The microphone prompt must never hold the join up (an unanswered prompt waits forever): after a few seconds carry on without it.
+      const asked = navigator.mediaDevices?.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).catch(() => null) ?? Promise.resolve(null);
+      mic.current = await Promise.race([asked, new Promise<null>((r) => setTimeout(() => r(null), 5000))]);
+      void asked.then((st) => {
+        // Answered late: use it from now on (the group voice picks it up on the next call).
+        if (st && !mic.current && alive) mic.current = st;
+        else if (st && st !== mic.current) st.getTracks().forEach((t) => t.stop());
+      });
       if (!mic.current) setNoMic(true);
       const { default: PeerCtor } = await import("peerjs");
       if (!alive) return;
       if (role === "host") {
         const open = (attempt: number) => {
           if (!alive) return;
-          const p = new PeerCtor(hostId);
+          const p = new PeerCtor(hostId, PEER_OPTIONS);
           peer.current = p;
           p.on("open", () => setStage("lobby"));
           p.on("connection", (c) => {
@@ -663,10 +675,15 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
           hostConn.current = c;
           c.on("data", (d) => onGuestData(c, d as Wire));
           c.on("open", () => {
+            setNote(`Found ${opts.current.hostName}'s table. Checking it's really them…`);
             nonce.current = crypto.randomUUID();
             c.send({ t: "challenge", nonce: nonce.current } satisfies Wire);
           });
-          const gone = () => c === hostConn.current && stageRef.current !== "error" && stageRef.current !== "full" && setStage("reconnecting");
+          const gone = () => {
+            if (c !== hostConn.current || stageRef.current === "error" || stageRef.current === "full") return;
+            setNote("The connection to the table dropped. Trying again…");
+            setStage("reconnecting");
+          };
           c.on("close", gone);
           c.on("error", gone);
         };
@@ -674,9 +691,12 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         // network blip as the page loads), start a fresh one: reconnect() only works after an open.
         const start = (attempt: number) => {
           if (!alive) return;
-          const p = new PeerCtor();
+          const p = new PeerCtor(PEER_OPTIONS);
           peer.current = p;
-          p.on("open", dial);
+          p.on("open", () => {
+            setNote(`Looking for ${opts.current.hostName}'s table…`);
+            dial();
+          });
           // Another friend calling (group voice): only someone at this table.
           p.on("call", (mc) => {
             const meta = (mc.metadata ?? {}) as { id?: string; room?: string };
@@ -690,6 +710,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
           p.on("error", (e) => {
             if (!alive || peer.current !== p) return;
             if (e.type === "peer-unavailable") {
+              setNote(`${opts.current.hostName}'s table isn't open yet. They need the game night page open on this same site.`);
               if (stageRef.current === "connecting") setStage("reconnecting");
               if (!knocked) {
                 knocked = true;
@@ -697,6 +718,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
               }
               later(dial, 3000);
             } else if (TRANSIENT.includes(e.type)) {
+              setNote("Can't reach the connection service yet. Trying again…");
               if (!p.open) {
                 p.destroy();
                 later(() => start(attempt + 1), Math.min(10_000, 1500 * (attempt + 1)));
@@ -776,6 +798,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       phase,
       stage,
       err,
+      note,
       live,
       version: Object.keys(snap).length,
       stateOf,
@@ -792,7 +815,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       onChat,
       voice: { on: voiceOn, muted, noMic, toggleMute },
     }),
-    [o.role, me, o.hostName, players, phase, stage, err, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, gift, onFloats, chat, onChat, voiceOn, muted, noMic, toggleMute],
+    [o.role, me, o.hostName, players, phase, stage, err, note, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, gift, onFloats, chat, onChat, voiceOn, muted, noMic, toggleMute],
   );
 }
 

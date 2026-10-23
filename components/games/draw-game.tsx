@@ -7,6 +7,7 @@ import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { rightGuess } from "@/lib/games/party-rules";
 import { gameKey, recordResult } from "@/lib/games/record";
+import { PEER_OPTIONS } from "@/lib/ice";
 import { checkHost, proveHost } from "@/lib/peer-auth";
 
 /**
@@ -607,7 +608,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         // so keep trying for a minute before saying it's open somewhere else.
         const open = (attempt: number) => {
           if (!alive) return;
-          const p = new PeerCtor(hostId);
+          const p = new PeerCtor(hostId, PEER_OPTIONS);
           peer.current = p;
           p.on("open", () => setStage((s) => (s === "connecting" ? "waiting" : s)));
           p.on("connection", (c) => wire(c));
@@ -645,7 +646,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
         } catch {
           myId.current ||= crypto.randomUUID();
         }
-        const p = new PeerCtor();
+        const p = new PeerCtor(PEER_OPTIONS);
         peer.current = p;
         // Data first; voice starts only after the host proves it's the owner (see onMsg).
         let lastDial = 0;
