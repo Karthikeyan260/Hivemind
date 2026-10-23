@@ -12,7 +12,12 @@ import { SnakesGame } from "@/components/games/snakes-game";
 import { PartyDraw } from "@/components/games/party-draw";
 import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FireflyGame } from "@/components/pet/fireflies";
+import { PetPals, type GuestControls } from "@/components/games/pet-pals";
+import { useFetch } from "@/lib/client-api";
+import { afterFireflies, afterFlower, afterGame, type GuestPet, guestStage, loadGuestPet, newGuestPet, saveGuestPet } from "@/lib/guest-pet";
+import type { Pet } from "@/lib/pet";
 import { MAX_PLAYERS, type Party, PartyContext, type PartyChat, type PartyFloat, type PartyGameKind, usePartyNet } from "@/lib/games/party";
 import { here, REACTIONS, spokenGame, spokenPlayer } from "@/lib/games/party-rules";
 
@@ -33,9 +38,66 @@ const GAMES: { id: PartyGameKind; name: string; emoji: string; min: number; max:
 ];
 
 export function PartyTable({ role, room, myName, hostName, onHostAway }: { role: "host" | "guest"; room: string; myName: string; hostName: string; onHostAway?: () => void }) {
-  const party = usePartyNet({ role, room, myName, hostName, onHostAway });
-  const ph = party.phase;
   const host = role === "host";
+  // Pets: the owner's is Nova (from the app); a friend's is a guest pet kept in their own browser.
+  const nova = useFetch<{ pet: Pet }>(host ? "/api/pet" : null);
+  const [guestPet, setGuestPet] = useState<GuestPet | null>(null);
+  const [gotFlower, setGotFlower] = useState(false);
+  const [firefly, setFirefly] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the friend's pet, read from this browser once
+    if (!host) setGuestPet(loadGuestPet());
+  }, [host]);
+  const myPet = useMemo(() => {
+    const np = nova.data?.pet;
+    if (host) return np ? { name: np.name, hue: 0, stage: np.stage, xp: np.xp, wear: np.wear, best: np.fireflies.best, flowers: 0 } : null;
+    return guestPet ? { name: guestPet.name, hue: guestPet.hue, stage: guestStage(guestPet), xp: guestPet.xp, wear: null, best: guestPet.fireflies.best, flowers: guestPet.flowers } : null;
+  }, [host, nova.data, guestPet]);
+  const party = usePartyNet({
+    role,
+    room,
+    myName,
+    hostName,
+    onHostAway,
+    pet: myPet,
+    onGift: () => {
+      if (host) return;
+      setGuestPet((p) => {
+        if (!p) return p;
+        const n = afterFlower(p);
+        saveGuestPet(n);
+        return n;
+      });
+      setGotFlower(true);
+      setTimeout(() => setGotFlower(false), 5000);
+    },
+  });
+  const ph = party.phase;
+  // A friend's pet grows with every game that starts at the table.
+  const lastGame = useRef(0);
+  const gameN = ph.screen === "game" ? ph.n : 0;
+  useEffect(() => {
+    if (host || !party.live || !gameN || gameN === lastGame.current) return;
+    lastGame.current = gameN;
+    setGuestPet((p) => {
+      if (!p) return p;
+      const n = afterGame(p);
+      saveGuestPet(n);
+      return n;
+    });
+  }, [gameN, host, party.live]);
+  const guestControls: GuestControls | undefined = host
+    ? undefined
+    : {
+        hatch: (name, hue) => {
+          const p = newGuestPet(name, hue);
+          if (!p) return;
+          saveGuestPet(p);
+          setGuestPet(p);
+        },
+        fireflies: () => setFirefly(true),
+        gotFlower,
+      };
 
   // Voice: run game night by speaking ("let's play ludo", "back to the lobby", "who's here?", "mute me").
   useVoiceActions({
@@ -100,13 +162,28 @@ export function PartyTable({ role, room, myName, hostName, onHostAway }: { role:
       ) : ph.screen === "game" && (party.role === "host" || party.live) ? (
         <GameScreen party={party} game={ph.game} n={ph.n} room={room} />
       ) : (
-        <Lobby party={party} />
+        <Lobby party={party} pals={<PetPals party={party} guest={guestControls} />} />
       )}
       {(host ? party.stage !== "error" : party.live) && (
         <>
           <Reactions party={party} />
           <Chat party={party} />
         </>
+      )}
+      {firefly && guestPet && (
+        <FireflyGame
+          name={guestPet.name}
+          stage={guestStage(guestPet)}
+          wear={null}
+          best={guestPet.fireflies.best}
+          onClose={() => setFirefly(false)}
+          onFinish={async (score) => {
+            const r = afterFireflies(guestPet, score);
+            saveGuestPet(r.pet);
+            setGuestPet(r.pet);
+            return { best: r.pet.fireflies.best, newBest: r.newBest };
+          }}
+        />
       )}
     </PartyContext.Provider>
   );
@@ -268,7 +345,7 @@ function VoiceChip({ party }: { party: Party }) {
   );
 }
 
-function Lobby({ party }: { party: Party }) {
+function Lobby({ party, pals }: { party: Party; pals?: React.ReactNode }) {
   const host = party.role === "host";
   const here = party.players.filter((p) => p.online || p.host);
   const waiting = !host && !party.live;
@@ -311,6 +388,8 @@ function Lobby({ party }: { party: Party }) {
           ))}
         </ul>
       )}
+
+      {pals}
 
       {host ? (
         <div className="flex flex-col gap-2">

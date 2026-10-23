@@ -854,6 +854,23 @@ body {
   to { transform: translate(-50%, -190%) scale(1.5); opacity: 0; }
 }
 
+/* Pet pals: a pet waves when it arrives in the lobby, and a flower floats up when one is sent. */
+@keyframes pal-wave {
+  0% { transform: translateY(8px) scale(0.85); opacity: 0; }
+  40% { transform: translateY(-4px) scale(1.05) rotate(-4deg); opacity: 1; }
+  60% { transform: translateY(0) rotate(4deg); }
+  80% { transform: rotate(-3deg); }
+  100% { transform: none; opacity: 1; }
+}
+.pal-wave { animation: pal-wave 0.9s ease-out both; }
+@keyframes pal-flower {
+  from { transform: translateY(8px) scale(0.6); opacity: 0; }
+  30% { opacity: 1; }
+  to { transform: translateY(-22px) scale(1.3); opacity: 0; }
+}
+.pal-flower { animation: pal-flower 1.6s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) { .pal-wave, .pal-flower { animation: none; } }
+
 /* Catch fireflies: the night meadow and the winged fireflies. */
 @keyframes ff-twinkle {
   0%, 100% { opacity: 0.25; }

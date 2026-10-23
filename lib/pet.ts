@@ -4,6 +4,7 @@ import { listCheckins } from "@/lib/checkin";
 import { listResults } from "@/lib/games/stats";
 import { listHabits, stats as habitStats } from "@/lib/habits";
 import { listPlays } from "@/lib/plays";
+import { STAGES } from "@/lib/pet-stages";
 import { type LearnedWord, learnWords } from "@/lib/pet-words";
 import { type Wish, wishFor, WISH_XP } from "@/lib/pet-wishes";
 import { type AccessoryId, bestWinStreak, earnedAccessories, festivalOn, isWinter } from "@/lib/pet-looks";
@@ -21,12 +22,7 @@ type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; 
 export const DEFAULT_NAME = "Nova";
 const KEY = "pet";
 
-export const STAGES = [
-  { at: 0, name: "Star seed" },
-  { at: 60, name: "Baby" },
-  { at: 300, name: "Glowing" },
-  { at: 900, name: "Crowned" },
-] as const;
+export { STAGES };
 
 export type PetMood = "happy" | "hungry" | "sulking" | "missed";
 export type Pet = {

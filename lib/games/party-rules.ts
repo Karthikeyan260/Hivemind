@@ -2,7 +2,8 @@
  * Game night's plain rules, kept apart from the connection code so they can be tested: who is at the
  * table, who sits in a game, what a spoken game or name means, and Draw & Guess's word, view and turns.
  */
-import type { PartyGameKind, PartyPlayer } from "@/lib/games/party";
+import type { PartyGameKind, PartyPet, PartyPlayer } from "@/lib/games/party";
+import { ACCESSORY_IDS } from "@/lib/pet-looks";
 
 export const cleanName = (v: unknown) =>
   String(v ?? "")
@@ -112,3 +113,20 @@ export function roundDone(s: { order: string[]; drawer: string; guessed: string[
   const guessers = s.order.filter((id) => id !== s.drawer && present.has(id));
   return guessers.length > 0 && guessers.every((id) => s.guessed.includes(id));
 }
+
+/**
+ * A pet someone sent, made safe to show: a clean name, a colour 0..5, a stage 0..3, plain numbers within
+ * sane limits, and only an accessory that exists. Anything that isn't a pet gives undefined.
+ */
+export function cleanPet(v: unknown): PartyPet | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const x = v as Record<string, unknown>;
+  const name = cleanName(x.name).slice(0, 16);
+  if (!name) return undefined;
+  const n = (a: unknown, max: number) => Math.max(0, Math.min(max, Math.round(Number(a) || 0)));
+  const wear = typeof x.wear === "string" && (ACCESSORY_IDS as string[]).includes(x.wear) ? x.wear : null;
+  return { name, hue: n(x.hue, 5), stage: n(x.stage, 3), xp: n(x.xp, 99_999), wear, best: n(x.best, 500), flowers: n(x.flowers, 9999) };
+}
+
+/** A flower can be sent this often by one person (the owner's table drops faster ones). */
+export const GIFT_GAP_MS = 4000;

@@ -3,7 +3,7 @@
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { checkHost, proveHost } from "@/lib/peer-auth";
-import { callsFirst, CHAT_GAP_MS, cleanChat, cleanId, cleanName, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
+import { callsFirst, CHAT_GAP_MS, cleanChat, cleanId, cleanName, cleanPet, GIFT_GAP_MS, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
 
 /**
  * Game night: one link, a lobby, many friends. The owner's browser is the table: friends open the
@@ -20,14 +20,20 @@ export type PartyGameKind = "cards" | "ludo" | "dots" | "chess" | "draw" | "snak
 export const PARTY_GAMES: PartyGameKind[] = ["cards", "ludo", "dots", "chess", "draw", "snakes", "business", "bingo", "connect4"];
 const isGame = (g: unknown): g is PartyGameKind => PARTY_GAMES.includes(g as PartyGameKind);
 /** `peer`: the friend's own connection id, so friends can talk to each other directly (group voice). */
-export type PartyPlayer = { id: string; name: string; online: boolean; host?: boolean; peer?: string };
+export type PartyPlayer = { id: string; name: string; online: boolean; host?: boolean; peer?: string; /** Their pet, if they have one (the owner's Nova, or a friend's guest pet). */ pet?: PartyPet };
+/** What the table knows of someone's pet: only this, never anything else. Friends send it themselves, so every field is checked on arrival (see cleanPet). */
+export type PartyPet = { name: string; hue: number; stage: number; xp: number; wear: string | null; best: number; flowers: number };
 export type PartyPhase = { screen: "lobby" } | { screen: "game"; game: PartyGameKind; n: number };
 export type PartyStage = "connecting" | "lobby" | "reconnecting" | "full" | "error";
 
 type Wire =
   | { t: "challenge"; nonce: string }
   | { t: "proof"; proof: string }
-  | { t: "hello"; name: string; id: string; peer?: string }
+  | { t: "hello"; name: string; id: string; peer?: string; pet?: PartyPet }
+  /** A friend's pet changed (it grew, got a flower): friend → host, who updates the roster. */
+  | { t: "pet"; pet: PartyPet | null }
+  /** A flower for someone's pet: friend → host (who says so in the chat), then host → that friend. */
+  | { t: "gift"; to?: string; from?: string }
   | { t: "roster"; players: PartyPlayer[]; phase: PartyPhase }
   | { t: "state"; game: PartyGameKind; s: unknown }
   | { t: "act"; game: PartyGameKind; a: unknown }
@@ -83,6 +89,8 @@ export type Party = {
   onFloats: (fn: (f: PartyFloat[]) => void) => () => void;
   /** Send a chat message to everyone at the table; false if it couldn't go (empty, too fast, not connected). */
   chat: (text: string) => boolean;
+  /** Send a flower to someone's pet (their id); false if it couldn't go (too fast, not connected, no such pet). */
+  gift: (to: string) => boolean;
   /** Follow the chat; returns the unsubscribe. */
   onChat: (fn: (list: PartyChat[]) => void) => () => void;
   voice: { on: boolean; muted: boolean; noMic: boolean; toggleMute: () => void };
@@ -91,7 +99,7 @@ export type Party = {
 export const PartyContext = createContext<Party | null>(null);
 export const useParty = () => useContext(PartyContext);
 
-export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: string; hostName: string; /** Guest: the owner isn't at the table yet (called once, to knock). */ onHostAway?: () => void }): Party {
+export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: string; hostName: string; /** Guest: the owner isn't at the table yet (called once, to knock). */ onHostAway?: () => void; /** This player's pet (the owner's Nova, or a friend's guest pet): shown to everyone at the table. */ pet?: PartyPet | null; /** Someone sent a flower to this player's pet. */ onGift?: () => void }): Party {
   const KEY = `hm-party-${o.role}-${o.room}`;
   const [saved] = useState(() => {
     try {
@@ -101,7 +109,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       return null;
     }
   });
-  const host: PartyPlayer = { id: "host", name: o.role === "host" ? o.myName : o.hostName, online: true, host: true };
+  const host: PartyPlayer = { id: "host", name: o.role === "host" ? o.myName : o.hostName, online: true, host: true, ...(o.role === "host" && o.pet ? { pet: o.pet } : {}) };
   const [players, setPlayers] = useState<PartyPlayer[]>(() => (o.role === "host" ? [host, ...(saved?.players ?? []).filter((p) => !p.host).map((p) => ({ ...p, online: false }))] : (saved?.players ?? [])));
   const [phase, setPhase] = useState<PartyPhase>(saved?.phase ?? { screen: "lobby" });
   const [stage, setStage] = useState<PartyStage>(saved ? "reconnecting" : "connecting");
@@ -266,6 +274,47 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     },
     [me, sendTo, showReact],
   );
+  // Flowers for pets (host side): checked, said in the chat for everyone, and passed to the pet's owner.
+  const lastGift = useRef(new Map<string, number>());
+  const giveFlower = useCallback(
+    (from: string, toId: string) => {
+      const now = Date.now();
+      if (now - (lastGift.current.get(from) ?? 0) < GIFT_GAP_MS) return false;
+      const to = playersRef.current.find((p) => p.id === toId && (p.online || p.host));
+      const giver = from === "host" ? playersRef.current.find((p) => p.host) : playersRef.current.find((p) => p.id === from);
+      if (!to || !giver || to.id === from || !to.pet) return false;
+      lastGift.current.set(from, now);
+      const text = `🌸 sent a flower to ${to.pet.name}`;
+      addChat(from, text, now);
+      for (const id of conns.current.keys()) if (id !== from) sendTo(id, { t: "chat", text, who: from, at: now });
+      if (to.host) opts.current.onGift?.();
+      else sendTo(to.id, { t: "gift", from } satisfies Wire);
+      return true;
+    },
+    [addChat, sendTo],
+  );
+  const gift = useCallback(
+    (toId: string) => {
+      if (opts.current.role === "host") return giveFlower("host", toId);
+      const c = hostConn.current;
+      if (!c?.open || !verified.current) return false;
+      c.send({ t: "gift", to: toId } satisfies Wire);
+      return true;
+    },
+    [giveFlower],
+  );
+  // The pet changed (it grew, got a flower): tell the table. The owner's own entry is just updated; a friend tells the owner.
+  const petKey = JSON.stringify(o.pet ?? null);
+  useEffect(() => {
+    const pet = opts.current.pet ?? undefined;
+    if (opts.current.role === "host") {
+      if (JSON.stringify(playersRef.current.find((p) => p.host)?.pet ?? null) !== JSON.stringify(pet ?? null)) setRoster((l) => l.map((p) => (p.host ? { ...p, pet } : p)));
+    } else {
+      const c = hostConn.current;
+      if (c?.open && verified.current) c.send({ t: "pet", pet: pet ?? null } satisfies Wire);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the pet itself changes
+  }, [petKey]);
   const act = useCallback((game: PartyGameKind, a: unknown) => {
     const c = hostConn.current;
     if (c?.open && verified.current) c.send({ t: "act", game, a } satisfies Wire);
@@ -370,7 +419,8 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         heard.current.set(id, Date.now());
         const name = cleanName(m.name) || "Friend";
         const peerId = String(m.peer ?? "").replace(/[^a-z0-9-]/gi, "").slice(0, 64) || undefined;
-        setRoster((l) => (known ? l.map((p) => (p.id === id ? { ...p, name, online: true, peer: peerId } : p)) : [...l, { id, name, online: true, peer: peerId }]));
+        const pet = cleanPet(m.pet);
+        setRoster((l) => (known ? l.map((p) => (p.id === id ? { ...p, name, online: true, peer: peerId, pet } : p)) : [...l, { id, name, online: true, peer: peerId, pet }]));
         const ph = phaseRef.current;
         if (ph.screen === "game" && states.current[ph.game]) sendTo(id, { t: "state", game: ph.game, s: viewFor(ph.game, id) });
         if (chats.current.length) sendTo(id, { t: "chats", list: chats.current.slice(-30) });
@@ -390,6 +440,18 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         lastReact.current.set(from, now);
         showReact(m.e, from);
         for (const id of conns.current.keys()) if (id !== from) sendTo(id, { t: "react", e: m.e, who: from });
+      }
+      if (m.t === "pet") {
+        const from = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
+        if (!from) return;
+        const pet = cleanPet(m.pet);
+        setRoster((l) => l.map((p) => (p.id === from ? { ...p, pet } : p)));
+        return;
+      }
+      if (m.t === "gift") {
+        const from = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
+        if (from) giveFlower(from, String(m.to ?? ""));
+        return;
       }
       if (m.t === "chat") {
         const from = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
@@ -418,7 +480,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
             return;
           }
           verified.current = true;
-          c.send({ t: "hello", name: opts.current.myName, id: me, peer: peer.current?.id } satisfies Wire);
+          c.send({ t: "hello", name: opts.current.myName, id: me, peer: peer.current?.id, pet: opts.current.pet ?? undefined } satisfies Wire);
           const p = peer.current;
           if (p && mic.current) {
             calls.current.get("host")?.call.close();
@@ -447,6 +509,10 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         setChats([...list, ...chats.current.filter((x) => !seen.has(`${x.who}|${x.at}|${x.text}`))].sort((a, b) => a.at - b.at));
         return;
       }
+      if (m.t === "gift") {
+        opts.current.onGift?.();
+        return;
+      }
       if (m.t === "removed") {
         // Stop knocking: "full" is the stage that ends redialling.
         setStage("full");
@@ -459,7 +525,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         return;
       }
       if (m.t === "roster") {
-        const list = (Array.isArray(m.players) ? m.players : []).slice(0, MAX_PLAYERS).map((p) => ({ id: cleanId(p.id), name: cleanName(p.name) || "Friend", online: !!p.online, host: !!p.host, peer: typeof p.peer === "string" ? p.peer.replace(/[^a-z0-9-]/gi, "").slice(0, 64) : undefined }));
+        const list = (Array.isArray(m.players) ? m.players : []).slice(0, MAX_PLAYERS).map((p) => ({ id: cleanId(p.id), name: cleanName(p.name) || "Friend", online: !!p.online, host: !!p.host, peer: typeof p.peer === "string" ? p.peer.replace(/[^a-z0-9-]/gi, "").slice(0, 64) : undefined, pet: cleanPet(p.pet) }));
         playersRef.current = list;
         setPlayers(list);
         const ph = m.phase && (m.phase.screen === "lobby" || (isGame(m.phase.game) && Number.isInteger(m.phase.n))) ? m.phase : ({ screen: "lobby" } as PartyPhase);
@@ -720,12 +786,13 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       backToLobby,
       removePlayer,
       react,
+      gift,
       onFloats,
       chat,
       onChat,
       voice: { on: voiceOn, muted, noMic, toggleMute },
     }),
-    [o.role, me, o.hostName, players, phase, stage, err, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, onFloats, chat, onChat, voiceOn, muted, noMic, toggleMute],
+    [o.role, me, o.hostName, players, phase, stage, err, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, gift, onFloats, chat, onChat, voiceOn, muted, noMic, toggleMute],
   );
 }
 
