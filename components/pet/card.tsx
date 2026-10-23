@@ -49,6 +49,18 @@ export function PetCard({ pet, line, mood, place, at, sheet, roam, onRoam, onSee
       <Bar label="Growth" value={pet.progress} color={GLOW[mood]} note={pet.toNext === null ? "Fully grown 👑" : `${pet.toNext} to evolve`} />
       <Bar label="Fed today" value={fedPct / 100} color="#8ce99a" note={pet.fed.due ? `${pet.fed.done} / ${pet.fed.due} habits` : "No habits today: add one to feed it"} />
 
+      {pet.words.length > 0 && (
+        <div className="mt-3">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-faint">{pet.name} learned from you</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {pet.words.map((w) => (
+              <span key={w.word} title={`you said it ${w.count} times`} className="rounded-full border border-line bg-white/5 px-2.5 py-0.5 text-xs">
+                “{w.word}”
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.2em] text-faint">Today it got</p>
       {pet.today.length ? (
         <ul className="mt-1 space-y-0.5 text-xs">

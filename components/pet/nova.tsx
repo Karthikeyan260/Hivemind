@@ -97,6 +97,8 @@ export function Nova() {
   const [walk, setWalk] = useState<Walk | null>(null);
   // The firefly game (a full-screen overlay).
   const [catching, setCatching] = useState(false);
+  // The owner's words it has learned, read by its own chatter timer without restarting it.
+  const wordsRef = useRef<Pet["words"] | undefined>(undefined);
   const [clock, setClock] = useState(0);
   const [look, setLookAt] = useState({ x: 0, y: 0 });
   // The living sky outside (umbrella in the rain, shades in the sun), and a jump at thunder.
@@ -299,6 +301,9 @@ export function Nova() {
 
   // On its own now and then (every 7-13 min while the app is open): a question, a joke, a weather
   // line, or, if the owner keeps talking only to HIVEMIND, a jealous pout.
+  useEffect(() => {
+    wordsRef.current = pet?.words;
+  });
   const quiet = !pet || open || !!seek || !!walk || hidden || !!ask || hour < 5;
   useEffect(() => {
     if (quiet) return;
@@ -316,7 +321,7 @@ export function Nova() {
           return;
         }
         const said = saidToday();
-        const c = pickChatter({ hour: new Date().getHours(), sky: window.__hmSky ?? "calm", said });
+        const c = pickChatter({ hour: new Date().getHours(), sky: window.__hmSky ?? "calm", said, words: wordsRef.current });
         rememberSaid(c.id);
         hop();
         if (c.replies?.length) {
@@ -748,7 +753,7 @@ export function Nova() {
         const said = saidToday();
         const c = /joke|funny|sirippu/.test(t)
           ? (pickChatter({ hour: 11, sky: "calm", said: [...said, "mood", "song", "water", "walk", "game", "work"] }) ?? null)
-          : pickChatter({ hour: new Date().getHours(), sky, said });
+          : pickChatter({ hour: new Date().getHours(), sky, said, words: pet?.words });
         rememberSaid(c.id);
         hop();
         if (c.replies?.length) {

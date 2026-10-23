@@ -4,6 +4,7 @@ import { listCheckins } from "@/lib/checkin";
 import { listResults } from "@/lib/games/stats";
 import { listHabits, stats as habitStats } from "@/lib/habits";
 import { listPlays } from "@/lib/plays";
+import { type LearnedWord, learnWords } from "@/lib/pet-words";
 import { type Wish, wishFor, WISH_XP } from "@/lib/pet-wishes";
 import { type AccessoryId, bestWinStreak, earnedAccessories, festivalOn, isWinter } from "@/lib/pet-looks";
 import { readJSON, writeJSON } from "@/lib/private-store";
@@ -16,7 +17,7 @@ import { addDays, localParts } from "@/lib/reminders";
  */
 /** walks: the local date of each finished lantern walk (all sparks found). */
 /** missedFor / stageNotified: which absence and which stage already got a push (so each one goes once). */
-type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; missedFor?: string; stageNotified?: number; wear?: AccessoryId; /** Opened in winter once (the scarf), and the festivals it was here for (their hats). Kept for good. */ winter?: boolean; festivals?: string[]; /** The firefly game: the best score and how many times it was played. */ fireflies?: { best: number; plays: number; /** The day it was last played. */ last?: string }; /** The days Nova's wish of the day was done. */ wishes?: string[] };
+type Saved = { born: string; lastSeen: string; name?: string; walks?: string[]; missedFor?: string; stageNotified?: number; wear?: AccessoryId; /** Opened in winter once (the scarf), and the festivals it was here for (their hats). Kept for good. */ winter?: boolean; festivals?: string[]; /** The firefly game: the best score and how many times it was played. */ fireflies?: { best: number; plays: number; /** The day it was last played. */ last?: string }; /** The days Nova's wish of the day was done. */ wishes?: string[]; /** The owner's Tanglish words it has picked up, worked out once a day. */ words?: { date: string; list: LearnedWord[] } };
 export const DEFAULT_NAME = "Nova";
 const KEY = "pet";
 
@@ -52,6 +53,8 @@ export type Pet = {
   fireflies: { best: number; plays: number };
   /** Today's wish and whether it is done. */
   wish: Wish;
+  /** The owner's own Tanglish words Nova has picked up (it uses them when it talks). */
+  words: LearnedWord[];
 };
 
 export type WeekStats = { done: number; due: number; checkins: number; wins: number };
@@ -154,6 +157,21 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
     checkin: myCheckins.some((c) => c.date === today),
     fireflies: saved?.fireflies?.last === today,
   });
+  // Its words: the owner's own Tanglish from the last two months of chats, worked out once a day and kept.
+  let words = saved?.words?.list ?? [];
+  if (!saved?.words || saved.words.date !== today) {
+    try {
+      const since = new Date(+now - 60 * 86_400_000).toISOString();
+      const { data } = await supabase.from("messages").select("content").eq("role", "user").gte("created_at", since).order("created_at", { ascending: false }).limit(600);
+      words = learnWords(((data ?? []) as { content: string }[]).map((m) => String(m.content).slice(0, 400)));
+      if (touch) {
+        const fresh = await readJSON<Saved | null>(supabase, KEY, null);
+        if (fresh) await writeJSON(supabase, KEY, { ...fresh, words: { date: today, list: words } } satisfies Saved).catch(() => {});
+      }
+    } catch {
+      // No chats to read (or the store is busy): it keeps what it knew.
+    }
+  }
   const wishDays = new Set([...(saved?.wishes ?? []), ...(wish.done ? [today] : [])]);
   // The owner being here when it is done keeps it for good (the scheduler looking in does not).
   if (touch && wish.done && !(saved?.wishes ?? []).includes(today)) {
@@ -212,6 +230,7 @@ export async function getPet(supabase: SupabaseClient, now = new Date(), opts: {
     week,
     fireflies: saved?.fireflies ?? { best: 0, plays: 0 },
     wish,
+    words,
     // Sundays, when nothing else is wrong, it talks about the week.
     line: (mood === "happy" && dow === 0 && weekLine(week)) || petLine(mood, dueToday.length - doneToday.length, away),
   };

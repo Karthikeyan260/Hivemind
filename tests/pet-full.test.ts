@@ -14,7 +14,15 @@ vi.mock("@/lib/push", () => ({ notify: async (_s: unknown, n: (typeof sent)[numb
 const { cleanPetName, getPet, logWalk, recordFireflies, renamePet, runPetNudges, STAGES, wearAccessory } = await import("@/lib/pet");
 
 let memories = 0;
-const chain = { select: () => chain, gte: () => chain, then: (f: (r: { count: number }) => unknown) => Promise.resolve(f({ count: memories })) };
+let chats: string[] = [];
+const chain: Record<string, unknown> = {
+  select: () => chain,
+  gte: () => chain,
+  eq: () => chain,
+  order: () => chain,
+  limit: () => chain,
+  then: (f: (r: { count: number; data: { content: string }[] }) => unknown) => Promise.resolve(f({ count: memories, data: chats.map((content) => ({ content })) })),
+};
 const supabase = { from: () => chain } as unknown as SupabaseClient;
 
 /** 2026-10-15 is a Thursday. IST = UTC + 5:30. */
@@ -27,6 +35,7 @@ beforeEach(() => {
   store.clear();
   sent.length = 0;
   memories = 0;
+  chats = [];
 });
 
 describe("a new pet", () => {
@@ -269,5 +278,34 @@ describe("Nova's wish of the day", () => {
     expect((await getPet(supabase, at(date))).wish.done).toBe(true);
     store.set("pet", { born: "2026-10-01", lastSeen: date, name: "Nova", fireflies: { best: 9, plays: 1, last: "2026-11-01" } });
     expect((await getPet(supabase, at(date))).wish.done).toBe(date === "2026-11-01");
+  });
+});
+
+describe("Nova learning the owner's words", () => {
+  it("picks up the Tanglish the owner keeps using, and nothing else", async () => {
+    store.set("pet", { born: "2026-10-01", lastSeen: "2026-10-14", name: "Nova" });
+    chats = ["seri da", "semma da", "ok seri semma", "my number is 9876543210", "da seri semma"];
+    const p = await getPet(supabase, at("2026-10-15"));
+    expect(p.words.map((w) => w.word).sort()).toEqual(["da", "semma", "seri"]);
+  });
+  it("works it out once a day and keeps it", async () => {
+    store.set("pet", { born: "2026-10-01", lastSeen: "2026-10-14", name: "Nova" });
+    chats = ["seri", "seri", "seri"];
+    await getPet(supabase, at("2026-10-15", "08:00"));
+    expect((store.get("pet") as { words?: { date: string } }).words?.date).toBe("2026-10-15");
+    // The chats change later the same day: it still says what it learned this morning.
+    chats = [];
+    expect((await getPet(supabase, at("2026-10-15", "20:00"))).words).toEqual([{ word: "seri", count: 3 }]);
+    // The next day it looks again.
+    expect((await getPet(supabase, at("2026-10-16"))).words).toEqual([]);
+  });
+  it("the scheduler looking in does not save it", async () => {
+    store.set("pet", { born: "2026-10-01", lastSeen: "2026-10-14", name: "Nova" });
+    chats = ["seri", "seri", "seri"];
+    await getPet(supabase, at("2026-10-15"), { touch: false });
+    expect((store.get("pet") as { words?: unknown }).words).toBeUndefined();
+  });
+  it("has no words to start with", async () => {
+    expect((await getPet(supabase, at("2026-10-15"))).words).toEqual([]);
   });
 });

@@ -2,6 +2,7 @@
  * What the pet says on its own: questions (with tap-to-answer replies), silly jokes, weather and
  * time-of-day lines, and jealousy when the owner only talks to HIVEMIND. Pure, so it's testable.
  */
+import { flavor, type LearnedWord } from "@/lib/pet-words";
 import type { Sky } from "@/lib/sky";
 
 export type Reply = { label: string; answer: string };
@@ -60,7 +61,15 @@ export const THUNDER_JUMP = ["Aiyoo! ⚡", "Amma! Idi! 😱", "Bayama irukku! �
  * Something to say now: a time-of-day question first (once a day each), then a weather line (once
  * per sky change), otherwise a random question or joke, avoiding anything said recently.
  */
-export function pickChatter(o: { hour: number; sky: Sky; said: string[]; roll?: number }): Chatter {
+export function pickChatter(o: { hour: number; sky: Sky; said: string[]; roll?: number; /** The owner's own words Nova has learned: worked into what it says now and then. */ words?: LearnedWord[] }): Chatter {
+  const c = pickBase(o);
+  if (!o.words?.length) return c;
+  const say = flavor(c.say, o.words);
+  // Its tap-to-answer replies keep their own wording; only the line it says is flavoured.
+  return say === c.say ? c : { ...c, say };
+}
+
+function pickBase(o: { hour: number; sky: Sky; said: string[]; roll?: number }): Chatter {
   const fresh = (c: Chatter) => !o.said.includes(c.id);
   const timed = TIMED.find((t) => o.hour >= t.from && o.hour < t.to && fresh(t.c))?.c;
   if (timed) return timed;
