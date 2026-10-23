@@ -1,5 +1,0 @@
-Parrot.glb, Flamingo.glb and Stork.glb are the animated bird models from the three.js examples
-(https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf), made by mirada for the
-"Rome" project (https://rome.mrdoob.com, https://mirada.com). The three.js repository is MIT licensed
-and the examples credit the models to mirada; the models carry no separate licence text there.
-They fly across the garden sky (components/garden/garden-life.ts).

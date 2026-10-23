@@ -53,7 +53,6 @@ class GradeEffect extends Effect {
     );
   }
 }
-import { GardenLife } from "./garden-life";
 import { type Phase } from "./phase";
 import { windStrength } from "@/lib/sky";
 import { fireflyCount, hash01, homeSpot, islandSize, pathX, POND_ANGLE, pondSpot, type Placed, type Season } from "@/lib/garden-layout";
@@ -454,7 +453,6 @@ export class GardenScene {
   private zzz: THREE.Sprite[] = [];
   private chimneyTop = new THREE.Vector3();
   private cottage: THREE.Group | null = null;
-  private life: GardenLife | null = null;
   private butterflies: { g: THREE.Group; l: THREE.Mesh; r: THREE.Mesh; ph: number; sp: number; rad: number; h: number }[] = [];
   private clouds = new THREE.Group();
   private cloudMats: THREE.SpriteMaterial[] = [];
@@ -526,7 +524,6 @@ export class GardenScene {
     this.buildItems(items);
     this.buildVisitors(opts.visitors ?? []);
     this.buildButterflies(opts.butterflies);
-    this.buildLife();
     this.buildParticles();
     this.buildStreak(opts.streak ?? 0);
     this.buildSeason(opts.season ?? "summer");
@@ -614,16 +611,6 @@ export class GardenScene {
   private visitors = new Map<string, { g: THREE.Group; kind: "owl" | "deer"; ph: number; head: THREE.Object3D; eyes: THREE.Object3D; home: THREE.Vector3; legs: THREE.Object3D[]; state: "graze" | "look" | "walk"; until: number; target: THREE.Vector3; yaw: number; graze: number; sleep: number }>();
   /** (development only, from the test hook) Put the camera close in front of a visitor, to look at it. */
   debugFocus(id: string, dist = 2.2, view: "front" | "side" = "front") {
-    const lifeAt = id.startsWith("life:") ? this.life?.where(id.slice(5) as "bird") : null;
-    if (lifeAt) {
-      this.skipIntro();
-      this.controls.minDistance = 0.2;
-      this.controls.target.copy(lifeAt);
-      this.camera.position.copy(lifeAt).add(new THREE.Vector3(dist * 0.6, dist * 0.25, dist * 0.8));
-      this.camera.lookAt(lifeAt);
-      this.controls.autoRotate = false;
-      return;
-    }
     const v = this.visitors.get(id);
     if (!v) return;
     this.skipIntro();
@@ -2549,30 +2536,6 @@ void main() {`);
     }
   }
 
-  /** Birds, bees, dragonflies, koi, and the fence and mailbox by the cottage (see garden-life.ts). */
-  private buildLife() {
-    const n = this.opts.n;
-    const pond = pondSpot(n);
-    const pc = this.toWorld(pond.x, pond.y);
-    const pr = (pond.rx / this.isl.rx) * this.R;
-    const flowers = [...this.itemsById.values()].filter((i) => i.kind === "flower").map((i) => this.toWorld(i.x, i.y));
-    this.life = new GardenLife({
-      island: this.island,
-      R: this.R,
-      quality: this.quality,
-      reduced: this.reduced,
-      heightAt: (x, z) => this.heightAt(x, z),
-      dayOnly: this.dayOnly,
-      flowers,
-      pond: { c: pc, r: pr, sy: pond.ry / this.isl.ry / (pond.rx / this.isl.rx) },
-      home: this.toWorld(homeSpot(n).x, homeSpot(n).y),
-      pathWorld: (z) => this.pathWorld(z),
-      clear: (x, z, r) => this.plantClear.push({ x, z, r }),
-    });
-    this.clearGrass();
-    this.renderer.shadowMap.needsUpdate = true;
-  }
-
   private uSeasonLight = { value: 1 };
 
   /**
@@ -3902,16 +3865,6 @@ void main() {`);
       const flap = Math.sin(this.flapT * 22 + b.ph) * 1.1;
       b.l.rotation.z = flap;
       b.r.rotation.z = -flap;
-    }
-    // Birds, bees, dragonflies and koi.
-    this.life?.update(t, dt);
-    // The lens breathes a little (a slow, tiny change of zoom), so the picture is never quite still.
-    if (!this.reduced && !this.opts.mini) {
-      const f = 36 + Math.sin(t * 0.22) * 0.35;
-      if (Math.abs(f - this.camera.fov) > 0.01) {
-        this.camera.fov = f;
-        this.camera.updateProjectionMatrix();
-      }
     }
     // Chimney smoke, or Zzz while it sleeps.
     for (const s of this.smoke) {

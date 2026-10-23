@@ -22,6 +22,7 @@ import { type Phase, phaseNow } from "./phase";
  * where the pet and the label are on screen, and the page moves them there without re-rendering.
  */
 type Pt = { x: number; y: number };
+const PHASE_ICON: Record<Phase, string> = { dawn: "🌅", day: "☀️", golden: "🌇", dusk: "🌆", night: "🌙" };
 const PHASE_NAME: Record<Phase, string> = { dawn: "Dawn", day: "Daytime", golden: "Golden hour", dusk: "Dusk", night: "Night" };
 /** Festivals the island dresses up for (others only change Nova's outfit). */
 const DECOR = ["pongal", "karthigai", "deepavali", "puthandu", "christmas", "india"] as const;
@@ -579,19 +580,29 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
 
         {/* Title. */}
         <div className="pointer-events-none absolute top-5 left-5 max-w-[52%] sm:top-7 sm:left-8 sm:max-w-none">
-          <p className="hidden font-mono text-[10px] tracking-[0.35em] text-white/60 uppercase sm:block">Pocket pet · {bedtime ? "🌙 Bedtime" : PHASE_NAME[phase]}
-            {fest ? ` · ${DECOR_ICON[fest] ?? ""} ${festivalById(fest)?.name ?? fest}` : monsoon || wet ? ` · ${DECOR_ICON.monsoon} Monsoon` : ""}
-            {` · ${SEASON_ICON[season]} ${season}`}
-            {g && g.streak > 0 ? ` · 🔥 ${g.streak}-day streak` : ""}
-            {mood !== null ? ` · ${MOOD_TEXT[mood - 1]}` : ""}
-          </p>
-          <h1 className="mt-1 text-2xl leading-tight font-semibold tracking-tight text-white drop-shadow-[0_2px_12px_rgba(0,0,0,.5)] sm:text-5xl">{g?.pet ?? "Nova"}&apos;s garden</h1>
-          <p className="mt-2 max-w-sm text-sm text-white/75 drop-shadow">Everything you keep up with grows here.</p>
+          <h1 className="text-2xl leading-tight font-semibold tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,.55)] sm:text-[2.6rem]">{g?.pet ?? "Nova"}&apos;s garden</h1>
+          <p className="mt-1 max-w-sm text-[13px] text-white/80 drop-shadow sm:text-sm">Everything you keep up with grows here.</p>
+          {/* What the garden is like right now, as small glass chips (laptop and bigger). */}
+          <div className="mt-3 hidden flex-wrap gap-1.5 sm:flex">
+            {[
+              bedtime ? "🌙 Bedtime" : `${PHASE_ICON[phase]} ${PHASE_NAME[phase]}`,
+              fest ? `${DECOR_ICON[fest] ?? ""} ${festivalById(fest)?.name ?? fest}` : monsoon || wet ? `${DECOR_ICON.monsoon} Monsoon` : "",
+              `${SEASON_ICON[season]} ${season[0].toUpperCase()}${season.slice(1)}`,
+              g && g.streak > 0 ? `🔥 ${g.streak}-day streak` : "",
+              mood !== null ? MOOD_TEXT[mood - 1] : "",
+            ]
+              .filter(Boolean)
+              .map((t) => (
+                <span key={t} className="rounded-full border border-white/20 bg-black/25 px-2.5 py-1 text-[11px] font-medium text-white/90 shadow-sm backdrop-blur-md">
+                  {t}
+                </span>
+              ))}
+          </div>
         </div>
 
         {/* What has grown: glass cards along the bottom. */}
         {g && !bedtime && (
-          <div className="absolute inset-x-3 bottom-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:inset-x-6 sm:bottom-6 sm:gap-3">
+          <div className="absolute inset-x-3 bottom-3 flex gap-2 overflow-x-auto pr-16 pb-1 [scrollbar-width:none] sm:inset-x-6 sm:bottom-6 sm:gap-3 sm:pr-0">
             {[
               ["🌸", c?.flowers ?? 0, "Flowers", "a day a habit was done"],
               ["🌳", c?.trees ?? 0, "Trees", "4 night check-ins each"],
@@ -601,19 +612,19 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
               ["🎵", c?.music ?? 0, "Music flowers", "a song you listened to"],
               ["🦋", c?.butterflies ?? 0, "Butterflies", "songs you played"],
             ].map(([e, num, what, why]) => (
-              <div key={String(what)} className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white shadow-lg backdrop-blur-xl sm:block sm:min-w-[132px] sm:rounded-2xl sm:px-4 sm:py-3" title={String(why)}>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-sm sm:text-lg">{e}</span>
-                  <span className="text-base font-semibold tabular-nums sm:text-2xl">{num}</span>
+              <div key={String(what)} className="flex shrink-0 items-center gap-2 rounded-full border border-white/20 bg-gradient-to-b from-white/20 to-white/5 px-3 py-1.5 text-white shadow-[0_8px_24px_-8px_rgba(0,0,0,.45)] backdrop-blur-xl transition hover:from-white/30 sm:min-w-[150px] sm:gap-3 sm:rounded-2xl sm:px-3.5 sm:py-2.5" title={String(why)}>
+                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-black/25 text-sm ring-1 ring-white/20 sm:size-10 sm:text-xl">{e}</span>
+                <div className="flex items-baseline gap-1.5 sm:block">
+                  <span className="text-base leading-none font-semibold tabular-nums sm:block sm:text-2xl">{num}</span>
+                  <p className="whitespace-nowrap text-[11px] font-medium text-white/90 sm:mt-0.5">{what}</p>
+                  <p className="hidden text-[10px] leading-tight text-white/60 sm:block">{why}</p>
                 </div>
-                <p className="whitespace-nowrap text-[11px] font-medium text-white/90">{what}</p>
-                <p className="hidden text-[10px] text-white/55 sm:block">{why}</p>
               </div>
             ))}
           </div>
         )}
 
-        {ready && hint && <div className="pointer-events-none absolute inset-x-0 top-[38%] text-center text-xs text-white/85 drop-shadow transition-opacity sm:top-auto sm:right-8 sm:bottom-8 sm:left-auto sm:text-right">Drag to look around · pinch to zoom · tap anything</div>}
+        {ready && hint && <div className="pointer-events-none absolute inset-x-0 top-[40%] flex justify-center transition-opacity sm:top-auto sm:right-8 sm:bottom-[8.6rem] sm:left-auto sm:justify-end"><span className="rounded-full border border-white/20 bg-black/30 px-3.5 py-1.5 text-xs font-medium text-white/90 shadow-lg backdrop-blur-md">👆 Drag to look around · pinch to zoom · tap anything</span></div>}
         {day && <DayCard day={day} onClose={() => setDay(null)} />}
         {ready && g && !bedtime && (
           <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
