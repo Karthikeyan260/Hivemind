@@ -441,7 +441,7 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
   // Ludo seats four: the rest of the lobby watches.
   const watching = ((game === "ludo" || game === "dots") && !here.slice(0, 4).some((p) => p.id === party.me)) || (game === "connect4" && here.length >= 2 && !here.slice(0, 2).some((p) => p.id === party.me));
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 pr-12 sm:pr-0">
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-panel px-3 py-2 text-sm">
         {host ? (
           <button type="button" onClick={party.backToLobby} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-xs font-semibold hover:border-core hover:text-core">
