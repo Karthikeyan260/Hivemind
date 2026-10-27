@@ -188,8 +188,8 @@ function Hatch({ onHatch }: { onHatch: (name: string, hue: number) => void }) {
     <div className="mb-3 rounded-xl border border-dashed border-core/50 bg-core/5 p-3">
       <p className="text-sm font-medium">Get a pet for game night 🥚</p>
       <p className="mt-0.5 text-xs text-soft">It lives on this phone and grows every time you play here.</p>
-      <div className="mt-2.5 flex flex-wrap items-center gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={16} placeholder="Its name" aria-label="Pet's name" className="min-w-0 flex-1 rounded-lg border border-line bg-transparent px-3 py-1.5 text-sm outline-none focus:border-core" />
+      <div className="mt-2.5 flex flex-col gap-2.5">
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={16} placeholder="Its name" aria-label="Pet's name" className="w-full min-w-0 rounded-lg border border-line bg-transparent px-3 py-2 text-sm outline-none focus:border-core" />
         <div className="flex gap-1.5" role="radiogroup" aria-label="Colour">
           {HUES.map((h, i) => (
             <button key={h.name} type="button" role="radio" aria-checked={hue === i} aria-label={h.name} onClick={() => setHue(i)} className={cx("size-6 rounded-full border-2 transition", hue === i ? "scale-110 border-white" : "border-transparent opacity-70")} style={{ background: `hsl(${(45 + h.rotate) % 360} 90% 58%)` }} />
