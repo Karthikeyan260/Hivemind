@@ -335,14 +335,11 @@ function Chat({ party }: { party: Party }) {
 
 function VoiceChip({ party }: { party: Party }) {
   const v = party.voice;
-  return v.on ? (
-    <button type="button" onClick={v.toggleMute} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", v.muted ? "border-alert text-alert" : "border-ok/50 text-ok")}>
-      {v.muted ? <MicOff size={13} /> : <Mic size={13} />} {v.muted ? "Muted" : "Voice on"}
+  // The mic is off until this is tapped (the browser asks for permission then, not when joining).
+  return (
+    <button type="button" onClick={v.toggleMute} title={v.muted ? "Turn your microphone on" : "Mute your microphone"} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", v.noMic ? "border-alert/50 text-alert" : v.muted ? "border-line text-faint hover:text-fg" : "border-ok/50 text-ok")}>
+      {v.muted ? <MicOff size={13} /> : <Mic size={13} />} {v.noMic ? "Mic blocked · tap to retry" : v.muted ? "Mic off · tap to talk" : "Mic on"}
     </button>
-  ) : (
-    <span className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", v.noMic ? "border-alert/50 text-alert" : "border-line text-faint")}>
-      {v.noMic ? <MicOff size={13} /> : <Mic size={13} />} {v.noMic ? "Mic blocked" : "Voice"}
-    </span>
   );
 }
 

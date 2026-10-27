@@ -121,7 +121,10 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
   // A copy of every game's state for rendering (the ref below is the source of truth for handlers).
   const [snap, setSnap] = useState<Record<string, unknown>>(() => saved?.states ?? {});
   const [voiceOn, setVoiceOn] = useState(false);
-  const [muted, setMuted] = useState(false);
+  // The microphone stays off until the player taps the button: calls start on a silent stream, and the real mic replaces it then.
+  const [muted, setMuted] = useState(true);
+  const micLive = useRef(false);
+  const audioCtx = useRef<AudioContext | null>(null);
   const [noMic, setNoMic] = useState(false);
   const [me] = useState(() => {
     if (o.role === "host") return "host";
@@ -366,12 +369,31 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     },
     [setRoster],
   );
+  const openMic = useCallback(async () => {
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const track = st.getAudioTracks()[0];
+      const old = mic.current;
+      mic.current = st;
+      micLive.current = true;
+      // Calls already running switch from the silent stream to the real mic.
+      for (const { call } of calls.current.values()) {
+        for (const s of call.peerConnection?.getSenders() ?? []) if (!s.track || s.track.kind === "audio") void s.replaceTrack(track).catch(() => {});
+      }
+      old?.getTracks().forEach((t) => t.stop());
+      setNoMic(false);
+      setMuted(false);
+    } catch {
+      setNoMic(true);
+    }
+  }, []);
   const toggleMute = useCallback(() => {
+    if (!micLive.current) return void openMic();
     setMuted((m) => {
       mic.current?.getAudioTracks().forEach((t) => (t.enabled = m));
       return !m;
     });
-  }, []);
+  }, [openMic]);
   const hear = useCallback((id: string, call: MediaConnection, stream: MediaStream) => {
     calls.current.get(id)?.audio.pause();
     const audio = new Audio();
@@ -605,15 +627,16 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     window.addEventListener("pagehide", save);
 
     void (async () => {
-      // The microphone prompt must never hold the join up (an unanswered prompt waits forever): after a few seconds carry on without it.
-      const asked = navigator.mediaDevices?.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).catch(() => null) ?? Promise.resolve(null);
-      mic.current = await Promise.race([asked, new Promise<null>((r) => setTimeout(() => r(null), 5000))]);
-      void asked.then((st) => {
-        // Answered late: use it from now on (the group voice picks it up on the next call).
-        if (st && !mic.current && alive) mic.current = st;
-        else if (st && st !== mic.current) st.getTracks().forEach((t) => t.stop());
-      });
-      if (!mic.current) setNoMic(true);
+      // No microphone prompt on joining: calls run on a silent stream until the player taps the mic button (openMic).
+      try {
+        const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (Ctx) {
+          audioCtx.current = new Ctx();
+          mic.current = audioCtx.current.createMediaStreamDestination().stream;
+        }
+      } catch {
+        mic.current = null;
+      }
       const { default: PeerCtor } = await import("peerjs");
       if (!alive) return;
       if (role === "host") {
@@ -781,6 +804,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       hostConn.current = null;
       peer.current?.destroy();
       mic.current?.getTracks().forEach((t) => t.stop());
+      void audioCtx.current?.close().catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one connection for the life of the page
   }, []);

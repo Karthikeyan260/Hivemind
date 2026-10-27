@@ -24,7 +24,7 @@ export default function PartyHost() {
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">🎮 Game night</h1>
-      <p className="mb-3 text-sm text-soft">One link for all your friends (up to 6 players with you). They wait in the lobby; you pick the game, everyone plays, then you pick the next one. Voice on: each friend can talk with you.</p>
+      <p className="mb-3 text-sm text-soft">One link for all your friends (up to 6 players with you). They wait in the lobby; you pick the game, everyone plays, then you pick the next one. Voice chat: tap the mic button when you want to talk.</p>
 
       {r && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
