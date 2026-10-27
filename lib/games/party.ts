@@ -60,6 +60,8 @@ const TRANSIENT = ["network", "disconnected", "server-error", "socket-error", "s
  * say "still here" every few seconds, and a player silent for longer than this counts as away. */
 const PING_MS = 4000;
 const SILENT_MS = 30_000;
+/** How long a friend lets one attempt to reach the table run before trying again. */
+const CONNECT_MS = 25_000;
 
 export type PartyFloat = { k: number; e: string; who: string; x: number };
 export type PartyChat = { k: number; who: string; text: string; at: number };
@@ -800,9 +802,14 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         open(0);
       } else {
         let lastDial = 0;
+        // Attempts that already failed (closed or errored): a new dial may replace them at once. One still connecting is left alone for a while.
+        const failed = new WeakSet<DataConnection>();
         dial = () => {
           const p = peer.current;
           if (!alive || !p || p.destroyed || p.disconnected || !p.open || Date.now() - lastDial < 2500 || stageRef.current === "full") return;
+          // A connection through a relay can take 10 seconds or more to come up: dialling again every few seconds would cut it off each time, so it never connects.
+          const cur = hostConn.current;
+          if (cur && !cur.open && !failed.has(cur) && Date.now() - lastDial < CONNECT_MS) return;
           lastDial = Date.now();
           const old = hostConn.current;
           hostConn.current = null;
@@ -817,6 +824,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
             c.send({ t: "challenge", nonce: nonce.current } satisfies Wire);
           });
           const gone = () => {
+            failed.add(c);
             if (c !== hostConn.current || stageRef.current === "error" || stageRef.current === "full") return;
             setNote("The connection to the table dropped. Trying again…");
             setStage("reconnecting");
@@ -847,6 +855,8 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
           p.on("error", (e) => {
             if (!alive || peer.current !== p) return;
             if (e.type === "peer-unavailable") {
+              // The table isn't there: that attempt is over, the next dial may go at once.
+              if (hostConn.current) failed.add(hostConn.current);
               setNote(`${opts.current.hostName}'s table isn't open yet. They need the game night page open on this same site.`);
               if (stageRef.current === "connecting") setStage("reconnecting");
               if (!knocked) {
