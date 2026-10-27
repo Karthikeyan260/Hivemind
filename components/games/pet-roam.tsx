@@ -11,7 +11,7 @@ import type { AccessoryId } from "@/lib/pet-looks";
  * the screen, hops when its owner sends a reaction, can be dragged (it drops back down), and says something
  * when tapped.
  */
-const SIZE = 64;
+const SIZE = 48;
 const LINES = ["Hi hi! 👋", "Yaaay, game time!", "Good luck! 🍀", "Ippo enna game? 🎲", "I'm cheering for you!", "Semma fun! ✨", "Don't forget to smile 😊", "Let's gooo!"];
 
 const rnd = () => Math.random();
@@ -91,7 +91,7 @@ export function PetRoam({ party }: { party: Party }) {
             className="pointer-events-auto absolute touch-none select-none"
             style={{
               left: s.x,
-              bottom: `calc(var(--tabbar-h, 0px) + var(--music-h, 0px) + 20px + ${s.lift}px)`,
+              bottom: `calc(var(--tabbar-h, 0px) + var(--music-h, 0px) + 2px + ${s.lift}px)`,
               width: SIZE,
               height: SIZE,
               transition: dragging ? "none" : "left 2.6s ease-in-out, bottom 0.35s cubic-bezier(.4,1.6,.5,1)",
@@ -124,7 +124,7 @@ export function PetRoam({ party }: { party: Party }) {
           >
             {s.say && (
               <div className="pet-pop pointer-events-none absolute bottom-full left-1/2 mb-1 w-max max-w-44 -translate-x-1/2 rounded-xl border border-line bg-[#0b1016]/95 px-2.5 py-1.5 text-xs text-fg shadow-lg">
-                <b className="mr-1">{pet.name}:</b>
+                <b className="mr-1">{pet.name}{p.crowns ? ` 👑${p.crowns}` : ""}:</b>
                 {s.say}
               </div>
             )}
@@ -135,9 +135,6 @@ export function PetRoam({ party }: { party: Party }) {
                 </div>
               </div>
             </div>
-            <span className="pointer-events-none absolute inset-x-0 -bottom-3 truncate text-center text-[10px] font-semibold text-white/80 [text-shadow:0_1px_3px_#000]">{pet.name}
-              {p.crowns ? ` 👑${p.crowns}` : ""}
-            </span>
           </div>
         );
       })}
