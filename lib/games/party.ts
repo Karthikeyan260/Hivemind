@@ -54,7 +54,7 @@ const TRANSIENT = ["network", "disconnected", "server-error", "socket-error", "s
 /** A closed phone or a lost network can take a minute to show as a closed connection: both sides
  * say "still here" every few seconds, and a player silent for longer than this counts as away. */
 const PING_MS = 4000;
-const SILENT_MS = 12_000;
+const SILENT_MS = 30_000;
 
 export type PartyFloat = { k: number; e: string; who: string; x: number };
 export type PartyChat = { k: number; who: string; text: string; at: number };
@@ -121,7 +121,8 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
   // A copy of every game's state for rendering (the ref below is the source of truth for handlers).
   const [snap, setSnap] = useState<Record<string, unknown>>(() => saved?.states ?? {});
   const [voiceOn, setVoiceOn] = useState(false);
-  // The microphone stays off until the player taps the button: calls start on a silent stream, and the real mic replaces it then.
+  // The microphone starts muted (its tracks are switched off): nothing is sent until the player taps the button.
+  // The browser's own mic stream is still opened on joining, because without one it hides device addresses and friends on the same PC or Wi-Fi can't connect.
   const [muted, setMuted] = useState(true);
   const micLive = useRef(false);
   const audioCtx = useRef<AudioContext | null>(null);
@@ -369,24 +370,29 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     },
     [setRoster],
   );
+  /** Use a real mic stream (muted unless told otherwise): calls already running switch over to it. */
+  const adoptMic = useCallback((st: MediaStream, muteIt: boolean) => {
+    const track = st.getAudioTracks()[0];
+    if (!track) return;
+    track.enabled = !muteIt;
+    const old = mic.current;
+    mic.current = st;
+    micLive.current = true;
+    for (const { call } of calls.current.values()) {
+      for (const s of call.peerConnection?.getSenders() ?? []) if (!s.track || s.track.kind === "audio") void s.replaceTrack(track).catch(() => {});
+    }
+    if (old && old !== st) old.getTracks().forEach((t) => t.stop());
+    setNoMic(false);
+    setMuted(muteIt);
+  }, []);
+  /** The mic button when no mic was given yet (blocked or still waiting): ask again, and unmute once it is allowed. */
   const openMic = useCallback(async () => {
     try {
-      const st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-      const track = st.getAudioTracks()[0];
-      const old = mic.current;
-      mic.current = st;
-      micLive.current = true;
-      // Calls already running switch from the silent stream to the real mic.
-      for (const { call } of calls.current.values()) {
-        for (const s of call.peerConnection?.getSenders() ?? []) if (!s.track || s.track.kind === "audio") void s.replaceTrack(track).catch(() => {});
-      }
-      old?.getTracks().forEach((t) => t.stop());
-      setNoMic(false);
-      setMuted(false);
+      adoptMic(await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }), false);
     } catch {
       setNoMic(true);
     }
-  }, []);
+  }, [adoptMic]);
   const toggleMute = useCallback(() => {
     if (!micLive.current) return void openMic();
     setMuted((m) => {
@@ -627,15 +633,26 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     window.addEventListener("pagehide", save);
 
     void (async () => {
-      // No microphone prompt on joining: calls run on a silent stream until the player taps the mic button (openMic).
-      try {
-        const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (Ctx) {
-          audioCtx.current = new Ctx();
-          mic.current = audioCtx.current.createMediaStreamDestination().stream;
+      // The prompt must never hold the join up: after a few seconds carry on with a silent stream, and use the real one if it is allowed later.
+      // Either way the mic starts muted (adoptMic).
+      const asked = navigator.mediaDevices?.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }).catch(() => null) ?? Promise.resolve(null);
+      const first = await Promise.race([asked, new Promise<null>((r) => setTimeout(() => r(null), 5000))]);
+      if (first) adoptMic(first, true);
+      else {
+        try {
+          const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+          if (Ctx) {
+            audioCtx.current = new Ctx();
+            mic.current = audioCtx.current.createMediaStreamDestination().stream;
+          }
+        } catch {
+          mic.current = null;
         }
-      } catch {
-        mic.current = null;
+        void asked.then((st) => {
+          if (!st) return setNoMic(true);
+          if (alive) adoptMic(st, true);
+          else st.getTracks().forEach((t) => t.stop());
+        });
       }
       const { default: PeerCtor } = await import("peerjs");
       if (!alive) return;
