@@ -14,11 +14,11 @@ import { ACTIVE, clearStopped, getTask, markStopped, saveShot, saveTask, type St
 
 /**
  * Drives one web task: look at the page, let the AI pick ONE action, do it, repeat. A Vercel call
- * lasts 60 s, so each call drives for ~40 s, saves its place and calls the next one; the cloud
+ * lasts 60 s, so each call drives for ~45 s, saves its place and calls the next one; the cloud
  * browser keeps running in between. Risky actions (submit, pay, send, delete…) wait for the
  * owner's Approve; logins, OTPs and CAPTCHAs are handed to the owner in the live view.
  */
-const RUN_MS = 40_000;
+const RUN_MS = 45_000;
 const MAX_STEPS = 40;
 const HISTORY = 12;
 /** Clicking something named like this needs the owner's OK, whatever the AI thinks. */
@@ -137,17 +137,23 @@ export async function runTask(supabase: SupabaseClient, id: string, origin: stri
       await doStep(task, p.thought, `${p.label} (approved)`, () => act(page, p.action));
     }
 
+    let firstLap = true;
     while (Date.now() - started < RUN_MS) {
-      // Cancelled (or otherwise taken over) from the app?
-      const fresh = await getTask(supabase, id);
-      if (!fresh || fresh.status !== "running" || fresh.runner !== token) return;
+      // Cancelled (or otherwise taken over) from the app? Checked once on arrival; after that every step's `beat` checks.
+      if (firstLap) {
+        const fresh = await getTask(supabase, id);
+        if (!fresh || fresh.status !== "running" || fresh.runner !== token) return;
+        firstLap = false;
+      }
       if (task.steps.length >= MAX_STEPS) {
         return pause(supabase, task, "needs_you", { question: `I've taken ${MAX_STEPS} steps without finishing. Check the live view, then tell me to continue or cancel.` });
       }
 
       const snap = await snapshot(page).catch(() => null);
-      await shoot(supabase, task, page);
+      // The picture is taken now (before anything moves) but saved while the AI thinks; it is awaited before the next action.
+      const shot = shoot(supabase, task, page);
       if (!snap) {
+        await shot;
         await doStep(task, "", "read the page", async () => {
           throw new Error("couldn't read the page");
         });
@@ -164,7 +170,7 @@ export async function runTask(supabase: SupabaseClient, id: string, origin: stri
         });
       }
 
-      const d = await decide(supabase, task, snap);
+      const [d] = await Promise.all([decide(supabase, task, snap), shot]);
       if (!d) {
         task.steps.push({ at: now(), thought: "", did: "think", ok: false, note: "AI gave no usable answer" });
         if (threeFailuresInARow(task.steps)) return finish(supabase, task, "failed", { error: "The AI couldn't decide what to do (providers busy?). Tap Retry later." });
@@ -173,7 +179,7 @@ export async function runTask(supabase: SupabaseClient, id: string, origin: stri
       const a = d.action;
       if (a.type === "done") {
         // Look once more after the page settles: walls (YouTube's "not a bot") often load a beat later.
-        await page.waitForTimeout(2500);
+        await page.waitForTimeout(1200);
         const after = await snapshot(page).catch(() => null);
         await shoot(supabase, task, page);
         const late = after && BLOCKER.exec(`${after.title}\n${after.text.slice(0, 3000)}`);
@@ -298,8 +304,17 @@ function describeAction(a: Action, target: string | null) {
   }
 }
 
+/** The owner's profile text for the prompt: read once every few minutes, not on every step. */
+let profileCache: { at: number; text: string } | null = null;
+async function ownerProfile(supabase: SupabaseClient) {
+  if (profileCache && Date.now() - profileCache.at < 5 * 60_000) return profileCache.text;
+  const text = profileForPrompt(await getProfile(supabase).catch(() => null)).slice(0, 1200);
+  profileCache = { at: Date.now(), text };
+  return text;
+}
+
 export async function decide(supabase: SupabaseClient, task: WebTask, snap: Snapshot): Promise<Decision | null> {
-  const profile = profileForPrompt(await getProfile(supabase).catch(() => null)).slice(0, 1200);
+  const profile = await ownerProfile(supabase);
   const history = task.steps
     .slice(-HISTORY)
     .map((s, i) => `${i + 1}. ${s.did}${s.ok ? "" : ` → FAILED: ${s.note ?? ""}`}`)

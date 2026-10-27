@@ -130,5 +130,5 @@ export async function act(page: Page, a: Action) {
   }
   // Let navigation / client-side rendering settle before the next look.
   await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(350);
 }
