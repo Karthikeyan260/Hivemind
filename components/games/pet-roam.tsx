@@ -135,7 +135,9 @@ export function PetRoam({ party }: { party: Party }) {
                 </div>
               </div>
             </div>
-            <span className="pointer-events-none absolute inset-x-0 -bottom-3 truncate text-center text-[10px] font-semibold text-white/80 [text-shadow:0_1px_3px_#000]">{pet.name}</span>
+            <span className="pointer-events-none absolute inset-x-0 -bottom-3 truncate text-center text-[10px] font-semibold text-white/80 [text-shadow:0_1px_3px_#000]">{pet.name}
+              {p.crowns ? ` 👑${p.crowns}` : ""}
+            </span>
           </div>
         );
       })}

@@ -15,6 +15,7 @@ import { useVoiceActions } from "@/components/voice/provider";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FireflyGame } from "@/components/pet/fireflies";
 import { MiniPet, PetPals, type GuestControls } from "@/components/games/pet-pals";
+import { PetRace } from "@/components/games/pet-race";
 import { PetRoam } from "@/components/games/pet-roam";
 import { useFetch } from "@/lib/client-api";
 import { afterFireflies, afterFlower, afterGame, type GuestPet, guestStage, loadGuestPet, newGuestPet, saveGuestPet } from "@/lib/guest-pet";
@@ -163,7 +164,12 @@ export function PartyTable({ role, room, myName, hostName, onHostAway }: { role:
       ) : ph.screen === "game" && (party.role === "host" || party.live) ? (
         <GameScreen party={party} game={ph.game} n={ph.n} room={room} />
       ) : (
-        <Lobby party={party} pals={<PetPals party={party} guest={guestControls} mine={myPet} />} />
+        <Lobby party={party} pals={
+            <>
+              <PetPals party={party} guest={guestControls} mine={myPet} />
+              <PetRace party={party} />
+            </>
+          } />
       )}
       {(host ? party.stage !== "error" : party.live) && (
         <>

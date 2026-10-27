@@ -4,6 +4,7 @@ import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { PEER_OPTIONS } from "@/lib/ice";
 import { checkHost, proveHost } from "@/lib/peer-auth";
+import { boost as raceBoost, cleanRace, MIN_RACERS, newRace, TICK_MS, tick as raceTick, viewOf as raceView, type Race, type RaceView } from "@/lib/games/pet-race";
 import { callsFirst, CHAT_GAP_MS, cleanChat, cleanId, cleanName, cleanPet, GIFT_GAP_MS, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
 
 /**
@@ -21,7 +22,7 @@ export type PartyGameKind = "cards" | "ludo" | "dots" | "chess" | "draw" | "snak
 export const PARTY_GAMES: PartyGameKind[] = ["cards", "ludo", "dots", "chess", "draw", "snakes", "business", "bingo", "connect4"];
 const isGame = (g: unknown): g is PartyGameKind => PARTY_GAMES.includes(g as PartyGameKind);
 /** `peer`: the friend's own connection id, so friends can talk to each other directly (group voice). */
-export type PartyPlayer = { id: string; name: string; online: boolean; host?: boolean; peer?: string; /** Their pet, if they have one (the owner's Nova, or a friend's guest pet). */ pet?: PartyPet };
+export type PartyPlayer = { id: string; name: string; online: boolean; host?: boolean; peer?: string; /** Their pet, if they have one (the owner's Nova, or a friend's guest pet). */ pet?: PartyPet; /** Pet races won tonight (a crown each). */ crowns?: number };
 /** What the table knows of someone's pet: only this, never anything else. Friends send it themselves, so every field is checked on arrival (see cleanPet). */
 export type PartyPet = { name: string; hue: number; stage: number; xp: number; wear: string | null; best: number; flowers: number };
 export type PartyPhase = { screen: "lobby" } | { screen: "game"; game: PartyGameKind; n: number };
@@ -35,6 +36,10 @@ type Wire =
   | { t: "pet"; pet: PartyPet | null }
   /** A flower for someone's pet: friend → host (who says so in the chat), then host → that friend. */
   | { t: "gift"; to?: string; from?: string }
+  /** The pet race as it stands: host → everyone (null: it is over and cleared). */
+  | { t: "race"; r: RaceView | null }
+  /** A tap for your own pet in the race: friend → host. */
+  | { t: "boost" }
   | { t: "roster"; players: PartyPlayer[]; phase: PartyPhase }
   | { t: "state"; game: PartyGameKind; s: unknown }
   | { t: "act"; game: PartyGameKind; a: unknown }
@@ -97,6 +102,8 @@ export type Party = {
   /** Follow the chat; returns the unsubscribe. */
   onChat: (fn: (list: PartyChat[]) => void) => () => void;
   voice: { on: boolean; muted: boolean; noMic: boolean; toggleMute: () => void };
+  /** The pet race between games: the owner starts it, everyone taps for their own pet. */
+  race: { start: () => boolean; boost: () => void; on: (fn: (r: RaceView | null) => void) => () => void };
 };
 
 export const PartyContext = createContext<Party | null>(null);
@@ -301,6 +308,78 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     },
     [addChat, sendTo],
   );
+  // The pet race (owner's browser runs it): kept out of the Party object like reactions, so a tick doesn't re-render a game.
+  const raceRef = useRef<Race | null>(null);
+  const raceView0 = useRef<RaceView | null>(null);
+  const raceFans = useRef(new Set<(r: RaceView | null) => void>());
+  const raceTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const raceClear = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBoost = useRef(0);
+  const showRace = useCallback((v: RaceView | null) => {
+    raceView0.current = v;
+    for (const f of raceFans.current) f(v);
+  }, []);
+  const onRace = useCallback((fn: (r: RaceView | null) => void) => {
+    raceFans.current.add(fn);
+    fn(raceView0.current);
+    return () => void raceFans.current.delete(fn);
+  }, []);
+  const pushRace = useCallback(
+    (v: RaceView | null) => {
+      showRace(v);
+      for (const id of conns.current.keys()) sendTo(id, { t: "race", r: v } satisfies Wire);
+    },
+    [showRace, sendTo],
+  );
+  const startRace = useCallback(() => {
+    if (opts.current.role !== "host" || raceRef.current || phaseRef.current.screen !== "lobby") return false;
+    const ids = playersRef.current.filter((p) => p.pet && (p.online || p.host)).map((p) => p.id);
+    if (ids.length < MIN_RACERS) return false;
+    const r = newRace(ids, Date.now());
+    raceRef.current = r;
+    pushRace(raceView(r, Date.now()));
+    raceTimer.current = setInterval(() => {
+      const cur = raceRef.current;
+      if (!cur) return;
+      const now = Date.now();
+      raceTick(cur, now);
+      pushRace(raceView(cur, now));
+      if (cur.phase !== "done") return;
+      if (raceTimer.current) clearInterval(raceTimer.current);
+      raceTimer.current = null;
+      const win = playersRef.current.find((p) => p.id === cur.winner);
+      if (win?.pet) {
+        const text = `🏆 ${win.pet.name} won the pet race! 👑`;
+        addChat(cur.winner ?? "host", text, now);
+        for (const id of conns.current.keys()) sendTo(id, { t: "chat", text, who: cur.winner ?? "host", at: now } satisfies Wire);
+      }
+      setRoster((l) => l.map((p) => (p.id === cur.winner ? { ...p, crowns: Math.min(99, (p.crowns ?? 0) + 1) } : p)));
+      // The result stays on screen a while, then the track clears.
+      raceClear.current = setTimeout(() => {
+        raceRef.current = null;
+        pushRace(null);
+      }, 9000);
+    }, TICK_MS);
+    return true;
+  }, [pushRace, addChat, sendTo, setRoster]);
+  const boostMe = useCallback(() => {
+    const now = Date.now();
+    if (now - lastBoost.current < 60) return;
+    lastBoost.current = now;
+    if (opts.current.role === "host") {
+      if (raceRef.current) raceBoost(raceRef.current, "host", now);
+    } else {
+      const c = hostConn.current;
+      if (c?.open && verified.current) c.send({ t: "boost" } satisfies Wire);
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      if (raceTimer.current) clearInterval(raceTimer.current);
+      if (raceClear.current) clearTimeout(raceClear.current);
+    },
+    [],
+  );
   const gift = useCallback(
     (toId: string) => {
       if (opts.current.role === "host") return giveFlower("host", toId);
@@ -335,6 +414,15 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
   }, []);
   const startGame = useCallback(
     (game: PartyGameKind) => {
+      // A race still on the track ends when a game starts.
+      if (raceRef.current) {
+        if (raceTimer.current) clearInterval(raceTimer.current);
+        if (raceClear.current) clearTimeout(raceClear.current);
+        raceTimer.current = null;
+        raceClear.current = null;
+        raceRef.current = null;
+        pushRace(null);
+      }
       const n = phaseRef.current.screen === "game" ? phaseRef.current.n + 1 : 1;
       const ph: PartyPhase = { screen: "game", game, n };
       phaseRef.current = ph;
@@ -344,7 +432,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       broadcastRoster(playersRef.current, ph);
       save();
     },
-    [broadcastRoster, save],
+    [broadcastRoster, save, pushRace],
   );
   const backToLobby = useCallback(() => {
     const ph: PartyPhase = { screen: "lobby" };
@@ -485,6 +573,11 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         if (from) giveFlower(from, String(m.to ?? ""));
         return;
       }
+      if (m.t === "boost") {
+        const from = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
+        if (from && raceRef.current) raceBoost(raceRef.current, from, Date.now());
+        return;
+      }
       if (m.t === "chat") {
         const from = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
         const text = cleanChat(m.text);
@@ -558,7 +651,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         return;
       }
       if (m.t === "roster") {
-        const list = (Array.isArray(m.players) ? m.players : []).slice(0, MAX_PLAYERS).map((p) => ({ id: cleanId(p.id), name: cleanName(p.name) || "Friend", online: !!p.online, host: !!p.host, peer: typeof p.peer === "string" ? p.peer.replace(/[^a-z0-9-]/gi, "").slice(0, 64) : undefined, pet: cleanPet(p.pet) }));
+        const list = (Array.isArray(m.players) ? m.players : []).slice(0, MAX_PLAYERS).map((p) => ({ id: cleanId(p.id), name: cleanName(p.name) || "Friend", online: !!p.online, host: !!p.host, peer: typeof p.peer === "string" ? p.peer.replace(/[^a-z0-9-]/gi, "").slice(0, 64) : undefined, pet: cleanPet(p.pet), crowns: Math.min(99, Math.max(0, Math.floor(Number((p as PartyPlayer).crowns) || 0))) || undefined }));
         playersRef.current = list;
         setPlayers(list);
         const ph = m.phase && (m.phase.screen === "lobby" || (isGame(m.phase.game) && Number.isInteger(m.phase.n))) ? m.phase : ({ screen: "lobby" } as PartyPhase);
@@ -573,6 +666,10 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         setStage("lobby");
         save();
         mesh(list);
+        return;
+      }
+      if (m.t === "race") {
+        showRace(m.r === null ? null : cleanRace(m.r, cleanId));
         return;
       }
       if (m.t === "state" && isGame(m.game)) {
@@ -855,8 +952,9 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       chat,
       onChat,
       voice: { on: voiceOn, muted, noMic, toggleMute },
+      race: { start: startRace, boost: boostMe, on: onRace },
     }),
-    [o.role, me, o.hostName, players, phase, stage, err, note, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, gift, onFloats, chat, onChat, voiceOn, muted, noMic, toggleMute],
+    [o.role, me, o.hostName, players, phase, stage, err, note, live, snap, stateOf, publish, act, bind, startGame, backToLobby, removePlayer, react, gift, onFloats, chat, onChat, voiceOn, muted, noMic, toggleMute, startRace, boostMe, onRace],
   );
 }
 
