@@ -339,12 +339,12 @@ function Chat({ party }: { party: Party }) {
   );
 }
 
-function VoiceChip({ party }: { party: Party }) {
+function VoiceChip({ party, compact }: { party: Party; /** Icon only on a phone (the game bar is tight). */ compact?: boolean }) {
   const v = party.voice;
   // The mic is off until this is tapped (the browser asks for permission then, not when joining).
   return (
-    <button type="button" onClick={v.toggleMute} title={v.muted ? "Turn your microphone on" : "Mute your microphone"} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", v.noMic ? "border-alert/50 text-alert" : v.muted ? "border-line text-faint hover:text-fg" : "border-ok/50 text-ok")}>
-      {v.muted ? <MicOff size={13} /> : <Mic size={13} />} {v.noMic ? "Mic blocked" : v.muted ? "Mic off" : "Mic on"}
+    <button type="button" onClick={v.toggleMute} aria-label={v.muted ? "Turn your microphone on" : "Mute your microphone"} title={v.muted ? "Turn your microphone on" : "Mute your microphone"} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", v.noMic ? "border-alert/50 text-alert" : v.muted ? "border-line text-faint hover:text-fg" : "border-ok/50 text-ok")}>
+      {v.muted ? <MicOff size={13} /> : <Mic size={13} />} <span className={compact ? "hidden sm:inline" : undefined}>{v.noMic ? "Mic blocked" : v.muted ? "Mic off" : "Mic on"}</span>
       {v.muted && <span className="hidden sm:inline">· {v.noMic ? "tap to retry" : "tap to talk"}</span>}
     </button>
   );
@@ -460,7 +460,7 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
             </span>
           ))}
         </span>
-        <VoiceChip party={party} />
+        <VoiceChip party={party} compact />
       </div>
       <PetRoam party={party} />
       {watching && <p className="text-sm text-soft">{game === "connect4" ? "Connect Four seats two" : game === "ludo" ? "Ludo seats four" : "Dots & Boxes seats four"}: you&apos;re watching this one. You&apos;ll be in the next game.</p>}
