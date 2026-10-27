@@ -344,7 +344,8 @@ function VoiceChip({ party }: { party: Party }) {
   // The mic is off until this is tapped (the browser asks for permission then, not when joining).
   return (
     <button type="button" onClick={v.toggleMute} title={v.muted ? "Turn your microphone on" : "Mute your microphone"} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs", v.noMic ? "border-alert/50 text-alert" : v.muted ? "border-line text-faint hover:text-fg" : "border-ok/50 text-ok")}>
-      {v.muted ? <MicOff size={13} /> : <Mic size={13} />} {v.noMic ? "Mic blocked · tap to retry" : v.muted ? "Mic off · tap to talk" : "Mic on"}
+      {v.muted ? <MicOff size={13} /> : <Mic size={13} />} {v.noMic ? "Mic blocked" : v.muted ? "Mic off" : "Mic on"}
+      {v.muted && <span className="hidden sm:inline">· {v.noMic ? "tap to retry" : "tap to talk"}</span>}
     </button>
   );
 }
@@ -354,7 +355,7 @@ function Lobby({ party, pals }: { party: Party; pals?: React.ReactNode }) {
   const here = party.players.filter((p) => p.online || p.host);
   const waiting = !host && !party.live;
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 pr-12 sm:pr-0">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="flex items-center gap-2 text-lg font-semibold">
           <Users size={18} className="text-core" /> Game night

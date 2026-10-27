@@ -53,7 +53,7 @@ export function PetRace({ party }: { party: Party }) {
         {race.phase === "count" && <span className="text-sm font-bold text-amber-200">{race.left}…</span>}
         {race.phase === "run" && <span className="text-xs text-soft">Tap BOOST!</span>}
       </div>
-      <div className="mt-3 mr-10 space-y-2 sm:mr-0">
+      <div className="mt-3 space-y-2">
         {race.lanes.map((l) => {
           const pal = party.players.find((p) => p.id === l.id);
           const pet = pal?.pet;
@@ -61,13 +61,14 @@ export function PetRace({ party }: { party: Party }) {
           return (
             <div key={l.id} className={cx("relative h-11 overflow-hidden rounded-xl border bg-raised", l.id === party.me ? "border-core/60" : "border-line")}>
               <div className="absolute inset-y-0 right-0 w-1.5 bg-[repeating-linear-gradient(0deg,#fff_0_6px,#111_6px_12px)] opacity-70" />
-              <span className="absolute top-1 left-2 z-10 max-w-[40%] truncate text-[10px] font-semibold text-white/60">{pet.name}</span>
+              <span className="absolute top-1 left-2 z-10 max-w-[40%] truncate text-[10px] font-semibold text-white/60">{pet.name}
+                {done && race.winner === l.id ? " 👑" : ""}
+              </span>
               <div className="absolute top-0.5 size-10 transition-[left] duration-150 ease-linear" style={{ left: `calc((100% - 44px) * ${l.p / TRACK})` }}>
                 <div className={cx("h-full w-full", race.phase === "run" && "roam-bob")} style={{ filter: `hue-rotate(${HUES[pet.hue]?.rotate ?? 0}deg)` }}>
                   <Creature stage={pet.stage} mood="happy" look={{ x: 0, y: 0 }} eating={false} evolving={false} poked={false} wear={(pet.wear as AccessoryId | null) ?? null} />
                 </div>
               </div>
-              {done && race.winner === l.id && <span className="absolute top-1/2 right-3 -translate-y-1/2 text-lg">👑</span>}
             </div>
           );
         })}
