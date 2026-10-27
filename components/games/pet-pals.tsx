@@ -18,6 +18,17 @@ import { STAGES } from "@/lib/pet-stages";
  */
 const hueFilter = (hue: number) => ({ filter: `hue-rotate(${HUES[hue]?.rotate ?? 0}deg)` });
 
+/** A small pet next to a player's name (used in the bar above a running game). */
+export function MiniPet({ pet }: { pet: PartyPet }) {
+  return (
+    <span className="relative -my-1 block size-7 shrink-0" title={`${pet.name} (${STAGES[pet.stage]?.name ?? ""})`}>
+      <span className="absolute inset-0 overflow-hidden rounded-full" style={hueFilter(pet.hue)}>
+        <Creature stage={pet.stage} mood="happy" look={{ x: 0, y: 0 }} eating={false} evolving={false} poked={false} wear={(pet.wear as AccessoryId | null) ?? null} />
+      </span>
+    </span>
+  );
+}
+
 /** What a guest does here: make their pet, or play with the one they have. */
 export type GuestControls = {
   /** Make the pet (name and colour). */
@@ -66,6 +77,9 @@ export function PetPals({ party, guest, mine }: { party: Party; guest?: GuestCon
         {guest?.gotFlower && <span className="rounded-full bg-amber-300/15 px-2.5 py-0.5 text-[11px] text-amber-200">🌸 You got a flower!</span>}
       </div>
 
+      {party.role === "guest" && mine && !party.live && (
+        <p className="mb-3 rounded-lg bg-amber-300/10 px-3 py-2 text-xs text-amber-200">Your pet is made, but you haven&apos;t reached the table yet, so nobody else can see it. It shows up for everyone as soon as you&apos;re in.</p>
+      )}
       {needsPet && guest && <Hatch onHatch={guest.hatch} />}
 
       {pals.length > 0 && (
@@ -150,6 +164,26 @@ function Hatch({ onHatch }: { onHatch: (name: string, hue: number) => void }) {
   const [name, setName] = useState("");
   const [hue, setHue] = useState(0);
   const ok = !!cleanGuestName(name);
+  // The egg wobbles for a moment, then the pet pops out and is saved.
+  const [hatching, setHatching] = useState(false);
+  useEffect(() => {
+    if (!hatching) return;
+    const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const t = setTimeout(() => onHatch(name, hue), reduced ? 0 : 1900);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hatching]);
+  if (hatching)
+    return (
+      <div className="mb-3 grid place-items-center rounded-xl border border-dashed border-core/50 bg-core/5 p-5" role="status" aria-label="Hatching">
+        <div className="relative grid size-24 place-items-center">
+          <span className="egg-wobble text-6xl">🥚</span>
+          <span className="egg-flash pointer-events-none absolute inset-0 rounded-full bg-amber-200/70 blur-xl" />
+          <span className="egg-pop absolute inset-0 grid place-items-center text-6xl opacity-0">🐣</span>
+        </div>
+        <p className="mt-2 text-xs text-soft">Something is hatching…</p>
+      </div>
+    );
   return (
     <div className="mb-3 rounded-xl border border-dashed border-core/50 bg-core/5 p-3">
       <p className="text-sm font-medium">Get a pet for game night 🥚</p>
@@ -162,7 +196,7 @@ function Hatch({ onHatch }: { onHatch: (name: string, hue: number) => void }) {
           ))}
         </div>
       </div>
-      <button type="button" disabled={!ok} onClick={() => onHatch(name, hue)} className="mt-2.5 rounded-full bg-core px-5 py-1.5 text-xs font-bold text-core-ink disabled:opacity-40">
+      <button type="button" disabled={!ok} onClick={() => setHatching(true)} className="mt-2.5 rounded-full bg-core px-5 py-1.5 text-xs font-bold text-core-ink disabled:opacity-40">
         Hatch it
       </button>
     </div>

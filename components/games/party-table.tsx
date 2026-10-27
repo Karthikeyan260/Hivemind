@@ -14,7 +14,7 @@ import { cx } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FireflyGame } from "@/components/pet/fireflies";
-import { PetPals, type GuestControls } from "@/components/games/pet-pals";
+import { MiniPet, PetPals, type GuestControls } from "@/components/games/pet-pals";
 import { useFetch } from "@/lib/client-api";
 import { afterFireflies, afterFlower, afterGame, type GuestPet, guestStage, loadGuestPet, newGuestPet, saveGuestPet } from "@/lib/guest-pet";
 import type { Pet } from "@/lib/pet";
@@ -450,7 +450,7 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
         <span className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none]">
           {party.players.map((p) => (
             <span key={p.id} className={cx("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px]", p.online || p.host ? "bg-ok/10 text-fg" : "bg-panel text-faint line-through")}>
-              <span className={cx("size-1.5 rounded-full", p.online || p.host ? "bg-ok" : "bg-faint")} />
+              {p.pet && (p.online || p.host) ? <MiniPet pet={p.pet} /> : <span className={cx("size-1.5 rounded-full", p.online || p.host ? "bg-ok" : "bg-faint")} />}
               {p.name}
             </span>
           ))}
