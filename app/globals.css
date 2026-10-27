@@ -1147,3 +1147,10 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
 .egg-flash { animation: egg-flash 0.7s ease-out 1.2s both; }
 .egg-pop { animation: egg-pop 0.6s cubic-bezier(.3,1.4,.5,1) 1.3s both; }
 @media (prefers-reduced-motion: reduce) { .egg-wobble, .egg-flash, .egg-pop { animation: none; } }
+
+/* Game night: pets that wander along the bottom of the screen. */
+@keyframes roam-bob { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-5px) rotate(2deg); } }
+@keyframes roam-hop { 0%, 100% { transform: translateY(0) scale(1); } 35% { transform: translateY(-22px) scale(0.95, 1.08); } 70% { transform: translateY(0) scale(1.1, 0.9); } }
+.roam-bob { animation: roam-bob 0.45s ease-in-out infinite; }
+.roam-hop { animation: roam-hop 0.55s ease-out; }
+@media (prefers-reduced-motion: reduce) { .roam-bob, .roam-hop { animation: none; } }

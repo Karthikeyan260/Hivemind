@@ -15,6 +15,7 @@ import { useVoiceActions } from "@/components/voice/provider";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { FireflyGame } from "@/components/pet/fireflies";
 import { MiniPet, PetPals, type GuestControls } from "@/components/games/pet-pals";
+import { PetRoam } from "@/components/games/pet-roam";
 import { useFetch } from "@/lib/client-api";
 import { afterFireflies, afterFlower, afterGame, type GuestPet, guestStage, loadGuestPet, newGuestPet, saveGuestPet } from "@/lib/guest-pet";
 import type { Pet } from "@/lib/pet";
@@ -457,6 +458,7 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
         </span>
         <VoiceChip party={party} />
       </div>
+      <PetRoam party={party} />
       {watching && <p className="text-sm text-soft">{game === "connect4" ? "Connect Four seats two" : game === "ludo" ? "Ludo seats four" : "Dots & Boxes seats four"}: you&apos;re watching this one. You&apos;ll be in the next game.</p>}
       {game === "cards" ? (
         <CardsGame key={`cards-${n}`} {...props} />
