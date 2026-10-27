@@ -84,6 +84,15 @@ export function Nova() {
   // "Show me your Diwali look": that festival's outfit for a little while, whatever the date.
   const [preview, setPreview] = useState<Festival | null>(null);
   const [open, setOpen] = useState(false);
+  // Tapping anywhere outside the pet and its card closes the card (not only the ✕).
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!(e.target as Element | null)?.closest?.("[data-pet]")) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [open]);
   const [hidden, setHidden] = useState(false);
   // Short-lived reactions: chomping after a habit, the evolution burst, a happy hop when poked.
   const [eating, setEating] = useState<number | null>(null);

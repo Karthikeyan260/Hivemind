@@ -544,6 +544,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         ref={box}
         data-garden
         onPointerMove={onPointer}
+        onPointerDown={() => setHint(false)}
         className="relative h-[calc(100dvh-9.5rem)] min-h-[460px] overflow-hidden rounded-3xl bg-[#0b1220] shadow-[0_30px_80px_-30px_rgba(0,0,0,.8)] ring-1 ring-white/10 select-none sm:h-[calc(100dvh-5rem)]"
       >
         <div ref={host} className="absolute inset-0" />
@@ -579,9 +580,9 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/55 to-transparent" />
 
         {/* Title. */}
-        <div className="pointer-events-none absolute top-5 left-5 max-w-[52%] sm:top-7 sm:left-8 sm:max-w-none">
-          <h1 className="text-2xl leading-tight font-semibold tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,.55)] sm:text-[2.6rem]">{g?.pet ?? "Nova"}&apos;s garden</h1>
-          <p className="mt-1 max-w-sm text-[13px] text-white/80 drop-shadow sm:text-sm">Everything you keep up with grows here.</p>
+        <div className="pointer-events-none absolute top-4 left-4 max-w-[calc(100%-6.5rem)] sm:top-7 sm:left-8 sm:max-w-none">
+          <h1 className="text-xl leading-tight font-semibold tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,.55)] sm:text-[2.6rem]">{g?.pet ?? "Nova"}&apos;s garden</h1>
+          <p className="mt-1 hidden max-w-sm text-[13px] text-white/80 drop-shadow sm:block sm:text-sm">Everything you keep up with grows here.</p>
           {/* What the garden is like right now, as small glass chips (laptop and bigger). */}
           <div className="mt-3 hidden flex-wrap gap-1.5 sm:flex">
             {[
@@ -627,13 +628,13 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         {ready && hint && <div className="pointer-events-none absolute inset-x-0 top-[40%] flex justify-center transition-opacity sm:top-auto sm:right-8 sm:bottom-[8.6rem] sm:left-auto sm:justify-end"><span className="rounded-full border border-white/20 bg-black/30 px-3.5 py-1.5 text-xs font-medium text-white/90 shadow-lg backdrop-blur-md">👆 Drag to look around · pinch to zoom · tap anything</span></div>}
         {day && <DayCard day={day} onClose={() => setDay(null)} />}
         {ready && g && !bedtime && (
-          <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
+          <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
             <div className="flex gap-2">
-              <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/40 px-3.5 py-2 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-black/55">
+              <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/40 px-3 py-2 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-black/55">
                 📸<span className="hidden sm:inline"> Share</span>
               </button>
-              <button onClick={() => void goodNight()} className="flex items-center gap-1.5 rounded-full border border-indigo-200/30 bg-[#0d1024]/70 px-3.5 py-2 text-xs font-medium text-indigo-100 shadow-lg backdrop-blur-md transition hover:bg-[#161a3a]/80">
-                🌙 Good night
+              <button onClick={() => void goodNight()} aria-label="Good night" className="flex items-center gap-1.5 rounded-full border border-indigo-200/30 bg-[#0d1024]/70 px-3 py-2 text-xs font-medium text-indigo-100 shadow-lg backdrop-blur-md transition hover:bg-[#161a3a]/80">
+                🌙<span className="hidden sm:inline"> Good night</span>
               </button>
             </div>
             {sharing && <p className="rounded-full bg-black/55 px-3 py-1 text-[11px] text-white/90 backdrop-blur-md">{sharing}</p>}
