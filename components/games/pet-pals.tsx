@@ -21,7 +21,7 @@ const hueFilter = (hue: number) => ({ filter: `hue-rotate(${HUES[hue]?.rotate ??
 /** A small pet next to a player's name (used in the bar above a running game). */
 export function MiniPet({ pet }: { pet: PartyPet }) {
   return (
-    <span className="relative -my-1 block size-7 shrink-0" title={`${pet.name} (${STAGES[pet.stage]?.name ?? ""})`}>
+    <span className="relative -my-1 block size-7 shrink-0 sm:size-9" title={`${pet.name} (${STAGES[pet.stage]?.name ?? ""})`}>
       <span className="absolute inset-0 overflow-hidden rounded-full" style={hueFilter(pet.hue)}>
         <Creature stage={pet.stage} mood="happy" look={{ x: 0, y: 0 }} eating={false} evolving={false} poked={false} wear={(pet.wear as AccessoryId | null) ?? null} />
       </span>

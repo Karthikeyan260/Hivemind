@@ -11,7 +11,8 @@ import type { AccessoryId } from "@/lib/pet-looks";
  * the screen, hops when its owner sends a reaction, can be dragged (it drops back down), and says something
  * when tapped.
  */
-const SIZE = 48;
+/** Pet size: small on a phone (so it stays clear of the cards), big on a laptop. */
+const sizeFor = (width: number) => (width >= 1024 ? 104 : width >= 640 ? 80 : 48);
 const LINES = ["Hi hi! 👋", "Yaaay, game time!", "Good luck! 🍀", "Ippo enna game? 🎲", "I'm cheering for you!", "Semma fun! ✨", "Don't forget to smile 😊", "Let's gooo!"];
 
 const rnd = () => Math.random();
@@ -25,6 +26,7 @@ export function PetRoam({ party }: { party: Party }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const drag = useRef<{ id: string; sx: number; sy: number; ox: number; ol: number; moved: boolean } | null>(null);
   const ids = pals.map((p) => p.id).join("|");
+  const size = sizeFor(width);
 
   useEffect(() => {
     const on = () => setWidth(window.innerWidth);
@@ -44,7 +46,7 @@ export function PetRoam({ party }: { party: Party }) {
       const go = () => {
         if (!alive) return;
         if (drag.current?.id !== id) {
-          const to = 8 + rnd() * Math.max(10, width - SIZE - 16);
+          const to = 8 + rnd() * Math.max(10, width - size - 16);
           patch(id, (s) => ({ ...s, x: to, face: to >= s.x ? 1 : -1, moving: true }));
           timers.push(setTimeout(() => alive && patch(id, (s) => ({ ...s, moving: false })), 2600));
         }
@@ -56,7 +58,7 @@ export function PetRoam({ party }: { party: Party }) {
       alive = false;
       timers.forEach(clearTimeout);
     };
-  }, [ids, width]);
+  }, [ids, width, size]);
 
   // A pet hops when its owner sends a reaction.
   const { onFloats } = party;
@@ -92,8 +94,8 @@ export function PetRoam({ party }: { party: Party }) {
             style={{
               left: s.x,
               bottom: `calc(var(--tabbar-h, 0px) + var(--music-h, 0px) + 2px + ${s.lift}px)`,
-              width: SIZE,
-              height: SIZE,
+              width: size,
+              height: size,
               transition: dragging ? "none" : "left 2.6s ease-in-out, bottom 0.35s cubic-bezier(.4,1.6,.5,1)",
               cursor: dragging ? "grabbing" : "grab",
             }}
@@ -109,7 +111,7 @@ export function PetRoam({ party }: { party: Party }) {
               const dy = e.clientY - d.sy;
               if (!d.moved && Math.hypot(dx, dy) < 6) return;
               d.moved = true;
-              patch(p.id, (o) => ({ ...o, x: Math.max(0, Math.min(width - SIZE, d.ox + dx)), lift: Math.max(0, d.ol - dy), moving: false }));
+              patch(p.id, (o) => ({ ...o, x: Math.max(0, Math.min(width - size, d.ox + dx)), lift: Math.max(0, d.ol - dy), moving: false }));
             }}
             onPointerUp={() => {
               const d = drag.current;
