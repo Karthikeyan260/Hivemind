@@ -452,7 +452,7 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
             <Layers size={13} /> Game night
           </span>
         )}
-        <span className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none]">
+        <span className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none] max-sm:order-last max-sm:basis-full max-sm:flex-wrap">
           {party.players.map((p) => (
             <span key={p.id} className={cx("inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px]", p.online || p.host ? "bg-ok/10 text-fg" : "bg-panel text-faint line-through")}>
               {p.pet && (p.online || p.host) ? <MiniPet pet={p.pet} /> : <span className={cx("size-1.5 rounded-full", p.online || p.host ? "bg-ok" : "bg-faint")} />}
