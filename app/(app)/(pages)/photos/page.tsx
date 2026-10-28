@@ -129,6 +129,15 @@ function Photos() {
   const open = found >= 0 ? found : null;
   const setOpen = (i: number | null) => setOpenId(i === null ? null : (photos[i]?.id ?? null));
   const cur = open !== null ? photos[open] : null;
+  // Escape closes the viewer (not while typing in its edit form: that would throw the draft away).
+  useEffect(() => {
+    if (openId === null) return;
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement | null)?.tagName ?? "")) setOpenId(null);
+    };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [openId]);
 
   // Fix a photo's title, date or place (photos from WhatsApp arrive without them).
   const [draft, setDraft] = useState<{ title: string; taken: string; place: string } | null>(null);

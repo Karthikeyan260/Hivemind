@@ -306,6 +306,15 @@ function WishSheet({ id, onClose }: { id: string; onClose: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Escape closes the sheet.
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onClose]);
+
   useEffect(() => {
     api<{ name: string; text: string; phone: string | null }>(`/api/birthdays/${id}/wish`, { method: "POST" })
       .then((w) => {

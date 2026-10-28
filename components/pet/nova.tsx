@@ -90,8 +90,16 @@ export function Nova() {
     const away = (e: PointerEvent) => {
       if (!(e.target as Element | null)?.closest?.("[data-pet]")) setOpen(false);
     };
+    // Escape closes it too, for keyboard users.
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
     document.addEventListener("pointerdown", away, true);
-    return () => document.removeEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      document.removeEventListener("keydown", esc);
+    };
   }, [open]);
   const [hidden, setHidden] = useState(false);
   // Short-lived reactions: chomping after a habit, the evolution burst, a happy hop when poked.

@@ -28,6 +28,14 @@ export function FireflyGame({ name, stage, wear, best, onFinish, onClose }: { na
   const [cheer, setCheer] = useState(0);
   const [result, setResult] = useState<{ best: number; newBest: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  // Escape leaves the game, like the ✕.
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onClose]);
   const game = useRef(g);
   const burstId = useRef(0);
 
