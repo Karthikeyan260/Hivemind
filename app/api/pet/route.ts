@@ -18,6 +18,8 @@ export const PATCH = handle(async (req: Request) => {
     });
     return NextResponse.json({ pet });
   }
+  // A wear request that isn't an accessory is that, not a missing name.
+  if (raw && typeof raw === "object" && "wear" in raw) throw new HttpError(400, "That isn't an accessory.");
   const body = z.object({ name: z.string().max(60) }).safeParse(raw);
   if (!body.success) throw new HttpError(400, "Send a name.");
   const name = await renamePet(db(), body.data.name).catch((e) => {
