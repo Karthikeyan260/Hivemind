@@ -49,6 +49,7 @@ export const brain: Record<string, Tool> = {
     description: "Save a new memory (fact, idea, decision, preference) exactly as the owner stated it. It is filed into the right project automatically.",
     parameters: obj({ content: S }, ["content"]),
     async run(args, ctx) {
+      if (!str(args.content)) return { error: "What should I remember?" };
       const m = await createMemory(ctx.supabase, { content: str(args.content), project_id: ctx.projectId });
       ctx.changed = true;
       ctx.actions.push({ label: "Open memory", href: `/memories?open=${m!.id}` });
@@ -60,6 +61,7 @@ export const brain: Record<string, Tool> = {
     description: "Correct or update an existing memory. Finds the closest memory to 'which' and replaces its content with 'new_content'.",
     parameters: obj({ which: S, new_content: S }, ["which", "new_content"]),
     async run(args, ctx) {
+      if (!str(args.new_content)) return { error: "What should it say now?" };
       const hits = (await searchKnowledge(ctx.supabase, str(args.which), { limit: 5 })).filter((h) => h.source_type === "memory");
       const target = hits[0];
       if (!target) return { error: "No matching memory found." };
@@ -144,7 +146,7 @@ export const brain: Record<string, Tool> = {
         .select("title, memory_type, created_at")
         .or(NOT_CAREER_FILTER)
         .order("created_at", { ascending: false })
-        .limit(Math.min(Number(args.limit) || 8, 20));
+        .limit(Math.max(1, Math.min(Math.floor(Number(args.limit)) || 8, 20)));
       dbError(error);
       return { memories: data ?? [] };
     },
@@ -156,6 +158,7 @@ export const brain: Record<string, Tool> = {
     description: "Create a note: longer text the owner dictates or asks to write down as a note.",
     parameters: obj({ title: S, content: S }, ["content"]),
     async run(args, ctx) {
+      if (!str(args.content)) return { error: "What should the note say?" };
       const note = await createNote(ctx.supabase, { title: str(args.title) || undefined, content: str(args.content), project_id: ctx.projectId ?? undefined });
       ctx.changed = true;
       ctx.actions.push({ label: "Open note", href: `/notes?open=${note.id}` });

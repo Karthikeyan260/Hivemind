@@ -67,7 +67,11 @@ export async function reembedMissing(supabase: SupabaseClient, limit = 10) {
   return done;
 }
 
-export async function createNote(supabase: SupabaseClient, input: z.infer<typeof NoteInput>) {
+/** The database refuses any text with a NUL character (pasted or spoken text can carry one): drop it instead of failing the whole save. */
+const noNul = (s: string) => s.replace(/\u0000/g, "");
+
+export async function createNote(supabase: SupabaseClient, rawInput: z.infer<typeof NoteInput>) {
+  const input = { ...rawInput, content: noNul(rawInput.content), title: rawInput.title === undefined ? undefined : noNul(rawInput.title) };
   const meta = await extractMetadata(input.content);
   const title = input.title || meta.title || input.content.slice(0, 60);
   const embedding = await tryEmbed(embedText(title, input.content));
@@ -103,7 +107,8 @@ async function autoFile<T extends { id: string; title: string; content: string; 
   return (data as unknown as T) ?? row;
 }
 
-export async function createMemory(supabase: SupabaseClient, input: z.infer<typeof MemoryInput>) {
+export async function createMemory(supabase: SupabaseClient, rawInput: z.infer<typeof MemoryInput>) {
+  const input = { ...rawInput, content: noNul(rawInput.content), title: rawInput.title === undefined ? undefined : noNul(rawInput.title) };
   const meta = await extractMetadata(input.content);
   const title = input.title || meta.title || input.content.slice(0, 60);
   const embedding = await tryEmbed(embedText(title, input.content));
