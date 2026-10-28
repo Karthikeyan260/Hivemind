@@ -332,7 +332,8 @@ async function doFlush() {
         res = await fetch(path, {
           method: op.method,
           headers: op.body ? { "Content-Type": "application/json" } : undefined,
-          body: op.body ? JSON.stringify(op.body) : undefined,
+          // A create carries its temporary id, so a retry after a lost reply can't make a second copy.
+          body: op.body ? JSON.stringify(op.tempId ? { ...op.body, client_id: op.tempId } : op.body) : undefined,
         });
       } catch {
         error = "Still offline";
