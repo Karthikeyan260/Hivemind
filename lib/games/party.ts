@@ -831,6 +831,10 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
           };
           c.on("close", gone);
           c.on("error", gone);
+          // Reached the connection service but not the table after a while: say so (usually the friend's network, e.g. mobile data).
+          later(() => {
+            if (c === hostConn.current && !c.open && !failed.has(c)) setNote(`Still trying to reach ${opts.current.hostName}'s table. This network may be blocking a direct connection: try Wi-Fi instead of mobile data (or the other way round).`);
+          }, 12_000);
         };
         // A friend's own link to the relay. If it fails before it ever opened (a busy relay, a
         // network blip as the page loads), start a fresh one: reconnect() only works after an open.
