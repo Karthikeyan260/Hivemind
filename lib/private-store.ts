@@ -30,7 +30,11 @@ const notFound = (error: unknown) => {
  * change and write back (routines, call rooms, the game link, the call log) must never save a fresh
  * empty value over real data because Supabase blipped for a second.
  */
+/** A name with control characters (a NUL in an address) can't be a stored file: it is simply not there. */
+const unstorable = (key: string) => /[\x00-\x1f]/.test(key);
+
 export async function readJSON<T>(supabase: SupabaseClient, key: string, fallback: T): Promise<T> {
+  if (unstorable(key)) return fallback;
   await ensureBucket(supabase);
   const { data, error } = await supabase.storage.from(BUCKET).download(`${key}.json`);
   if (error) {

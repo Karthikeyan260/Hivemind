@@ -17,7 +17,8 @@ const dataKey = (id: string) => `apps/${id}.data`;
 const KEEP_VERSIONS = 8;
 
 export const listApps = (supabase: SupabaseClient) => readJSON<AppMeta[]>(supabase, INDEX, []);
-export const getApp = (supabase: SupabaseClient, id: string) => readJSON<AppDoc | null>(supabase, docKey(id), null);
+// Ids are made with randomUUID: anything else in an address is simply no app (and would only make the file store complain).
+export const getApp = (supabase: SupabaseClient, id: string) => (/^[0-9a-f-]{36}$/i.test(id) ? readJSON<AppDoc | null>(supabase, docKey(id), null) : Promise.resolve(null));
 
 async function saveApp(supabase: SupabaseClient, app: AppDoc) {
   app.updated_at = new Date().toISOString();

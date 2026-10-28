@@ -44,6 +44,8 @@ const stopPath = (id: string) => `web-tasks/${id}.stop`;
 export const ACTIVE: TaskStatus[] = ["queued", "running", "needs_approval", "needs_you"];
 
 export async function getTask(supabase: SupabaseClient, id: string) {
+  // Ids are made with randomUUID: anything else in an address is simply no task.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const task = await readJSON<WebTask | null>(supabase, taskKey(id), null);
   if (task && ACTIVE.includes(task.status) && (await readFile(supabase, stopPath(id)))) {
     task.status = "cancelled";
