@@ -54,7 +54,8 @@ export async function notify(supabase: SupabaseClient, n: Notice) {
   await Promise.all(
     subs.map(async (s) => {
       try {
-        await webpush.sendNotification(s, JSON.stringify(n), { TTL: n.sticky ? 60 : 3600, urgency: n.sticky ? "high" : "normal" });
+        await webpush.sendNotification(s, JSON.stringify(n), // A push service that never answers must not hold up everything waiting on this (reminders, the brief): give up after 10 s.
+        { TTL: n.sticky ? 60 : 3600, urgency: n.sticky ? "high" : "normal", timeout: 10_000 });
         sent++;
       } catch (err) {
         const code = (err as { statusCode?: number }).statusCode;
@@ -63,6 +64,7 @@ export async function notify(supabase: SupabaseClient, n: Notice) {
       }
     }),
   );
-  if (gone.length) await writeJSON(supabase, KEY, subs.filter((s) => !gone.includes(s.endpoint)));
+  // Taken from a fresh read, so a device that subscribed while this was sending isn't wiped from the list.
+  if (gone.length) await writeJSON(supabase, KEY, (await listSubscriptions(supabase)).filter((s) => !gone.includes(s.endpoint)));
   return sent;
 }
