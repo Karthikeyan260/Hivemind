@@ -80,7 +80,13 @@ export function everyHours(n: number, from = "09:00", to = "21:00") {
   const [fh, fm] = hhmm(from).split(":").map(Number);
   const [th, tm] = hhmm(to).split(":").map(Number);
   const out: string[] = [];
-  for (let t = fh * 60 + fm; t <= th * 60 + tm && out.length < 24; t += Math.max(30, n * 60)) out.push(`${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`);
+  const start = fh * 60 + fm;
+  // A window that ends before it starts runs past midnight (23:00 to 02:00).
+  const end = th * 60 + tm < start ? th * 60 + tm + 1440 : th * 60 + tm;
+  for (let t = start; t <= end && out.length < 24; t += Math.max(30, n * 60)) {
+    const m = t % 1440;
+    out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+  }
   return out;
 }
 
