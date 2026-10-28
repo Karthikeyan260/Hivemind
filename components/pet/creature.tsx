@@ -95,7 +95,7 @@ export function Creature({ stage, mood, look, eating, evolving, poked, quiet = f
         <div className="absolute inset-0" style={{ transform: `scale(${scale})`, transformOrigin: "50% 85%", filter: quiet ? lit : `${lit} drop-shadow(0 0 ${4 + stage * 3}px ${glow}aa)`, transition: "filter 0.6s" }}>
           <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.directions})`, ...cell(DIRECTIONS.indexOf(dir)), opacity: reaction ? 0 : 1 }} />
           <div className="absolute inset-0" style={{ backgroundImage: `url(${SHEETS.reactions})`, ...cell(REACTION[reaction ?? "blink"]), opacity: reaction ? 1 : 0 }} />
-          {!quiet && <Looks festival={festival} wear={wear} sky={sky} />}
+          {!quiet && <Looks festival={festival} wear={wear} sky={sky} dir={reaction ? "center" : dir} />}
         </div>
         </div>
         {/* Crown of sparks (last stage). */}

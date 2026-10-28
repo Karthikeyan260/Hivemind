@@ -7,7 +7,40 @@ import type { Sky } from "@/lib/sky";
  * A festival hat replaces a head accessory; the weather outside wins over both (an umbrella in the
  * rain, shades on a sunny day); everything else layers.
  */
-export function Looks({ festival, wear, sky = "calm" }: { festival: Festival | null; wear: AccessoryId | null; sky?: Sky }) {
+/**
+ * Where the face and the top of the head sit in each of the head's nine poses (measured on the drawing,
+ * in this 100x100 box): the glasses go where the eyes are (turned, tilted, narrower from the side) and
+ * hats, crowns and headphones move and lean with the head, so they turn with it instead of staying put.
+ */
+export type HeadDir = "center" | "up" | "down" | "left" | "right" | "up-left" | "up-right" | "down-left" | "down-right";
+const FACE: Record<HeadDir, { x: number; y: number; rot: number; sx: number }> = {
+  center: { x: 52, y: 48, rot: 0, sx: 1 },
+  up: { x: 52, y: 37, rot: 0, sx: 1 },
+  down: { x: 52, y: 58, rot: 0, sx: 1 },
+  left: { x: 41, y: 47.5, rot: 0, sx: 0.5 },
+  right: { x: 65, y: 47.5, rot: 0, sx: 0.5 },
+  "up-left": { x: 46, y: 41, rot: 21, sx: 0.9 },
+  "up-right": { x: 57, y: 41, rot: -23, sx: 0.9 },
+  "down-left": { x: 39, y: 55, rot: 0, sx: 0.8 },
+  "down-right": { x: 59, y: 55, rot: 0, sx: 0.8 },
+};
+const HEAD: Record<HeadDir, { dx: number; dy: number; rot: number }> = {
+  center: { dx: 0, dy: 0, rot: 0 },
+  up: { dx: 0, dy: -2, rot: 0 },
+  down: { dx: 0, dy: 6, rot: 0 },
+  left: { dx: -2, dy: 0, rot: -4 },
+  right: { dx: 1, dy: 0, rot: 4 },
+  "up-left": { dx: 10, dy: 1, rot: 12 },
+  "up-right": { dx: -11, dy: 2, rot: -12 },
+  "down-left": { dx: -8, dy: 4, rot: -10 },
+  "down-right": { dx: 9, dy: 2.5, rot: 10 },
+};
+
+export function Looks({ festival, wear, sky = "calm", dir = "center" }: { festival: Festival | null; wear: AccessoryId | null; sky?: Sky; dir?: HeadDir }) {
+  const f = FACE[dir] ?? FACE.center;
+  const h = HEAD[dir] ?? HEAD.center;
+  // The head's own turn: shift, then lean about the middle of the head.
+  const onHead = `translate(${h.dx} ${h.dy}) rotate(${h.rot} 50 40)`;
   const id = festival?.id;
   const wet = sky === "rain" || sky === "thunder";
   const hat = wet ? <Umbrella /> : id === "christmas" ? <SantaHat /> : id === "newyear" ? <PartyHat /> : null;
@@ -38,9 +71,17 @@ export function Looks({ festival, wear, sky = "calm" }: { festival: Festival | n
       {/* On the lantern. */}
       {wear === "garland" && <Garland />}
       {wear === "scarf" && <Scarf />}
-      {wear === "headphones" && <Headphones />}
-      {(wear === "shades" || sky === "sunny") && <Shades />}
-      {hat ?? headWear}
+      {wear === "headphones" && (
+        <g transform={onHead}>
+          <Headphones />
+        </g>
+      )}
+      {(wear === "shades" || sky === "sunny") && (
+        <g transform={`translate(${f.x} ${f.y}) rotate(${f.rot}) scale(${f.sx} 1) translate(-50 -47.5)`}>
+          <Shades />
+        </g>
+      )}
+      {(hat ?? headWear) && <g transform={onHead}>{hat ?? headWear}</g>}
     </svg>
   );
 }
