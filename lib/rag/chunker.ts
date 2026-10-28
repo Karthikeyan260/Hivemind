@@ -1,3 +1,5 @@
+import { scrub } from "@/lib/scrub";
+
 const TARGET = 1200;
 const OVERLAP = 200;
 
@@ -5,7 +7,7 @@ const OVERLAP = 200;
 export function chunkText(text: string): string[] {
   const clean = text.replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   if (!clean) return [];
-  if (clean.length <= TARGET) return [clean];
+  if (clean.length <= TARGET) return [scrub(clean)].filter((c) => c.trim());
 
   const pieces = clean.split(/\n\n+/).flatMap((p) =>
     p.length <= TARGET ? [p] : p.match(/[^.!?]+[.!?]*\s*/g) ?? [p],
@@ -26,5 +28,5 @@ export function chunkText(text: string): string[] {
     current += (current ? "\n\n" : "") + piece;
   }
   if (current.trim()) chunks.push(current.trim());
-  return chunks;
+  return chunks.map(scrub).filter((c) => c.trim());
 }

@@ -3,11 +3,12 @@ import { dbError } from "@/lib/api";
 import { CAREER_SOURCE } from "@/lib/career";
 import { type Contact, findContacts, normalizePhone, pretty } from "@/lib/contacts";
 import type { Job } from "@/lib/external/jobs";
+import { scrub } from "@/lib/scrub";
 import type { RunContext } from "../types";
 
 /** Helpers shared by the tool domains (split out of the old single tools.ts). */
-// A NUL character (it can ride in on a pasted or spoken text) makes the database refuse the whole save, so it never gets through.
-export const str = (v: unknown) => (v == null ? "" : String(v)).replace(/\u0000/g, "").trim();
+// A NUL character or a broken half of an emoji (it can ride in on a pasted or spoken text) makes the database refuse the whole save, so neither gets through.
+export const str = (v: unknown) => scrub(v == null ? "" : String(v)).trim();
 export const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required });
 export const S = { type: "string" };
 /** Location tools without a location: how to fix it. */
