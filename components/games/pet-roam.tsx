@@ -121,6 +121,12 @@ export function PetRoam({ party }: { party: Party }) {
               if (d.moved) patch(p.id, (o) => ({ ...o, lift: 0, hop: o.hop + 1 }));
               else speak(p.id);
             }}
+            // A touch the phone takes over (a scroll, a call) ends the grab without a tap.
+            onPointerCancel={() => {
+              drag.current = null;
+              setDragId(null);
+              patch(p.id, (o) => ({ ...o, lift: 0 }));
+            }}
             role="button"
             aria-label={`${pet.name}, ${p.name}'s pet. Tap to say hi, drag to move.`}
           >

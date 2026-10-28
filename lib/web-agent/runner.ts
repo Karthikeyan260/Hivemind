@@ -157,6 +157,8 @@ export async function runTask(supabase: SupabaseClient, id: string, origin: stri
         await doStep(task, "", "read the page", async () => {
           throw new Error("couldn't read the page");
         });
+        // A page that can't be read three times in a row is gone (the cloud browser closed): stop, don't keep asking the owner to continue.
+        if (threeFailuresInARow(task.steps)) return finish(supabase, task, "failed", { error: "I couldn't read the page any more (the cloud browser may have closed). Tap Retry to start again." });
         continue;
       }
       task.url = snap.url;

@@ -55,7 +55,7 @@ export async function GET(req: Request) {
     new Intl.DateTimeFormat("en-CA", { timeZone: HOME_TZ }).format(now),
     Number(new Intl.DateTimeFormat("en-GB", { timeZone: HOME_TZ, hour: "2-digit", hourCycle: "h23" }).format(now)),
   ];
-  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; news?: string; rls?: string; checkin?: string; wrapped?: string }>(supabase, "notify-state", {});
+  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; news?: string; rls?: string; checkin?: string; wrapped?: string; newsTry?: { date: string; n: number; at: number } }>(supabase, "notify-state", {});
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
   if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
@@ -102,10 +102,12 @@ export async function GET(req: Request) {
   const dreaming = !!dreamSet?.enabled && hour >= dreamSet.hour && hour < 7 && state.dream !== date;
   // The news brief: once each morning, after the "good morning" window opens, if topics are set.
   const briefSet = await getBriefSettings(supabase).catch(() => null);
-  const news = !!briefSet?.enabled && !!briefSet.topics.length && hour >= BRIEF_HOUR && hour < 12 && state.news !== date;
+  // Tried up to 3 times a morning, 10 minutes apart; it counts as done only once the brief is saved (see below), so one failure doesn't cost the day.
+  const tries = state.newsTry?.date === date ? state.newsTry : { date, n: 0, at: 0 };
+  const news = !!briefSet?.enabled && !!briefSet.topics.length && hour >= BRIEF_HOUR && hour < 12 && state.news !== date && tries.n < 3 && now.getTime() - tries.at > 10 * 60_000;
 
   // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
-  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { news: date } : {}), ...(checkin ? { checkin: date } : {}), ...(wrapped ? { wrapped: lastMonth } : {}), lastRun: now.toISOString(), lastSent: due.length });
+  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { newsTry: { date, n: tries.n + 1, at: now.getTime() } } : {}), ...(checkin ? { checkin: date } : {}), ...(wrapped ? { wrapped: lastMonth } : {}), lastRun: now.toISOString(), lastSent: due.length });
   // The jobs that run on their own: a failure becomes a push (once a day each), never silence.
   if (dreaming)
     after(() =>
@@ -120,6 +122,9 @@ export async function GET(req: Request) {
         const b = await makeBrief(db(), date);
         if (!b) return;
         if (!b.items.some((i) => i.points.length)) return void (await alertFailure(db(), "brief", "None of your brief topics could be researched this morning (web search or AI failed). Try Refresh on the Brief page."));
+        // Saved with something in it: today's brief is done (no more tries).
+        const cur = await readJSON<Record<string, unknown>>(db(), "notify-state", {});
+        await writeJSON(db(), "notify-state", { ...cur, news: date });
         await notify(db(), { title: "📰 Your morning brief", body: briefHeadline(b), url: "/brief", tag: "news-brief" }).catch(() => 0);
       } catch (e) {
         await alertFailure(db(), "brief", e);
