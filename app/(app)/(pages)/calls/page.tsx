@@ -55,7 +55,7 @@ export default function CallsPage() {
         <>
           <section className="mb-4 space-y-3 rounded-xl border border-line bg-panel p-4 text-sm">
             <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-              <label className="flex items-center gap-2 text-soft">
+              <label className="flex max-w-full flex-wrap items-center gap-2 text-soft">
                 <span className="whitespace-nowrap">Answer for me</span>
                 <Select value={d.settings.mode} onChange={(e) => set({ mode: e.target.value as Settings["mode"] })}>
                   <option value="missed">when I don&apos;t pick up</option>
@@ -63,7 +63,7 @@ export default function CallsPage() {
                   <option value="off">never</option>
                 </Select>
               </label>
-              <label className="flex items-center gap-2 text-soft">
+              <label className="flex max-w-full flex-wrap items-center gap-2 text-soft">
                 after
                 <Select value={d.settings.wait_s} onChange={(e) => set({ wait_s: +e.target.value })} disabled={d.settings.mode !== "missed"}>
                   {[10, 15, 20, 25, 30, 45, 60].map((s) => (

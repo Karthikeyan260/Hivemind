@@ -138,7 +138,7 @@ export default function AutopilotPage() {
             <input type="checkbox" checked={f.settings.enabled} onChange={(e) => setSettings({ enabled: e.target.checked })} />
             Run on its own
           </label>
-          <label className="flex items-center gap-2 text-soft">
+          <label className="flex max-w-full flex-wrap items-center gap-2 text-soft">
             every
             <Select value={f.settings.every_hours} onChange={(e) => setSettings({ every_hours: +e.target.value })} disabled={!f.settings.enabled}>
               {[1, 2, 3, 4, 6, 12, 24].map((h) => (
@@ -148,7 +148,7 @@ export default function AutopilotPage() {
               ))}
             </Select>
           </label>
-          <label className="flex items-center gap-2 text-soft">
+          <label className="flex max-w-full flex-wrap items-center gap-2 text-soft">
             between
             <Select value={f.settings.start_hour} onChange={(e) => setSettings({ start_hour: +e.target.value })} disabled={!f.settings.enabled}>
               {Array.from({ length: 24 }, (_, h) => (

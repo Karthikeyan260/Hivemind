@@ -44,7 +44,7 @@ export const Textarea = ({ className, ...p }: TextareaHTMLAttributes<HTMLTextAre
 );
 
 export const Select = ({ className, ...p }: SelectHTMLAttributes<HTMLSelectElement>) => (
-  <select {...p} className={cx(field, "pr-8", className)} />
+  <select {...p} className={cx(field, "max-w-full pr-8", className)} />
 );
 
 export function ProjectSelect({
