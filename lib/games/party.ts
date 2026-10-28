@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { PEER_OPTIONS } from "@/lib/ice";
 import { checkHost, proveHost } from "@/lib/peer-auth";
 import { boost as raceBoost, cleanRace, MIN_RACERS, newRace, TICK_MS, tick as raceTick, viewOf as raceView, type Race, type RaceView } from "@/lib/games/pet-race";
-import { callsFirst, CHAT_GAP_MS, cleanChat, cleanId, cleanName, cleanPet, GIFT_GAP_MS, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
+import { callsFirst, CHAT_GAP_MS, claimSeat, cleanChat, cleanId, cleanName, cleanPet, GIFT_GAP_MS, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
 
 /**
  * Game night: one link, a lobby, many friends. The owner's browser is the table: friends open the
@@ -31,7 +31,10 @@ export type PartyStage = "connecting" | "lobby" | "reconnecting" | "full" | "err
 type Wire =
   | { t: "challenge"; nonce: string }
   | { t: "proof"; proof: string }
-  | { t: "hello"; name: string; id: string; peer?: string; pet?: PartyPet }
+  /** key: a secret this device keeps for its seat; the owner remembers the first one and refuses a different one for the same id (seat ids are visible to everyone at the table). */
+  | { t: "hello"; name: string; id: string; key?: string; peer?: string; pet?: PartyPet }
+  /** Host → a device that asked for a seat that belongs to another device. */
+  | { t: "seat-taken" }
   /** A friend's pet changed (it grew, got a flower): friend → host, who updates the roster. */
   | { t: "pet"; pet: PartyPet | null }
   /** A flower for someone's pet: friend → host (who says so in the chat), then host → that friend. */
@@ -115,7 +118,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
   const KEY = `hm-party-${o.role}-${o.room}`;
   const [saved] = useState(() => {
     try {
-      const v = JSON.parse(sessionStorage.getItem(KEY) ?? "null") as { at: number; players: PartyPlayer[]; phase: PartyPhase; states: Record<string, unknown> } | null;
+      const v = JSON.parse(sessionStorage.getItem(KEY) ?? "null") as { at: number; players: PartyPlayer[]; phase: PartyPhase; states: Record<string, unknown>; keys?: Record<string, string> } | null;
       return v && Date.now() - v.at < KEEP_MS ? v : null;
     } catch {
       return null;
@@ -147,6 +150,21 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     }
   });
 
+  // This device's secret for its seat (a friend); the owner's side keeps each friend's first one.
+  const [seatKey] = useState(() => {
+    if (o.role === "host") return "";
+    try {
+      const k = localStorage.getItem("hm-play-key") || crypto.randomUUID().replace(/-/g, "");
+      localStorage.setItem("hm-play-key", k);
+      return k;
+    } catch {
+      return crypto.randomUUID().replace(/-/g, "");
+    }
+  });
+  const seats = useRef(new Map<string, string>(Object.entries(saved?.keys ?? {})));
+  // Friends can't flood the table: how often each may send a join, a pet change, or a move.
+  const lastHello = useRef(new Map<string, number>());
+  const lastPetMsg = useRef(new Map<string, number>());
   const states = useRef<Record<string, unknown>>(saved?.states ?? {});
   const bound = useRef<Partial<Record<PartyGameKind, Bound>>>({});
   const conns = useRef(new Map<string, DataConnection>()); // host: player id → connection
@@ -171,7 +189,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
 
   const save = useCallback(() => {
     try {
-      sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), players: playersRef.current, phase: phaseRef.current, states: states.current }));
+      sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), players: playersRef.current, phase: phaseRef.current, states: states.current, keys: Object.fromEntries(seats.current) }));
     } catch {}
   }, [KEY]);
 
@@ -530,6 +548,15 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
           c.send({ t: "removed" } satisfies Wire);
           return void later(() => c.close(), 500);
         }
+        // A seat belongs to the device that first took it: another device with the same id (ids are shown in the roster) is turned away.
+        const key = typeof m.key === "string" ? m.key.slice(0, 64) : "";
+        if (!claimSeat(seats.current, id, key)) {
+          c.send({ t: "seat-taken" } satisfies Wire);
+          return void later(() => c.close(), 500);
+        }
+        const nowH = Date.now();
+        if (nowH - (lastHello.current.get(id) ?? 0) < 800) return;
+        lastHello.current.set(id, nowH);
         const known = playersRef.current.find((p) => p.id === id);
         if (!known && playersRef.current.length >= MAX_PLAYERS) {
           c.send({ t: "full" } satisfies Wire);
@@ -551,6 +578,8 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       if (m.t === "act") {
         const from = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
         if (!from) return;
+        // A move is small; a huge one is only there to slow the table down.
+        if (JSON.stringify(m.a ?? null).length > 60_000) return;
         bound.current[m.game]?.onAction?.(from, m.a);
       }
       if (m.t === "react") {
@@ -566,6 +595,9 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       if (m.t === "pet") {
         const from = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
         if (!from) return;
+        const nowP = Date.now();
+        if (nowP - (lastPetMsg.current.get(from) ?? 0) < 1000) return;
+        lastPetMsg.current.set(from, nowP);
         const pet = cleanPet(m.pet);
         setRoster((l) => l.map((p) => (p.id === from ? { ...p, pet } : p)));
         return;
@@ -608,7 +640,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
           }
           verified.current = true;
           setNote("Checked. Joining the lobby…");
-          c.send({ t: "hello", name: opts.current.myName, id: me, peer: peer.current?.id, pet: opts.current.pet ?? undefined } satisfies Wire);
+          c.send({ t: "hello", name: opts.current.myName, id: me, key: seatKey, peer: peer.current?.id, pet: opts.current.pet ?? undefined } satisfies Wire);
           const p = peer.current;
           if (p && mic.current) {
             calls.current.get("host")?.call.close();
@@ -668,6 +700,11 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         setStage("lobby");
         save();
         mesh(list);
+        return;
+      }
+      if (m.t === "seat-taken") {
+        setErr("This seat is already taken by another device. Open the link in the browser you first joined with, or ask the owner to remove that seat.");
+        setStage("error");
         return;
       }
       if (m.t === "race") {

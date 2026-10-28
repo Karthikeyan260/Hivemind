@@ -130,3 +130,14 @@ export function cleanPet(v: unknown): PartyPet | undefined {
 
 /** A flower can be sent this often by one person (the owner's table drops faster ones). */
 export const GIFT_GAP_MS = 4000;
+/**
+ * A seat belongs to the device that first took it. `seats` maps a friend's id to the secret key their device
+ * sent the first time; the same id with another key is a different device trying to take the seat over
+ * (ids are shown in the roster, keys never are). Returns whether this join may go ahead; remembers the first key.
+ */
+export function claimSeat(seats: Map<string, string>, id: string, key: string): boolean {
+  const have = seats.get(id);
+  if (have && key !== have) return false;
+  if (key && !have) seats.set(id, key);
+  return true;
+}
