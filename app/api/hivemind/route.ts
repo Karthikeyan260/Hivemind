@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { runAgent } from "@/lib/agents/orchestrator";
+import { scrub } from "@/lib/scrub";
 import { instantAnswer } from "@/lib/agents/instant";
 import { quickEffect, quickGarden, quickGoodNight, quickPage } from "@/lib/agents/quick";
 import { TOOLS } from "@/lib/agents/tools";
@@ -86,7 +87,7 @@ export const POST = handle(async (req: Request) => {
     previousAgent = rows.find((m) => m.role === "assistant")?.agent ?? null;
     history = rows.reverse().map(({ role, content }) => ({ role, content }));
   } else {
-    const { data, error } = await supabase.from("conversations").insert({ title: message.slice(0, 80) }).select("id").single();
+    const { data, error } = await supabase.from("conversations").insert({ title: scrub(message.slice(0, 80)) }).select("id").single();
     dbError(error);
     conversationId = data!.id as string;
   }
@@ -247,11 +248,11 @@ export const POST = handle(async (req: Request) => {
         send(done);
 
         const { error: saveErr } = await supabase.from("messages").insert([
-          { conversation_id: conversationId, role: "user", content: message, metadata: {} },
+          { conversation_id: conversationId, role: "user", content: scrub(message), metadata: {} },
           {
             conversation_id: conversationId,
             role: "assistant",
-            content: reply,
+            content: scrub(reply),
             metadata: { intent, agent: intent, router: via, trace, sources, actions, jobs: ctx.jobs ?? undefined, pending_delete: ctx.pendingDelete ?? undefined, provider: done.provider, model: done.model, latency_ms: done.latency_ms },
           },
         ]);

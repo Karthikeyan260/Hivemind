@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { dbError, handle, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
+import { scrub } from "@/lib/scrub";
 
 const Body = z.object({
   conversation_id: z.uuid().nullable().optional(),
@@ -12,14 +13,17 @@ const Body = z.object({
 
 /** Saves one live voice exchange (both transcripts) to the chat history. */
 export const POST = handle(async (req: Request) => {
-  const { conversation_id, user, assistant, sources } = await parseBody(req, Body);
+  const { conversation_id, user: rawUser, assistant: rawAssistant, sources } = await parseBody(req, Body);
+  // Transcripts come from speech recognition: no NUL character or broken emoji half may reach the database.
+  const user = scrub(rawUser);
+  const assistant = scrub(rawAssistant);
   if (!user && !assistant) return NextResponse.json({ conversation_id: conversation_id ?? null });
   const supabase = db();
   let conversationId = conversation_id ?? null;
   if (!conversationId) {
     const { data, error } = await supabase
       .from("conversations")
-      .insert({ title: `🎙 ${(user || assistant).slice(0, 76)}` })
+      .insert({ title: scrub(`🎙 ${(user || assistant).slice(0, 76)}`) })
       .select("id")
       .single();
     dbError(error);
