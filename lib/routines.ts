@@ -33,7 +33,8 @@ async function load(supabase: SupabaseClient): Promise<Store> {
 
 export const listRoutines = async (supabase: SupabaseClient) => (await load(supabase)).items;
 
-const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
+// \p{M} (combining marks) stays: in Tamil the vowel signs are marks, and without them different words ("கல்" and "கால்") would read the same.
+export const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{M}\p{N} ]/gu, " ").replace(/\s+/g, " ").trim();
 
 function clean(r: { name?: string; triggers?: unknown; steps?: unknown }) {
   const name = String(r.name ?? "").trim().slice(0, 60);
@@ -53,8 +54,9 @@ export function matchRoutine(items: Routine[], words: string) {
   if (!w) return null;
   return (
     items.find((r) => r.triggers.includes(w) || norm(r.name) === w) ??
-    items.find((r) => r.triggers.some((t) => w.includes(t) || t.includes(w))) ??
-    items.find((r) => norm(r.name).includes(w)) ??
+    // Looser matches (a phrase inside a phrase) need a real word: one or two letters would match almost any routine.
+    (w.length >= 3 ? items.find((r) => r.triggers.some((t) => w.includes(t) || t.includes(w))) : undefined) ??
+    (w.length >= 3 ? items.find((r) => norm(r.name).includes(w)) : undefined) ??
     null
   );
 }
