@@ -29,7 +29,9 @@ const save = (supabase: SupabaseClient, all: Birthday[]) => writeJSON(supabase, 
 
 export const dateLabel = (b: Pick<Birthday, "month" | "day">) => `${b.day} ${MONTHS[b.month - 1]}`;
 
-function validDate(month: number, day: number) {
+export function validDate(month: number, day: number) {
+  // Whole numbers only (a chat tool can pass 12.5 or "March"): the web form already insists on that.
+  if (!Number.isInteger(month) || !Number.isInteger(day)) return false;
   if (!(month >= 1 && month <= 12 && day >= 1)) return false;
   return day <= new Date(Date.UTC(2024, month, 0)).getUTCDate(); // 2024: leap year, so 29 Feb is allowed
 }
@@ -39,7 +41,9 @@ export async function addBirthday(supabase: SupabaseClient, b: Omit<Birthday, "i
   if (!validDate(b.month, b.day)) throw new HttpError(400, "That date doesn't exist.");
   const all = await listBirthdays(supabase);
   const same = all.find((x) => x.name.toLowerCase() === b.name.trim().toLowerCase() && x.kind === b.kind);
-  const entry: Birthday = { ...b, name: b.name.trim(), id: same?.id ?? crypto.randomUUID().slice(0, 12), sent: same?.sent };
+  // A year that isn't a sensible whole year is left out (it would show as "turning NaN").
+  const year = Number.isInteger(b.year) && b.year! >= 1900 && b.year! <= 2100 ? b.year : undefined;
+  const entry: Birthday = { ...b, year, name: b.name.trim(), id: same?.id ?? crypto.randomUUID().slice(0, 12), sent: same?.sent };
   await save(supabase, [...all.filter((x) => x.id !== entry.id), entry]);
   return entry;
 }
