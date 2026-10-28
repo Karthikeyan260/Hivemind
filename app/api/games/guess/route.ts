@@ -35,7 +35,7 @@ export const POST = handle(async (req: Request) => {
         config: { temperature: 0.4, responseMimeType: "application/json" },
       });
       const j = JSON.parse((res.text ?? "{}").replace(/^```(json)?|```$/g, "").trim()) as { guess?: string };
-      return NextResponse.json({ guess: String(j.guess ?? "???").replace(/[^\p{L}\p{N} '-]/gu, "").trim().slice(0, 40) || "???" });
+      return NextResponse.json({ guess: String(j.guess ?? "???").replace(/[^\p{L}\p{M}\p{N} '-]/gu, "").trim().slice(0, 40) || "???" });
     } catch (err) {
       console.warn("draw guess:", model, err instanceof Error ? err.message.slice(0, 100) : err);
     }

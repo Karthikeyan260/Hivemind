@@ -69,3 +69,20 @@ describe("photo search: the same word, not just the same first letters", () => {
     expect(searchPhotos(pics, "birthdays", NOW).photos.map((p) => p.id)).toEqual(["trips"]);
   });
 });
+
+describe("photo search in other scripts", () => {
+  const more: Photo[] = [
+    photo("cafe", { title: "Morning at the Café", tags: ["coffee"], taken: "2026-02-01T10:00:00Z" }),
+    photo("tamil1", { title: "ஊட்டி பயணம்", tags: [], taken: "2026-02-02T10:00:00Z" }),
+    photo("tamil2", { title: "கல் கோயில்", tags: [], taken: "2026-02-03T10:00:00Z" }),
+  ];
+  it("accents on Latin letters don't matter", () => {
+    expect(searchPhotos(more, "cafe", NOW).photos.map((p) => p.id)).toEqual(["cafe"]);
+    expect(searchPhotos(more, "Café", NOW).photos.map((p) => p.id)).toEqual(["cafe"]);
+  });
+  it("Tamil words are found whole, and a word that differs only in a vowel sign is a different word", () => {
+    expect(searchPhotos(more, "ஊட்டி", NOW).photos.map((p) => p.id)).toEqual(["tamil1"]);
+    expect(searchPhotos(more, "கல்", NOW).photos.map((p) => p.id)).toEqual(["tamil2"]);
+    expect(searchPhotos(more, "கால்", NOW).photos).toEqual([]);
+  });
+});

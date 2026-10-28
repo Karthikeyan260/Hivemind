@@ -217,7 +217,8 @@ export function nickname(place: string) {
 export const stem = (t: string) => (t.endsWith("ies") ? `${t.slice(0, -3)}y` : t.endsWith("ches") || t.endsWith("shes") || t.endsWith("sses") || t.endsWith("xes") ? t.slice(0, -2) : t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t);
 
 const STOP = new Set("a an the of in on at to for from with and or my me i photo photos pic pics picture pictures image images show find where was that this one some any all".split(" "));
-const words = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
+// Accents on Latin letters are dropped ("café" finds "cafe"); the vowel signs of Tamil and other scripts (also combining marks) stay, or different words would read the same.
+const words = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
 /** "last December", "2024", "this year", "yesterday" → a date range (local). */
