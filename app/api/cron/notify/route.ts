@@ -107,7 +107,9 @@ export async function GET(req: Request) {
   const news = !!briefSet?.enabled && !!briefSet.topics.length && hour >= BRIEF_HOUR && hour < 12 && state.news !== date && tries.n < 3 && now.getTime() - tries.at > 10 * 60_000;
 
   // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
-  await writeJSON(supabase, "notify-state", { ...state, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { newsTry: { date, n: tries.n + 1, at: now.getTime() } } : {}), ...(checkin ? { checkin: date } : {}), ...(wrapped ? { wrapped: lastMonth } : {}), lastRun: now.toISOString(), lastSent: due.length });
+  // Merged into what is stored right now, not the copy read at the start: a brief or dream that finished meanwhile must keep its "done" mark.
+  const fresh = await readJSON<typeof state>(supabase, "notify-state", state).catch(() => state);
+  await writeJSON(supabase, "notify-state", { ...fresh, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(news ? { newsTry: { date, n: tries.n + 1, at: now.getTime() } } : {}), ...(checkin ? { checkin: date } : {}), ...(wrapped ? { wrapped: lastMonth } : {}), lastRun: now.toISOString(), lastSent: due.length });
   // The jobs that run on their own: a failure becomes a push (once a day each), never silence.
   if (dreaming)
     after(() =>
