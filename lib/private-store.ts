@@ -101,6 +101,36 @@ export async function removeFiles(supabase: SupabaseClient, paths: string[]) {
   if (paths.length) await supabase.storage.from(BUCKET).remove(paths);
 }
 
+/**
+ * Every JSON file in the store (habits, pet, routines, briefs, check-ins…), by path without ".json", for a backup.
+ * `skip` leaves out paths (or whole folders) that must not leave the app. A read that fails throws, so a backup
+ * is never quietly missing pieces.
+ */
+export async function readAllJSON(supabase: SupabaseClient, skip: (path: string) => boolean, maxFiles = 600) {
+  await ensureBucket(supabase);
+  const out: Record<string, unknown> = {};
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    const { data, error } = await supabase.storage.from(BUCKET).list(dir, { limit: 1000 });
+    if (error) throw new Error(`store list failed (${dir || "/"}): ${error.message}`);
+    const subs: string[] = [];
+    const reads: Promise<void>[] = [];
+    for (const e of data ?? []) {
+      const path = dir ? `${dir}/${e.name}` : e.name;
+      if (skip(path)) continue;
+      if (e.id === null) {
+        if (depth < 3) subs.push(path);
+      } else if (path.endsWith(".json") && Object.keys(out).length + reads.length < maxFiles) {
+        const key = path.slice(0, -5);
+        reads.push(readJSON<unknown>(supabase, key, null).then((v) => void (out[key] = v)));
+      }
+    }
+    await Promise.all(reads);
+    for (const s of subs) await walk(s, depth + 1);
+  };
+  await walk("", 0);
+  return out;
+}
+
 /** File names directly under a folder (e.g. a web task's step screenshots). */
 export async function listFiles(supabase: SupabaseClient, folder: string) {
   await ensureBucket(supabase);
