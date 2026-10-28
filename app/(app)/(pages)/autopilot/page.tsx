@@ -150,7 +150,7 @@ export default function AutopilotPage() {
           </label>
           <label className="flex max-w-full flex-wrap items-center gap-2 text-soft">
             between
-            <Select value={f.settings.start_hour} onChange={(e) => setSettings({ start_hour: +e.target.value })} disabled={!f.settings.enabled}>
+            <Select aria-label="Start hour" value={f.settings.start_hour} onChange={(e) => setSettings({ start_hour: +e.target.value })} disabled={!f.settings.enabled}>
               {Array.from({ length: 24 }, (_, h) => (
                 <option key={h} value={h}>
                   {String(h).padStart(2, "0")}:00
@@ -158,7 +158,7 @@ export default function AutopilotPage() {
               ))}
             </Select>
             and
-            <Select value={f.settings.end_hour} onChange={(e) => setSettings({ end_hour: +e.target.value })} disabled={!f.settings.enabled}>
+            <Select aria-label="End hour" value={f.settings.end_hour} onChange={(e) => setSettings({ end_hour: +e.target.value })} disabled={!f.settings.enabled}>
               {Array.from({ length: 24 }, (_, h) => h + 1).map((h) => (
                 <option key={h} value={h}>
                   {String(h % 24).padStart(2, "0")}:00
