@@ -7,6 +7,7 @@ import { embedOne } from "@/lib/ai/embeddings";
 import { extractMetadata } from "@/lib/ai/metadata";
 import { originOf } from "@/lib/origin";
 import { searchKnowledge, sourceHref } from "@/lib/rag/retrieval";
+import { scrub } from "@/lib/scrub";
 import { cite, findNote, findProject, lastReply, obj, S, str, askedToDelete } from "./shared";
 import type { Tool } from "../types";
 
@@ -246,7 +247,7 @@ export const brain: Record<string, Tool> = {
       const p = await findProject(ctx, str(args.which));
       if (!p) return { error: `No project like "${str(args.which)}".` };
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      if (str(args.name)) patch.name = str(args.name).slice(0, 120);
+      if (str(args.name)) patch.name = scrub(str(args.name).slice(0, 120));
       if (str(args.description)) patch.description = str(args.description).slice(0, 2000);
       if (["active", "paused", "done"].includes(str(args.status))) patch.status = str(args.status);
       const { error } = await ctx.supabase.from("projects").update(patch).eq("id", p.id);
@@ -310,7 +311,7 @@ export const brain: Record<string, Tool> = {
     description: "Create a new project.",
     parameters: obj({ name: S, description: S }, ["name"]),
     async run(args, ctx) {
-      const name = str(args.name).slice(0, 120);
+      const name = scrub(str(args.name).slice(0, 120));
       if (!name) return { error: "Project needs a name." };
       const { data: existing } = await ctx.supabase.from("projects").select("id, name").ilike("name", name).maybeSingle();
       if (existing) {
