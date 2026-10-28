@@ -35,6 +35,15 @@ const Plan = z.object({
 
 const clip = (s: unknown, n: number) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
+/** How much of each memory the dream is shown. */
+export const SHOWN = 350;
+/**
+ * Only a memory shown in full may be rewritten, merged into or deleted: the dream replaces a memory's whole text with
+ * its own version, so for a longer one it would quietly cut off everything it was never shown (and a "duplicate" it
+ * deletes could hold details it never saw). Long memories are left alone; the undo log is a safety net, not a plan.
+ */
+export const shownInFull = (m: { content: string }) => m.content.replace(/\s+/g, " ").trim().length <= SHOWN;
+
 const RULES = `You are HIVEMIND's overnight memory consolidation ("dreaming"), for one person's personal second brain.
 You get (1) their saved memories, each with an id, and (2) what they said to HIVEMIND in the last day.
 Make a SMALL number of careful, high-confidence improvements:
@@ -62,7 +71,7 @@ export async function dream(supabase: SupabaseClient, date: string): Promise<Dre
   }
 
   const ids = new Map(memories.map((m, i) => [`m${i + 1}`, m]));
-  const listing = [...ids].map(([k, m]) => `[${k}] (${m.memory_type}) ${clip(m.title, 100)}: ${clip(m.content, 350)}`).join("\n");
+  const listing = [...ids].map(([k, m]) => `[${k}] (${m.memory_type}) ${clip(m.title, 100)}: ${clip(m.content, SHOWN)}`).join("\n");
   const r = await generateWithFallback(
     [{ role: "user", content: `MEMORIES:\n${listing}\n\nWHAT THEY SAID IN THE LAST DAY (oldest first):\n${said.length ? said.map((s) => `- ${s}`).join("\n") : "(nothing)"}` }],
     { system: RULES, json: true, temperature: 0.1, maxTokens: 4000, order: ["gemini", "openrouter", "mistral"] },
@@ -79,7 +88,10 @@ export async function dream(supabase: SupabaseClient, date: string): Promise<Dre
   for (const m of plan.merges.slice(0, MAX_EACH)) {
     const keep = ids.get(m.keep);
     const drops = m.drop.map((d) => ids.get(d)).filter((x): x is NonNullable<typeof x> => !!x && x.id !== keep?.id && !gone.has(x.id));
-    if (!keep || gone.has(keep.id) || !drops.length || !m.content.trim()) continue;
+    // Everything involved must have been shown in full (see shownInFull).
+    if (!keep || gone.has(keep.id) || !drops.length || !m.content.trim() || !shownInFull(keep)) continue;
+    drops.splice(0, drops.length, ...drops.filter(shownInFull));
+    if (!drops.length) continue;
     try {
       await updateMemory(supabase, keep.id, { title: m.title || keep.title, content: m.content, change_reason: "dream: merged duplicates" });
       const steps: (string | null)[] = [];
@@ -103,7 +115,7 @@ export async function dream(supabase: SupabaseClient, date: string): Promise<Dre
 
   for (const u of plan.updates.slice(0, MAX_EACH)) {
     const mem = ids.get(u.id);
-    if (!mem || gone.has(mem.id) || !u.content.trim() || u.content.trim() === mem.content.trim()) continue;
+    if (!mem || gone.has(mem.id) || !u.content.trim() || u.content.trim() === mem.content.trim() || !shownInFull(mem)) continue;
     try {
       await updateMemory(supabase, mem.id, { content: u.content, change_reason: `dream: ${clip(u.reason, 200)}` });
       const id = await logActivity(supabase, "dream", `Dream: updated “${clip(mem.title, 60)}” (${clip(u.reason, 80)})`, { type: "memory_updated", id: mem.id, prev: { title: mem.title, content: mem.content } });
