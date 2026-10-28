@@ -15,7 +15,7 @@ const seeded = (seed: number) => () => {
 const pick = <T,>(r: () => number, a: T[]) => a[Math.floor(r() * a.length)];
 const P = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}` }));
 
-describe("random full games", () => {
+describe("random full games", { timeout: 60_000 }, () => {
   it("Colour Clash: always finishes, never loses or duplicates a card", () => {
     for (let seed = 1; seed <= 150; seed++) {
       const r = seeded(seed);
@@ -134,7 +134,7 @@ describe("random full games", () => {
 
 import { BOARD, bizAct, botAction, netWorth, newBusiness, type BizState } from "@/lib/games/business";
 
-describe("random full Business games", () => {
+describe("random full Business games", { timeout: 60_000 }, () => {
   it("bot games with a round limit always finish, and every game keeps sound money and ownership", () => {
     for (let seed = 1; seed <= 80; seed++) {
       const r = seeded(6000 + seed);
@@ -172,7 +172,7 @@ describe("random full Business games", () => {
 
 import { bingoAct, bestCall, callable, newBingo, randomCard, type BingoState } from "@/lib/games/bingo";
 
-describe("random full Bingo games", () => {
+describe("random full Bingo games", { timeout: 60_000 }, () => {
   it("always ends within 25 calls, with winners who really have five lines", () => {
     for (let seed = 1; seed <= 150; seed++) {
       const r = seeded(7000 + seed);

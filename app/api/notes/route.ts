@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { dbError, handle, parseBody } from "@/lib/api";
+import { dbError, handle, HttpError, parseBody } from "@/lib/api";
 import { db } from "@/lib/db";
 import { createNote, NOTE_COLUMNS, NoteInput } from "@/lib/knowledge";
 
@@ -9,6 +9,8 @@ export const maxDuration = 30;
 export const GET = handle(async (req: Request) => {
   const supabase = db();
   const projectId = new URL(req.url).searchParams.get("project");
+  // A project is an id: anything else is a mistake in the request, not a database problem.
+  if (projectId && !/^[0-9a-f-]{36}$/i.test(projectId)) throw new HttpError(400, "That isn't a project id.");
   let q = supabase.from("notes").select(NOTE_COLUMNS).order("updated_at", { ascending: false }).limit(200);
   if (projectId) q = q.eq("project_id", projectId);
   const { data, error } = await q;
