@@ -1,4 +1,5 @@
 import "server-only";
+import { HttpError } from "@/lib/api";
 import { toLatex, type Resume } from "./model";
 import { resumePdf } from "./pdf";
 
@@ -6,6 +7,8 @@ const safe = (s: string) => s.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g,
 
 /** Serves a resume as a PDF (same design as the LaTeX template) or as a .tex file for Overleaf. */
 export async function resumeResponse(resume: Resume, format: string, opts: { latex?: string; suffix?: string } = {}) {
+  // Anything else used to come back as a PDF whatever was asked for.
+  if (format !== "pdf" && format !== "pdf-download" && format !== "tex") throw new HttpError(400, "format must be pdf, pdf-download or tex");
   const base = `${safe(resume.name) || "Resume"}_Resume${opts.suffix ? `_${safe(opts.suffix)}` : ""}`;
   if (format === "tex") {
     return new Response(toLatex(resume, opts.latex), {
