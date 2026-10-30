@@ -67,6 +67,39 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   const petEl = useRef<HTMLDivElement>(null);
   const tipEl = useRef<HTMLDivElement>(null);
   const scene = useRef<GardenScene | null>(null);
+  // AR: the island on a real table, through the camera (only offered where the phone can do it).
+  const arUi = useRef<HTMLDivElement>(null);
+  const [arOk, setArOk] = useState(false);
+  const [ar, setAr] = useState<null | "find" | "placed">(null);
+  useEffect(() => {
+    let alive = true;
+    void import("./garden-scene")
+      .then((m) => m.GardenScene.arSupported())
+      .then((ok) => alive && setArOk(ok))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  // A tap on the AR buttons must not also count as "place the garden here".
+  useEffect(() => {
+    const el = arUi.current;
+    const stop = (e: Event) => e.preventDefault();
+    el?.addEventListener("beforexrselect", stop);
+    return () => el?.removeEventListener("beforexrselect", stop);
+  }, []);
+  async function startAR() {
+    const s = scene.current;
+    const ui = arUi.current;
+    if (!s || !ui) return;
+    try {
+      await s.enterAR(ui, setAr, () => setAr(null));
+    } catch {
+      setAr(null);
+      setSharing("AR couldn't start on this phone.");
+      setTimeout(() => setSharing(""), 3500);
+    }
+  }
   // Bumped each time a scene is built: the effects below re-apply the sky, decorations and lights to it.
   const [sceneId, setSceneId] = useState(0);
   const ready = sceneId > 0;
@@ -538,6 +571,26 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   const c = g?.counts;
   return (
     <div className="w-full">
+      {/* AR: while the garden sits on a real table, this layer is what stays on screen (see GardenScene.enterAR). */}
+      <div ref={arUi} className="pointer-events-none fixed inset-0 z-[90] text-white">
+        {ar && (
+          <>
+            <p className="pointer-events-none absolute inset-x-4 top-6 rounded-2xl bg-black/55 px-4 py-3 text-center text-sm backdrop-blur-md">
+              {ar === "find" ? "Point the phone at a table or the floor and move it slowly. Tap when the ring shows." : "Walk around it! Tap Move it to put it somewhere else."}
+            </p>
+            <div className="pointer-events-auto absolute inset-x-4 bottom-8 flex justify-center gap-3">
+              {ar === "placed" && (
+                <button type="button" onClick={() => scene.current?.moveAR()} className="rounded-full bg-white/90 px-5 py-3 text-sm font-semibold text-black">
+                  Move it
+                </button>
+              )}
+              <button type="button" onClick={() => scene.current?.exitAR()} className="rounded-full bg-black/70 px-5 py-3 text-sm font-semibold ring-1 ring-white/30">
+                Exit AR
+              </button>
+            </div>
+          </>
+        )}
+      </div>
       <ErrorText error={feed.error} />
       {/* The garden fills the page; its title and what has grown float over it on glass. */}
       <div
@@ -630,6 +683,11 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         {ready && g && !bedtime && (
           <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
             <div className="flex gap-2">
+              {arOk && (
+                <button onClick={() => void startAR()} aria-label="Show the garden on my table, through the camera" className="flex items-center gap-1.5 rounded-full border border-emerald-200/40 bg-emerald-950/55 px-3 py-2 text-xs font-medium text-emerald-100 shadow-lg backdrop-blur-md transition hover:bg-emerald-900/65">
+                  📱<span className="hidden sm:inline"> On my table</span>
+                </button>
+              )}
               <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/40 px-3 py-2 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-black/55">
                 📸<span className="hidden sm:inline"> Share</span>
               </button>
