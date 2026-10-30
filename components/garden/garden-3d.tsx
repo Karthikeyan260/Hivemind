@@ -93,7 +93,11 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     const ui = arUi.current;
     if (!s || !ui) return;
     try {
-      await s.enterAR(ui, setAr, () => setAr(null));
+      const mode = await s.enterAR(ui, setAr, () => setAr(null));
+      // A phone that can't find surfaces or show the buttons gets simpler controls: say so in a moment's note.
+      if (mode && !mode.surfaces) setSharing("This phone can't find surfaces: tap and the garden is set down in front of you.");
+      else if (mode && !mode.overlay) setSharing("Tap the garden to pick it up and place it again. Swipe back to exit.");
+      if (mode && !(mode.surfaces && mode.overlay)) setTimeout(() => setSharing(""), 8000);
     } catch (e) {
       setAr(null);
       // The browser's own reason (e.g. "NotAllowedError: …"), so a phone that says no can be understood.

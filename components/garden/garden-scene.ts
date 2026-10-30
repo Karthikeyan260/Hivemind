@@ -3980,7 +3980,27 @@ void main() {`);
   async enterAR(overlay: HTMLElement, onState: (s: "find" | "placed") => void, onEnd: () => void) {
     if (this.xr || this.disposed) return;
     const system = (navigator as unknown as { xr: XRSystemLike }).xr;
-    const session = await system.requestSession("immersive-ar", { requiredFeatures: ["hit-test"], optionalFeatures: ["dom-overlay"], domOverlay: { root: overlay } });
+    // Phones differ in what they accept (one answered "Session configuration not supported"), so ask for the most, then less.
+    const configs: Record<string, unknown>[] = [
+      { requiredFeatures: ["hit-test"], optionalFeatures: ["dom-overlay"], domOverlay: { root: overlay } },
+      { requiredFeatures: ["hit-test"] },
+      { optionalFeatures: ["hit-test"] },
+      {},
+    ];
+    let session: XRSessionLike | null = null;
+    let firstErr: unknown = null;
+    for (const cfg of configs) {
+      try {
+        session = await system.requestSession("immersive-ar", cfg);
+        break;
+      } catch (err) {
+        firstErr ??= err;
+        // Only "this configuration isn't supported" is worth another try; a refusal or a busy camera won't change.
+        if ((err as { name?: string })?.name !== "NotSupportedError") throw err;
+      }
+    }
+    if (!session) throw firstErr;
+    const hasOverlay = !!(session as { domOverlayState?: unknown }).domOverlayState;
 
     cancelAnimationFrame(this.raf);
     const vis = new Map<THREE.Object3D, boolean>();
@@ -4043,8 +4063,13 @@ void main() {`);
       this.renderer.xr.enabled = true;
       this.renderer.xr.setReferenceSpaceType("local");
       await this.renderer.xr.setSession(session as never);
-      const viewer = await session.requestReferenceSpace("viewer");
-      st.hitSource = await session.requestHitTestSource({ space: viewer });
+      try {
+        const viewer = await session.requestReferenceSpace("viewer");
+        st.hitSource = await session.requestHitTestSource({ space: viewer });
+      } catch (err) {
+        console.warn("AR: no surface finding on this phone, placing in front of the camera instead", err);
+        st.hitSource = null;
+      }
     } catch (err) {
       // Couldn't get going: put the garden back exactly as it was, and let the caller say why.
       console.error("AR could not start:", err);
@@ -4054,11 +4079,28 @@ void main() {`);
     }
     this.cb.onFrame({ pet: null, tip: null }); // the page's own pet picture steps aside
     onState("find");
+    const mode = { overlay: hasOverlay, surfaces: !!st.hitSource };
 
     session.addEventListener("select", () => {
       const s = this.xr;
-      if (!s || s.placed || !s.reticle.visible) return;
-      const at = new THREE.Vector3().setFromMatrixPosition(s.reticle.matrix);
+      if (!s) return;
+      if (s.placed) {
+        if (!hasOverlay) this.moveAR(); // no on-screen buttons here, so a tap picks it up again (the system's back gesture exits)
+        return;
+      }
+      const at = new THREE.Vector3();
+      if (s.hitSource) {
+        if (!s.reticle.visible) return;
+        at.setFromMatrixPosition(s.reticle.matrix);
+      } else {
+        // No surface finding: set it down about a metre ahead, a little below eye level.
+        const cam = this.renderer.xr.getCamera();
+        const dir = cam.getWorldDirection(new THREE.Vector3());
+        dir.y = 0;
+        if (dir.lengthSq() < 1e-4) dir.set(0, 0, -1);
+        at.copy(cam.position).addScaledVector(dir.normalize(), 1);
+        at.y -= 0.5;
+      }
       s.holder.position.set(at.x, at.y + 0.05, at.z);
       s.holder.scale.setScalar(s.scale);
       // Turned so the front faces the person holding the phone.
@@ -4090,6 +4132,7 @@ void main() {`);
       }
       this.renderer.render(this.scene, this.camera);
     });
+    return mode;
   }
 
   /** "Move it": pick the garden up again and look for a new spot. */
