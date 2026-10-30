@@ -3999,7 +3999,10 @@ void main() {`);
         if ((err as { name?: string })?.name !== "NotSupportedError") throw err;
       }
     }
-    if (!session) throw firstErr;
+    if (!session) {
+      const e = firstErr as { name?: string; message?: string };
+      throw new Error(`[start, all ${configs.length} setups] ${e?.name}: ${e?.message}`);
+    }
     const hasOverlay = !!(session as { domOverlayState?: unknown }).domOverlayState;
 
     cancelAnimationFrame(this.raf);
@@ -4075,7 +4078,8 @@ void main() {`);
       console.error("AR could not start:", err);
       void session.end().catch(() => {});
       this.leaveAR(false);
-      throw err;
+      const e = err as { name?: string; message?: string };
+      throw new Error(`[set up] ${e?.name}: ${e?.message}`);
     }
     this.cb.onFrame({ pet: null, tip: null }); // the page's own pet picture steps aside
     onState("find");

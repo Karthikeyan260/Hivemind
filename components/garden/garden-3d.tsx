@@ -101,7 +101,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     } catch (e) {
       setAr(null);
       // The browser's own reason (e.g. "NotAllowedError: …"), so a phone that says no can be understood.
-      const why = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      const why = e instanceof Error ? (e.message.startsWith("[") ? e.message : `${e.name}: ${e.message}`) : String(e);
       setSharing(`AR couldn't start (${why})`.slice(0, 170));
       setTimeout(() => setSharing(""), 15000);
     }
