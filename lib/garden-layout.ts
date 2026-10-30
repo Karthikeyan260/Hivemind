@@ -127,12 +127,20 @@ export function pondSpot(n: number) {
   return { x: cx + Math.cos(POND_ANGLE) * 0.66 * rx, y: cy + Math.sin(POND_ANGLE) * 0.66 * ry, rx: 0.14 * rx, ry: 0.14 * ry };
 }
 
-/** Spots kept free: the cottage, its path, the pond and its stream, and the pet's yard in the middle. */
+/** The clock tower, on the front left of the island, near the camera (the pond is front right, the cottage back centre). */
+export function towerSpot(n: number) {
+  const { cx, cy, rx, ry } = islandSize(n);
+  return { x: cx - 0.55 * rx, y: cy + 0.42 * ry };
+}
+
+/** Spots kept free: the cottage, its path, the pond and its stream, the clock tower, and the pet's yard in the middle. */
 function blocked(n: number, x: number, y: number) {
   const { cx, cy, rx, ry } = islandSize(n);
   const home = homeSpot(n);
   if (((x - home.x) / 78) ** 2 + ((y - home.y + 8) / 30) ** 2 < 1) return true;
   if (y > home.y && Math.abs(x - pathX(n, y)) < 17) return true;
+  const tower = towerSpot(n);
+  if (((x - tower.x) / 42) ** 2 + ((y - tower.y) / 15) ** 2 < 1) return true;
   const pond = pondSpot(n);
   if (((x - pond.x) / (pond.rx * 1.25)) ** 2 + ((y - pond.y) / (pond.ry * 1.25)) ** 2 < 1) return true;
   const u = (x - cx) / rx;

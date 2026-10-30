@@ -278,6 +278,13 @@ export class DiaryScene {
     this.emit();
   }
 
+  /** Turns to the spread that shows a page (by its key, e.g. a date). False if that page isn't in the book (yet). */
+  goToKey(key: string) {
+    if (!this.pages.some((p) => p.key === key)) return false;
+    this.goTo(this.spreadFor(key, this.pages));
+    return true;
+  }
+
   toggleZoom(side: "left" | "right") {
     this.zoom = this.zoom === side ? "spread" : side;
     this.emit();

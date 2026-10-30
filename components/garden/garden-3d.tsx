@@ -6,6 +6,7 @@ import { ErrorText } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { petHush, petSay } from "@/components/pet/talk";
 import * as beat from "@/lib/beat";
+import { strikeBell } from "@/lib/bell";
 import { MUSIC_EVENT, MUSIC_STATE_EVENT, useFetch } from "@/lib/client-api";
 import type { GoodNight } from "@/lib/goodnight";
 import type { GardenDay } from "@/lib/garden-day";
@@ -14,6 +15,7 @@ import { composeSnapshot, shareSnapshot, snapshotName } from "@/lib/garden-snaps
 import { festivalById, festivalOn } from "@/lib/pet-looks";
 import type { Sky } from "@/lib/sky";
 import { DiaryBook } from "./diary-book";
+import { TowerCard } from "./tower-card";
 import type { GardenScene } from "./garden-scene";
 import { type Phase, phaseNow } from "./phase";
 
@@ -84,6 +86,12 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   // A flower's day (what happened on the date it was planted).
   const [day, setDay] = useState<{ date: string; data?: GardenDay; error?: string } | null>(null);
   const [diary, setDiary] = useState(false);
+  const [tower, setTower] = useState(false);
+  function ringBell() {
+    const n = Math.min(new Date().getHours() % 12 || 12, 5);
+    strikeBell(n);
+    scene.current?.ringTower(n);
+  }
   // "Nova, good night": night falls, a calm song, the warm glow, Nova tells tomorrow and goes to sleep.
   const [bedtime, setBedtime] = useState<{ plan?: GoodNight; line: number; asleep: boolean } | null>(null);
   const bedtimeRun = useRef(0);
@@ -177,6 +185,12 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     }
     if (id === "diary") {
       setDiary(true);
+      return;
+    }
+    // The clock tower: its time card opens, and the bell rings once for each hour (up to five, so it stays short).
+    if (id === "tower") {
+      setTower(true);
+      ringBell();
       return;
     }
     // A rare visitor: its label says why it came.
@@ -633,6 +647,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
 
         {ready && hint && <div className="pointer-events-none absolute inset-x-0 top-[40%] flex justify-center transition-opacity sm:top-auto sm:right-8 sm:bottom-[8.6rem] sm:left-auto sm:justify-end"><span className="rounded-full border border-white/20 bg-black/30 px-3.5 py-1.5 text-xs font-medium text-white/90 shadow-lg backdrop-blur-md">👆 Drag to look around · pinch to zoom · tap anything</span></div>}
         {day && <DayCard day={day} onClose={() => setDay(null)} />}
+        {tower && <TowerCard pet={g?.pet ?? "Nova"} phase={{ icon: PHASE_ICON[phase], name: PHASE_NAME[phase] }} onRing={ringBell} onClose={() => setTower(false)} />}
         {diary && <DiaryBook pet={g?.pet ?? "Nova"} onClose={() => setDiary(false)} />}
         {ready && g && !bedtime && (
           <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">

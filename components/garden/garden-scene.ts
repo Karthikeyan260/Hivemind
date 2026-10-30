@@ -55,7 +55,7 @@ class GradeEffect extends Effect {
 }
 import { type Phase } from "./phase";
 import { windStrength } from "@/lib/sky";
-import { fireflyCount, hash01, homeSpot, islandSize, pathX, POND_ANGLE, pondSpot, type Placed, type Season } from "@/lib/garden-layout";
+import { fireflyCount, hash01, homeSpot, islandSize, pathX, POND_ANGLE, pondSpot, towerSpot, type Placed, type Season } from "@/lib/garden-layout";
 
 /**
  * Nova's garden in 3D: a floating island lit by the real sky of the hour. Thousands of grass blades
@@ -442,6 +442,11 @@ export class GardenScene {
   private island = new THREE.Group();
   private pickables: THREE.Object3D[] = [];
   private diary: THREE.Group | null = null;
+  private towerGlow: { m: THREE.MeshStandardMaterial; night: number; wet: number }[] = [];
+  private towerHands: { hour: THREE.Object3D[]; min: THREE.Object3D[]; sec: THREE.Object3D[] } = { hour: [], min: [], sec: [] };
+  private towerBell: THREE.Object3D | null = null;
+  private towerVane: THREE.Object3D | null = null;
+  private bellSwing = { amp: 0, strikes: [] as number[] };
   private flowerHeads: { mesh: THREE.InstancedMesh; ids: string[] }[] = [];
   private itemsById = new Map<string, Placed>();
   private bobbers: { o: THREE.Object3D; y: number; sp: number; ph: number; spin?: number }[] = [];
@@ -521,6 +526,7 @@ export class GardenScene {
     this.buildIsland();
     this.buildGrass();
     this.buildCottage();
+    this.buildClockTower();
     this.buildPond();
     this.buildItems(items);
     this.buildVisitors(opts.visitors ?? []);
@@ -1266,6 +1272,7 @@ void main() {`);
     for (const m of this.lampMats) m.emissiveIntensity = m.userData.base0 = night ? 3 : wet ? 1.2 : 0.7;
     for (const l of this.lampLights) l.visible = night || wet;
     for (const m of this.crystalMats) m.emissiveIntensity = m.userData.base0 = night ? 2.6 : 0.35;
+    for (const t of this.towerGlow) t.m.emissiveIntensity = night ? t.night : wet ? t.wet : 0;
     // The stage lights: added light glows at night; by day they're drawn as a soft coloured haze instead.
     for (const b of this.beams) {
       b.mat.blending = night ? THREE.AdditiveBlending : THREE.NormalBlending;
@@ -1892,6 +1899,231 @@ void main() {`);
     g.userData.id = "diary";
     this.pickables.push(g);
     cottage.add(g);
+  }
+
+  /**
+   * The clock tower (id "tower"): a stone tower with a copper roof, an open belfry with a bell, and a clock on each side
+   * that shows the real local time (hands move every frame). Faces and slits glow after dark. A tap rings the bell (ringTower).
+   */
+  private buildClockTower() {
+    const spot = towerSpot(this.opts.n);
+    const at = this.toWorld(spot.x, spot.y);
+    const g = new THREE.Group();
+    const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25) * 1.0;
+    const stone = new THREE.MeshStandardMaterial({ color: "#bdb29d", roughness: 0.96 });
+    const stoneL = new THREE.MeshStandardMaterial({ color: "#d3c8b1", roughness: 0.95 });
+    const stoneD = new THREE.MeshStandardMaterial({ color: "#9b907c", roughness: 0.96 });
+    const wood = new THREE.MeshStandardMaterial({ color: "#5a3a24", roughness: 0.85 });
+    const copper = new THREE.MeshStandardMaterial({ color: "#3f8a76", roughness: 0.5, metalness: 0.35 });
+    const brass = new THREE.MeshStandardMaterial({ color: "#c79a45", roughness: 0.3, metalness: 0.85 });
+    const iron = new THREE.MeshStandardMaterial({ color: "#26231f", roughness: 0.5, metalness: 0.7 });
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D = g) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      parent.add(m);
+      return m;
+    };
+    const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => add(new THREE.BoxGeometry(w, h, d), mat, x, y, z);
+    // An arched opening: straight sides and a round top, extruded a little (doors, frames, slits).
+    const arch = (w: number, h: number, d: number) => {
+      const r = w / 2;
+      const sh = new THREE.Shape();
+      sh.moveTo(-r, 0);
+      sh.lineTo(-r, h - r);
+      sh.absarc(0, h - r, r, Math.PI, 0, true);
+      sh.lineTo(r, 0);
+      sh.closePath();
+      return new THREE.ExtrudeGeometry(sh, { depth: d, bevelEnabled: false });
+    };
+    // A short, sturdy tower so the clock can be BIG: the shaft is 1.3 tall and narrows a little as it rises.
+    const BASE = 0.16;
+    const SHAFT = 1.3;
+    const half = (y: number) => 0.37 + (0.3 - 0.37) * THREE.MathUtils.clamp((y - BASE) / SHAFT, 0, 1);
+
+    // Plinth, tapering shaft with stone courses, ledge.
+    box(1.12, 0.16, 1.12, stoneD, 0, 0.08, 0);
+    const shaft = add(new THREE.CylinderGeometry(0.3 * Math.SQRT2, 0.37 * Math.SQRT2, SHAFT, 4, 1), stone, 0, BASE + SHAFT / 2, 0);
+    shaft.rotation.y = Math.PI / 4;
+    for (const y of [0.6, 1.05]) box(half(y) * 2 + 0.03, 0.04, half(y) * 2 + 0.03, stoneD, 0, y, 0);
+    const ledgeY = BASE + SHAFT + 0.04;
+    box(1.0, 0.08, 1.0, stoneL, 0, ledgeY, 0);
+
+    // The door (front), and a narrow arched window on each side that glows at night.
+    add(arch(0.3, 0.5, 0.05), stoneD, 0, BASE, half(BASE) + 0.002);
+    add(arch(0.23, 0.43, 0.06), wood, 0, BASE, half(BASE) + 0.01);
+    add(new THREE.SphereGeometry(0.017, 8, 6), brass, 0.065, 0.34, half(BASE) + 0.07);
+    const slit = new THREE.MeshStandardMaterial({ color: "#2a1f16", emissive: "#ffb347", emissiveIntensity: 0, roughness: 0.6 });
+    this.towerGlow.push({ m: slit, night: 2.2, wet: 0.4 });
+    for (let k = 0; k < 4; k++) {
+      const side = new THREE.Group();
+      side.rotation.y = (k * Math.PI) / 2;
+      g.add(side);
+      add(arch(0.085, 0.3, 0.03), slit, 0, 0.82, half(0.82) - 0.014, side);
+    }
+
+    // The clock room: a big, bright face on each side with numerals, a brass ring and three hands.
+    const roomH = 1.0;
+    const roomW = 1.04;
+    const roomY = ledgeY + 0.04 + roomH / 2;
+    box(roomW, roomH, roomW, stoneL, 0, roomY, 0);
+    const corniceY = roomY + roomH / 2 + 0.04;
+    box(roomW + 0.12, 0.08, roomW + 0.12, stoneL, 0, corniceY, 0);
+    const FACE = 0.46;
+    const faceTex = this.clockFaceTexture();
+    const faceMat = new THREE.MeshStandardMaterial({ map: faceTex, emissiveMap: faceTex, emissive: "#ffe2a6", emissiveIntensity: 0, roughness: 0.6 });
+    this.towerGlow.push({ m: faceMat, night: 1.0, wet: 0.2 });
+    const handMat = new THREE.MeshStandardMaterial({ color: "#14110e", roughness: 0.5, metalness: 0.4 });
+    const secMat = new THREE.MeshStandardMaterial({ color: "#c0281f", roughness: 0.5 });
+    this.towerHands = { hour: [], min: [], sec: [] };
+    const fz = roomW / 2;
+    for (let k = 0; k < 4; k++) {
+      const f = new THREE.Group();
+      f.rotation.y = (k * Math.PI) / 2;
+      f.position.y = roomY;
+      g.add(f);
+      const face = new THREE.Mesh(new THREE.CircleGeometry(FACE, 64), faceMat);
+      face.position.z = fz + 0.004;
+      f.add(face);
+      const ring = add(new THREE.TorusGeometry(FACE + 0.02, 0.022, 10, 64), brass, 0, 0, fz + 0.006, f);
+      ring.castShadow = false;
+      const hand = (w: number, len: number, back: number, mat: THREE.Material, z: number) => {
+        const pivot = new THREE.Group();
+        pivot.position.set(0, 0, z);
+        const geo = new THREE.BoxGeometry(w, len + back, 0.01);
+        geo.translate(0, (len - back) / 2, 0);
+        pivot.add(new THREE.Mesh(geo, mat));
+        f.add(pivot);
+        return pivot;
+      };
+      this.towerHands.hour.push(hand(0.062, 0.25, 0.04, handMat, fz + 0.016));
+      this.towerHands.min.push(hand(0.043, 0.38, 0.05, handMat, fz + 0.026));
+      this.towerHands.sec.push(hand(0.015, 0.41, 0.08, secMat, fz + 0.036));
+      add(new THREE.SphereGeometry(0.04, 12, 10), brass, 0, 0, fz + 0.04, f);
+    }
+
+    // The belfry: four posts, a frame, and a bell on a beam that swings when rung.
+    const bfY = corniceY + 0.04;
+    const bfH = 0.6;
+    const px = 0.38;
+    for (const x of [-px, px]) for (const z of [-px, px]) box(0.08, bfH, 0.08, stone, x, bfY + bfH / 2, z);
+    for (const s of [-px, px]) {
+      box(px * 2 + 0.1, 0.05, 0.07, stoneD, 0, bfY + bfH + 0.02, s);
+      box(0.07, 0.05, px * 2 + 0.1, stoneD, s, bfY + bfH + 0.02, 0);
+    }
+    box(px * 2, 0.045, 0.045, wood, 0, bfY + bfH - 0.06, 0);
+    const bell = new THREE.Group();
+    bell.position.y = bfY + bfH - 0.085;
+    const profile = [[0.15, -0.23], [0.133, -0.2], [0.105, -0.12], [0.08, -0.04], [0.055, 0.03], [0.034, 0.08], [0.0, 0.09]].map(([x, y]) => new THREE.Vector2(x, y));
+    const bellMesh = add(new THREE.LatheGeometry(profile, 18), brass.clone(), 0, -0.04, 0, bell);
+    (bellMesh.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    add(new THREE.SphereGeometry(0.025, 8, 6), iron, 0, -0.25, 0, bell);
+    g.add(bell);
+    this.towerBell = bell;
+
+    // Copper roof, a finial, and a weather vane that turns with the wind.
+    const roofY = bfY + bfH + 0.045;
+    const roofH = 0.95;
+    const roof = add(new THREE.ConeGeometry(0.82, roofH, 4), copper, 0, roofY + roofH / 2, 0);
+    roof.rotation.y = Math.PI / 4;
+    const topY = roofY + roofH;
+    add(new THREE.SphereGeometry(0.045, 10, 8), brass, 0, topY + 0.02, 0);
+    add(new THREE.CylinderGeometry(0.009, 0.009, 0.3, 6), iron, 0, topY + 0.16, 0);
+    const vane = new THREE.Group();
+    vane.position.y = topY + 0.28;
+    add(new THREE.BoxGeometry(0.26, 0.022, 0.012), iron, 0, 0, 0, vane);
+    const tip = add(new THREE.ConeGeometry(0.032, 0.08, 6), iron, 0.16, 0, 0, vane);
+    tip.rotation.z = -Math.PI / 2;
+    add(new THREE.BoxGeometry(0.08, 0.09, 0.008), iron, -0.13, 0.034, 0, vane);
+    g.add(vane);
+    this.towerVane = vane;
+
+    // A warm halo round the clock at night, and a target big enough to tap.
+    this.glowTex ??= puffTexture("glow");
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: "#ffd98a", transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.position.y = roomY;
+    halo.scale.setScalar(3.2);
+    halo.raycast = () => {};
+    this.nightOnly.push(halo);
+    g.add(halo);
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(1.4, topY + 0.4, 1.4), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = (topY + 0.4) / 2;
+    g.add(hit);
+
+    g.scale.setScalar(S);
+    g.position.copy(at);
+    g.position.y -= 0.03;
+    g.userData.id = "tower";
+    this.pickables.push(g);
+    this.island.add(g);
+    // No grass poking through the base.
+    this.plantClear.push({ x: at.x, z: at.z, r: 0.9 * S });
+    this.clearGrass();
+  }
+
+  /** A round clock face with Roman numerals and minute ticks. */
+  private clockFaceTexture() {
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 512;
+    const c = cv.getContext("2d");
+    if (c) {
+      c.fillStyle = "#fbf6e6";
+      c.fillRect(0, 0, 512, 512);
+      c.strokeStyle = "#1f1914";
+      c.lineWidth = 14;
+      c.beginPath();
+      c.arc(256, 256, 244, 0, Math.PI * 2);
+      c.stroke();
+      for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * Math.PI * 2;
+        const long = i % 5 === 0;
+        c.lineWidth = long ? 9 : 4;
+        c.beginPath();
+        c.moveTo(256 + Math.sin(a) * (long ? 196 : 214), 256 - Math.cos(a) * (long ? 196 : 214));
+        c.lineTo(256 + Math.sin(a) * 232, 256 - Math.cos(a) * 232);
+        c.stroke();
+      }
+      c.fillStyle = "#1f1914";
+      c.font = "bold 66px Georgia, serif";
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      ["12", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"].forEach((n, i) => {
+        const a = (i / 12) * Math.PI * 2;
+        c.fillText(n, 256 + Math.sin(a) * 148, 256 - Math.cos(a) * 148);
+      });
+    }
+    const t = new THREE.CanvasTexture(cv);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  }
+
+  /** The hands show the real local time; the bell swings while it is ringing; the vane turns slowly. */
+  private updateTower(t: number, dt: number) {
+    if (!this.towerBell) return;
+    const now = new Date();
+    const s = now.getSeconds() + now.getMilliseconds() / 1000;
+    const m = now.getMinutes() + s / 60;
+    const h = (now.getHours() % 12) + m / 60;
+    for (const p of this.towerHands.hour) p.rotation.z = -h * (Math.PI / 6);
+    for (const p of this.towerHands.min) p.rotation.z = -m * (Math.PI / 30);
+    for (const p of this.towerHands.sec) p.rotation.z = -s * (Math.PI / 30);
+    const b = this.bellSwing;
+    while (b.strikes.length && b.strikes[0] <= t) {
+      b.strikes.shift();
+      b.amp = 0.5;
+    }
+    b.amp *= Math.exp(-dt * 1.1);
+    this.towerBell.rotation.z = Math.sin(t * 9) * b.amp;
+    if (this.towerVane) this.towerVane.rotation.y = Math.sin(t * 0.25) * 0.9 + Math.sin(t * 0.7) * 0.25;
+  }
+
+  /** Rings the tower's bell `count` times (the bell swings; the page plays the sound). Returns the spacing between strikes in ms. */
+  ringTower(count: number) {
+    const t = this.clock.elapsedTime;
+    this.bellSwing.strikes = Array.from({ length: Math.max(1, count) }, (_, i) => t + i * 1.2);
+    return 1200;
   }
 
   /* ── pond, stream and waterfall ── */
@@ -3673,6 +3905,11 @@ void main() {`);
       this.tip = this.toWorld(h.x, h.y).add(new THREE.Vector3(0, 2.4, 0));
       return;
     }
+    if (id === "tower") {
+      const h = towerSpot(this.opts.n);
+      this.tip = this.toWorld(h.x, h.y).add(new THREE.Vector3(0, 4.6, 0));
+      return;
+    }
     const it = this.itemsById.get(id);
     if (!it) return;
     this.tip = this.toWorld(it.x, it.y).add(new THREE.Vector3(0, it.kind === "tree" ? 2.6 : it.kind === "plant" ? (it.stage === 3 ? 2.6 : 0.5 + it.stage * 0.35) : it.kind === "lamp" ? 1.25 : 0.55, 0));
@@ -3910,6 +4147,7 @@ void main() {`);
       if (b.spin) b.o.rotation.y += dt * b.spin * (1 + this.uBeat.value * 4);
     }
     this.updateDecor(t, dt);
+    this.updateTower(t, dt);
     // Ease towards the song's loudness (quick to rise, slow to settle): no jolts.
     const want = this.musicRgb ? Math.min(1, this.musicLevel * 1.4) : 0;
     this.uBeat.value += (want - this.uBeat.value) * Math.min(1, dt * (want > this.uBeat.value ? 4 : 1.5));
