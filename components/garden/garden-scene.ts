@@ -366,32 +366,6 @@ function shapeTexture(kind: "wing" | "z") {
   return t;
 }
 
-/** The little of WebXR that AR needs (kept local: the DOM typings don't include it). */
-type XRFrameLike = { getHitTestResults(src: unknown): { getPose(space: unknown): { transform: { matrix: ArrayLike<number> } } | null }[] };
-type XRSessionLike = {
-  addEventListener(type: "end" | "select", fn: () => void): void;
-  end(): Promise<void>;
-  requestReferenceSpace(kind: string): Promise<unknown>;
-  requestHitTestSource(opts: { space: unknown }): Promise<unknown>;
-};
-type XRSystemLike = { isSessionSupported(mode: string): Promise<boolean>; requestSession(mode: string, init: Record<string, unknown>): Promise<XRSessionLike> };
-/** What AR changed, so leaving puts everything back. */
-type ArState = {
-  session: XRSessionLike;
-  holder: THREE.Group;
-  root: THREE.Group;
-  reticle: THREE.Mesh;
-  sprite: THREE.Sprite;
-  hitSource: unknown;
-  placed: boolean;
-  scale: number;
-  saved: { background: THREE.Scene["background"]; fog: THREE.Scene["fog"]; near: number; shadow: boolean; vis: Map<THREE.Object3D, boolean> };
-  onEnd: () => void;
-  onState: (s: "find" | "placed") => void;
-};
-/** How wide the island is on the table, in metres. */
-const AR_WIDTH_M = 0.55;
-
 export class GardenScene {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -403,9 +377,6 @@ export class GardenScene {
   private clock = new THREE.Clock();
   private raf = 0;
   private disposed = false;
-  /** Set while the garden is shown on a real table through the camera (see enterAR). */
-  private xr: ArState | null = null;
-  private farIslands: THREE.Object3D[] = [];
   private mobile: boolean;
   private reduced: boolean;
   private quality: "high" | "low";
@@ -520,13 +491,7 @@ export class GardenScene {
     this.R = this.isl.rx / 45;
     this.D = this.R * 0.95;
 
-    // Where the browser has WebXR, the drawing surface is made AR-ready from the start: converting it later, when AR
-    // starts, is a known way for a phone to refuse (or to drop the whole surface). Same settings as the default otherwise.
-    const gl =
-      typeof navigator !== "undefined" && (navigator as unknown as { xr?: unknown }).xr
-        ? (canvas.getContext("webgl2", { alpha: false, depth: true, stencil: false, antialias: this.quality === "low", powerPreference: "high-performance", premultipliedAlpha: true, preserveDrawingBuffer: false, xrCompatible: true }) as WebGL2RenderingContext | null)
-        : null;
-    this.renderer = new THREE.WebGLRenderer({ canvas, ...(gl ? { context: gl } : {}), antialias: this.quality === "low", powerPreference: "high-performance" });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.quality === "low", powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, opts.mini ? 1.25 : this.mobile ? 1.5 : 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1298,8 +1263,7 @@ void main() {`);
 
     // Glows: lamps, windows, crystals and gems light up after dark.
     for (const m of this.lampMats) m.emissiveIntensity = m.userData.base0 = night ? 3 : wet ? 1.2 : 0.7;
-    // (Off in AR: a lamp's reach is measured in real metres, and shrunk to table size it would flood the island.)
-    for (const l of this.lampLights) l.visible = (night || wet) && !this.xr;
+    for (const l of this.lampLights) l.visible = night || wet;
     for (const m of this.crystalMats) m.emissiveIntensity = m.userData.base0 = night ? 2.6 : 0.35;
     // The stage lights: added light glows at night; by day they're drawn as a soft coloured haze instead.
     for (const b of this.beams) {
@@ -2835,7 +2799,6 @@ void main() {`);
       }
       g.position.set(x * this.R, y * this.R, z * this.R);
       this.bobbers.push({ o: g, y: g.position.y, sp: 0.3 + i * 0.05, ph: i * 2, spin: 0.02 });
-      this.farIslands.push(g);
       this.scene.add(g);
     });
   }
@@ -3792,20 +3755,18 @@ void main() {`);
     this.uTime.value = this.reduced ? t * 0.35 : t;
     const night = this.phase === "night";
 
-    // Opening flight, then the camera orbiting by hand. Not in AR: there the phone is the camera.
-    if (!this.xr) {
-      if (this.intro.t0 === -1) this.intro.t0 = t;
-      if (this.intro.t0 >= 0) {
-        const k = Math.min(1, (t - this.intro.t0) / this.intro.dur);
-        const e = ease(k);
-        const f = this.intro.from;
-        const to = this.intro.to;
-        this.placeCamera(new THREE.Spherical(f.radius + (to.radius - f.radius) * e, f.phi + (to.phi - f.phi) * e, f.theta + (to.theta - f.theta) * e));
-        if (k >= 1) this.finishIntro();
-      } else {
-        if (!this.controls.autoRotate && !this.reduced && t - this.idleSince > 9) this.controls.autoRotate = true;
-        this.controls.update(dt);
-      }
+    // Opening flight.
+    if (this.intro.t0 === -1) this.intro.t0 = t;
+    if (this.intro.t0 >= 0) {
+      const k = Math.min(1, (t - this.intro.t0) / this.intro.dur);
+      const e = ease(k);
+      const f = this.intro.from;
+      const to = this.intro.to;
+      this.placeCamera(new THREE.Spherical(f.radius + (to.radius - f.radius) * e, f.phi + (to.phi - f.phi) * e, f.theta + (to.theta - f.theta) * e));
+      if (k >= 1) this.finishIntro();
+    } else {
+      if (!this.controls.autoRotate && !this.reduced && t - this.idleSince > 9) this.controls.autoRotate = true;
+      this.controls.update(dt);
     }
     this.updateVisitors(dt, t);
     if (this.tipFollow) this.tip = this.tipFollow.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, this.tipLift, 0));
@@ -3923,8 +3884,6 @@ void main() {`);
     this.clouds.rotation.y = t * 0.006;
     if (!this.musicWas) for (const l of this.lampLights) l.intensity = 1.3 + Math.sin(t * 7 + l.id) * 0.08;
 
-    // In AR the pet is drawn inside the scene (a sprite), so the page has nothing to place.
-    if (this.xr) return;
     // Tell the page where the pet and the label are on screen.
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
@@ -3954,242 +3913,7 @@ void main() {`);
     });
   }
 
-  /* ── AR: the island on a real table (WebXR: Chrome on an Android phone with ARCore) ── */
-
-  /** Can this device show the garden through its camera? (False on iPhones and most computers.) */
-  static async arSupported() {
-    if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-    const xr = (navigator as unknown as { xr?: XRSystemLike }).xr;
-    if (!xr?.isSessionSupported || !window.isSecureContext) return false;
-    try {
-      return await xr.isSessionSupported("immersive-ar");
-    } catch {
-      return false;
-    }
-  }
-
-  get inAR() {
-    return !!this.xr;
-  }
-
-  /**
-   * Starts AR (it has to come from a tap). The camera feed is the background; the island, its cottage, plants and pet
-   * are shrunk to about half a metre and set down on the surface the person taps. `overlay` holds the page's own
-   * buttons, which stay on screen; `onEnd` runs when AR closes for any reason.
-   */
-  async enterAR(overlay: HTMLElement, onState: (s: "find" | "placed") => void, onEnd: () => void) {
-    if (this.xr || this.disposed) return;
-    const system = (navigator as unknown as { xr: XRSystemLike }).xr;
-    // Phones differ in what they accept (one answered "Session configuration not supported"), so ask for the most, then less.
-    const configs: Record<string, unknown>[] = [
-      { requiredFeatures: ["hit-test"], optionalFeatures: ["dom-overlay"], domOverlay: { root: overlay } },
-      { requiredFeatures: ["hit-test"] },
-      { optionalFeatures: ["hit-test"] },
-      {},
-    ];
-    let session: XRSessionLike | null = null;
-    let firstErr: unknown = null;
-    for (const cfg of configs) {
-      try {
-        session = await system.requestSession("immersive-ar", cfg);
-        break;
-      } catch (err) {
-        firstErr ??= err;
-        // Only "this configuration isn't supported" is worth another try; a refusal or a busy camera won't change.
-        if ((err as { name?: string })?.name !== "NotSupportedError") throw err;
-      }
-    }
-    if (!session) {
-      const e = firstErr as { name?: string; message?: string };
-      throw new Error(`[start, all ${configs.length} setups] ${e?.name}: ${e?.message}`);
-    }
-    const hasOverlay = !!(session as { domOverlayState?: unknown }).domOverlayState;
-
-    cancelAnimationFrame(this.raf);
-    const vis = new Map<THREE.Object3D, boolean>();
-    for (const o of [this.skyMesh, this.nightSky, this.clouds, this.rain, ...this.farIslands]) {
-      if (o instanceof THREE.Object3D) {
-        vis.set(o, o.visible);
-        o.visible = false; // the real room is the sky now
-      }
-    }
-    const saved = { background: this.scene.background, fog: this.scene.fog, near: this.camera.near, shadow: this.sun.castShadow, vis };
-
-    // Everything below is undone by leaveAR if any step fails, so a phone that says no half way never leaves the garden rearranged.
-    const root = new THREE.Group();
-    const holder = new THREE.Group();
-    holder.visible = false; // until it is placed
-    // The pet is a flat picture on the page; here it stands in the scene as a sprite cut from its drawing.
-    const tex = new THREE.TextureLoader().load("/mascots/nova-directions.webp");
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.repeat.set(1 / 3, 1 / 3);
-    tex.offset.set(1 / 3, 1 / 3); // the middle picture of the 3 x 3 sheet: looking straight ahead
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
-    sprite.center.set(0.5, 0.04);
-    sprite.scale.set(1.9, 1.9, 1);
-    // A ring on the surface the camera is looking at, until the person taps.
-    const reticle = new THREE.Mesh(new THREE.RingGeometry(0.07, 0.09, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.9, toneMapped: false }));
-    reticle.matrixAutoUpdate = false;
-    reticle.visible = false;
-    const st: ArState = { session, holder, root, reticle, sprite, hitSource: null, placed: false, scale: 1, saved, onEnd, onState };
-    this.xr = st;
-    try {
-      this.scene.background = null;
-      this.scene.fog = null;
-      this.sun.castShadow = false; // the shadow box is sized for the big scene
-      this.camera.near = 0.01;
-      this.camera.updateProjectionMatrix();
-      for (const l of this.lampLights) l.visible = false;
-
-      // Everything goes under one root, so the whole garden can be shrunk and set down as one thing.
-      // The root is shifted so the island's underside is at the holder's origin and it floats just above the table.
-      root.add(...this.scene.children);
-      const box = new THREE.Box3().setFromObject(this.island);
-      const centre = box.getCenter(new THREE.Vector3());
-      // The underside of the island itself: the wide parts only, so the thin waterfall hanging far below doesn't count.
-      let bottom = Infinity;
-      const part = new THREE.Box3();
-      const size = new THREE.Vector3();
-      this.island.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (!m.isMesh || !m.visible) return;
-        part.setFromObject(m).getSize(size);
-        if (size.x > (box.max.x - box.min.x) * 0.35 && size.z > (box.max.z - box.min.z) * 0.35) bottom = Math.min(bottom, part.min.y);
-      });
-      if (!Number.isFinite(bottom)) bottom = box.min.y;
-      root.position.set(-centre.x, -bottom, -centre.z);
-      st.scale = AR_WIDTH_M / Math.max(1, box.max.x - box.min.x);
-      holder.add(root);
-      root.add(sprite);
-      this.scene.add(holder, reticle);
-
-      this.renderer.xr.enabled = true;
-      this.renderer.xr.setReferenceSpaceType("local");
-      await this.renderer.xr.setSession(session as never);
-      try {
-        const viewer = await session.requestReferenceSpace("viewer");
-        st.hitSource = await session.requestHitTestSource({ space: viewer });
-      } catch (err) {
-        console.warn("AR: no surface finding on this phone, placing in front of the camera instead", err);
-        st.hitSource = null;
-      }
-    } catch (err) {
-      // Couldn't get going: put the garden back exactly as it was, and let the caller say why.
-      console.error("AR could not start:", err);
-      void session.end().catch(() => {});
-      this.leaveAR(false);
-      const e = err as { name?: string; message?: string };
-      throw new Error(`[set up] ${e?.name}: ${e?.message}`);
-    }
-    this.cb.onFrame({ pet: null, tip: null }); // the page's own pet picture steps aside
-    onState("find");
-    const mode = { overlay: hasOverlay, surfaces: !!st.hitSource };
-
-    session.addEventListener("select", () => {
-      const s = this.xr;
-      if (!s) return;
-      if (s.placed) {
-        if (!hasOverlay) this.moveAR(); // no on-screen buttons here, so a tap picks it up again (the system's back gesture exits)
-        return;
-      }
-      const at = new THREE.Vector3();
-      if (s.hitSource) {
-        if (!s.reticle.visible) return;
-        at.setFromMatrixPosition(s.reticle.matrix);
-      } else {
-        // No surface finding: set it down about a metre ahead, a little below eye level.
-        const cam = this.renderer.xr.getCamera();
-        const dir = cam.getWorldDirection(new THREE.Vector3());
-        dir.y = 0;
-        if (dir.lengthSq() < 1e-4) dir.set(0, 0, -1);
-        at.copy(cam.position).addScaledVector(dir.normalize(), 1);
-        at.y -= 0.5;
-      }
-      s.holder.position.set(at.x, at.y + 0.05, at.z);
-      s.holder.scale.setScalar(s.scale);
-      // Turned so the front faces the person holding the phone.
-      const me = this.renderer.xr.getCamera().position;
-      s.holder.rotation.y = Math.atan2(me.x - at.x, me.z - at.z);
-      s.holder.visible = true;
-      s.reticle.visible = false;
-      s.placed = true;
-      s.onState("placed");
-    });
-    session.addEventListener("end", () => this.leaveAR());
-
-    this.clock.getDelta();
-    this.renderer.setAnimationLoop((_time: number, frame?: unknown) => {
-      const cur = this.xr;
-      if (!cur) return;
-      const dt = Math.min(this.clock.getDelta(), 0.05);
-      this.update(dt, this.clock.elapsedTime);
-      cur.sprite.position.copy(this.pet.pos);
-      if (frame && !cur.placed && cur.hitSource) {
-        const space = this.renderer.xr.getReferenceSpace();
-        const hits = (frame as XRFrameLike).getHitTestResults(cur.hitSource);
-        const pose = space && hits.length ? hits[0].getPose(space) : null;
-        cur.reticle.visible = !!pose;
-        if (pose) {
-          cur.reticle.matrix.fromArray(pose.transform.matrix as number[]);
-          cur.reticle.matrixWorldNeedsUpdate = true; // it has no auto-update, so say it moved
-        }
-      }
-      this.renderer.render(this.scene, this.camera);
-    });
-    return mode;
-  }
-
-  /** "Move it": pick the garden up again and look for a new spot. */
-  moveAR() {
-    const s = this.xr;
-    if (!s) return;
-    s.placed = false;
-    s.holder.visible = false;
-    s.onState("find");
-  }
-
-  /** Leaves AR (also what the system's own close button ends up calling). */
-  exitAR() {
-    void this.xr?.session.end().catch(() => this.leaveAR());
-  }
-
-  /** Puts the garden back on the page exactly as it was. */
-  private leaveAR(told = true) {
-    const s = this.xr;
-    if (!s) return;
-    this.xr = null;
-    this.renderer.setAnimationLoop(null);
-    this.renderer.xr.enabled = false;
-    s.root.remove(s.sprite);
-    (s.sprite.material as THREE.SpriteMaterial).map?.dispose();
-    s.sprite.material.dispose();
-    s.reticle.geometry.dispose();
-    (s.reticle.material as THREE.Material).dispose();
-    this.scene.remove(s.reticle, s.holder);
-    // Back to being direct children of the scene, with nothing left of the shrinking.
-    this.scene.add(...s.root.children);
-    for (const [o, v] of s.saved.vis) o.visible = v;
-    this.scene.background = s.saved.background;
-    this.scene.fog = s.saved.fog;
-    this.sun.castShadow = s.saved.shadow;
-    this.camera.near = s.saved.near;
-    this.camera.updateProjectionMatrix();
-    for (const l of this.lampLights) l.visible = this.phase === "night" || this.wet;
-    this.renderer.shadowMap.needsUpdate = true;
-    this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
-    if (!this.disposed) {
-      this.clock.getDelta();
-      this.raf = requestAnimationFrame(this.loop);
-    }
-    // (A start that failed is reported by the error thrown to the caller, not by this.)
-    if (told) s.onEnd();
-  }
-
   dispose() {
-    if (this.xr) {
-      this.exitAR();
-      this.renderer.setAnimationLoop(null);
-    }
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     const c = this.canvas;
