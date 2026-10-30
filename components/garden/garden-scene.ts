@@ -441,6 +441,7 @@ export class GardenScene {
   private ground: THREE.Mesh | null = null;
   private island = new THREE.Group();
   private pickables: THREE.Object3D[] = [];
+  private diary: THREE.Group | null = null;
   private flowerHeads: { mesh: THREE.InstancedMesh; ids: string[] }[] = [];
   private itemsById = new Map<string, Placed>();
   private bobbers: { o: THREE.Object3D; y: number; sp: number; ph: number; spin?: number }[] = [];
@@ -1828,6 +1829,69 @@ void main() {`);
       this.zzz.push(sp);
       g.add(sp);
     }
+    this.buildDiaryBook(g, W);
+  }
+
+  /** Nova's diary: an open book on a tree stump beside the cottage. Tapping it opens the page-flip diary (id "diary"). */
+  private buildDiaryBook(cottage: THREE.Group, W: number) {
+    const wood = new THREE.MeshStandardMaterial({ color: "#6b4a2d", roughness: 0.95 });
+    const bark = new THREE.MeshStandardMaterial({ color: "#4e3622", roughness: 1 });
+    const leather = new THREE.MeshStandardMaterial({ color: "#7a2e2a", roughness: 0.6 });
+    const paper = new THREE.MeshStandardMaterial({ color: "#f6edd8", roughness: 0.9, emissive: "#ffcf7a", emissiveIntensity: 0.06 });
+    const ribbon = new THREE.MeshStandardMaterial({ color: "#d9a441", roughness: 0.6 });
+    const g = new THREE.Group();
+    const at = new THREE.Vector3(W / 2 + 0.62, 0, 0.7);
+    // The stump: a rough trunk with a pale cut top.
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.21, 0.34, 10), bark);
+    trunk.position.y = 0.17;
+    trunk.castShadow = true;
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.175, 0.175, 0.02, 10), wood);
+    top.position.y = 0.35;
+    g.add(trunk, top);
+    // The book, a little tilted towards whoever walks up, hovering softly.
+    const book = new THREE.Group();
+    const cover = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.03, 0.3), leather);
+    cover.castShadow = true;
+    book.add(cover);
+    for (const s of [-1, 1]) {
+      const page = new THREE.Mesh(new THREE.BoxGeometry(0.205, 0.032, 0.27), paper);
+      page.position.set(s * 0.105, 0.028, 0);
+      page.rotation.z = s * -0.1;
+      page.castShadow = true;
+      book.add(page);
+      // Lines of writing: a few faint strokes.
+      for (let i = 0; i < 5; i++) {
+        const line = new THREE.Mesh(new THREE.BoxGeometry(0.13 - (i % 2) * 0.03, 0.002, 0.008), new THREE.MeshBasicMaterial({ color: "#8a7a5c" }));
+        line.position.set(s * 0.105, 0.046, -0.09 + i * 0.045);
+        line.rotation.z = s * -0.1;
+        line.raycast = () => {};
+        book.add(line);
+      }
+    }
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.004, 0.2), ribbon);
+    rib.position.set(0.0, 0.049, 0.22);
+    rib.rotation.x = 0.1;
+    book.add(rib);
+    book.position.y = 0.43;
+    book.rotation.set(-0.25, -0.5, 0);
+    g.add(book);
+    this.bobbers.push({ o: book, y: 0.43, sp: 1.3, ph: 1.7 });
+    // A soft glow so it can be found, and an invisible bigger target for a finger.
+    this.glowTex ??= puffTexture("glow");
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: "#ffd98a", transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glow.position.y = 0.5;
+    glow.scale.setScalar(0.75);
+    glow.raycast = () => {};
+    g.add(glow);
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(0.62, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 0.4;
+    g.add(hit);
+    g.position.copy(at);
+    g.scale.setScalar(1.45); // a little bigger than a real book, so it can be found and tapped on a phone
+    this.diary = g;
+    g.userData.id = "diary";
+    this.pickables.push(g);
+    cottage.add(g);
   }
 
   /* ── pond, stream and waterfall ── */
@@ -3540,6 +3604,14 @@ void main() {`);
     let bd = reach;
     const sx = cx - r.left;
     const sy = cy - r.top;
+    // The diary book is small on a phone: a tap near it counts, ahead of the plants around it.
+    if (this.diary) {
+      const q = this.diary.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.45, 0)).project(this.camera);
+      if (q.z < 1) {
+        const d = Math.hypot((q.x * 0.5 + 0.5) * r.width - sx, (-q.y * 0.5 + 0.5) * r.height - sy);
+        if (d < reach * 1.2) return "diary";
+      }
+    }
     for (const it of this.itemsById.values()) {
       const q = this.toWorld(it.x, it.y).add(new THREE.Vector3(0, it.kind === "tree" ? 1.2 : it.kind === "plant" ? (it.stage === 3 ? 1.2 : 0.5) : 0.3, 0)).project(this.camera);
       if (q.z > 1) continue;

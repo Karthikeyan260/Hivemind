@@ -13,6 +13,7 @@ import { type Garden, homeSpot, islandSize, layout, type Season, SEASONS, season
 import { composeSnapshot, shareSnapshot, snapshotName } from "@/lib/garden-snapshot";
 import { festivalById, festivalOn } from "@/lib/pet-looks";
 import type { Sky } from "@/lib/sky";
+import { DiaryBook } from "./diary-book";
 import type { GardenScene } from "./garden-scene";
 import { type Phase, phaseNow } from "./phase";
 
@@ -82,6 +83,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   const [hint, setHint] = useState(true);
   // A flower's day (what happened on the date it was planted).
   const [day, setDay] = useState<{ date: string; data?: GardenDay; error?: string } | null>(null);
+  const [diary, setDiary] = useState(false);
   // "Nova, good night": night falls, a calm song, the warm glow, Nova tells tomorrow and goes to sleep.
   const [bedtime, setBedtime] = useState<{ plan?: GoodNight; line: number; asleep: boolean } | null>(null);
   const bedtimeRun = useRef(0);
@@ -171,6 +173,10 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         showTip("home", `🏠 ${name}'s cottage · time for a nap 💤`);
         goHome(8000);
       }
+      return;
+    }
+    if (id === "diary") {
+      setDiary(true);
       return;
     }
     // A rare visitor: its label says why it came.
@@ -627,6 +633,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
 
         {ready && hint && <div className="pointer-events-none absolute inset-x-0 top-[40%] flex justify-center transition-opacity sm:top-auto sm:right-8 sm:bottom-[8.6rem] sm:left-auto sm:justify-end"><span className="rounded-full border border-white/20 bg-black/30 px-3.5 py-1.5 text-xs font-medium text-white/90 shadow-lg backdrop-blur-md">👆 Drag to look around · pinch to zoom · tap anything</span></div>}
         {day && <DayCard day={day} onClose={() => setDay(null)} />}
+        {diary && <DiaryBook pet={g?.pet ?? "Nova"} onClose={() => setDiary(false)} />}
         {ready && g && !bedtime && (
           <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
             <div className="flex gap-2">
