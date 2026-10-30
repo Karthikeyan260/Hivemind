@@ -94,10 +94,12 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     if (!s || !ui) return;
     try {
       await s.enterAR(ui, setAr, () => setAr(null));
-    } catch {
+    } catch (e) {
       setAr(null);
-      setSharing("AR couldn't start on this phone.");
-      setTimeout(() => setSharing(""), 3500);
+      // The browser's own reason (e.g. "NotAllowedError: …"), so a phone that says no can be understood.
+      const why = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      setSharing(`AR couldn't start (${why})`.slice(0, 170));
+      setTimeout(() => setSharing(""), 15000);
     }
   }
   // Bumped each time a scene is built: the effects below re-apply the sky, decorations and lights to it.

@@ -520,7 +520,13 @@ export class GardenScene {
     this.R = this.isl.rx / 45;
     this.D = this.R * 0.95;
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.quality === "low", powerPreference: "high-performance" });
+    // Where the browser has WebXR, the drawing surface is made AR-ready from the start: converting it later, when AR
+    // starts, is a known way for a phone to refuse (or to drop the whole surface). Same settings as the default otherwise.
+    const gl =
+      typeof navigator !== "undefined" && (navigator as unknown as { xr?: unknown }).xr
+        ? (canvas.getContext("webgl2", { alpha: false, depth: true, stencil: false, antialias: this.quality === "low", powerPreference: "high-performance", premultipliedAlpha: true, preserveDrawingBuffer: false, xrCompatible: true }) as WebGL2RenderingContext | null)
+        : null;
+    this.renderer = new THREE.WebGLRenderer({ canvas, ...(gl ? { context: gl } : {}), antialias: this.quality === "low", powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, opts.mini ? 1.25 : this.mobile ? 1.5 : 1.75));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -3985,37 +3991,11 @@ void main() {`);
       }
     }
     const saved = { background: this.scene.background, fog: this.scene.fog, near: this.camera.near, shadow: this.sun.castShadow, vis };
-    this.scene.background = null;
-    this.scene.fog = null;
-    this.sun.castShadow = false; // the shadow box is sized for the big scene
-    this.camera.near = 0.01;
-    this.camera.updateProjectionMatrix();
 
-    // Everything goes under one root, so the whole garden can be shrunk and set down as one thing.
-    // The root is shifted so the island's underside is at the holder's origin and it floats just above the table.
+    // Everything below is undone by leaveAR if any step fails, so a phone that says no half way never leaves the garden rearranged.
     const root = new THREE.Group();
-    root.add(...this.scene.children);
-    const box = new THREE.Box3().setFromObject(this.island);
-    const centre = box.getCenter(new THREE.Vector3());
-    // The underside of the island itself: the wide parts only, so the thin waterfall hanging far below doesn't count.
-    let bottom = Infinity;
-    const part = new THREE.Box3();
-    const size = new THREE.Vector3();
-    this.island.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh || !m.visible) return;
-      part.setFromObject(m).getSize(size);
-      if (size.x > (box.max.x - box.min.x) * 0.35 && size.z > (box.max.z - box.min.z) * 0.35) bottom = Math.min(bottom, part.min.y);
-    });
-    if (!Number.isFinite(bottom)) bottom = box.min.y;
-    root.position.set(-centre.x, -bottom, -centre.z);
-    for (const l of this.lampLights) l.visible = false;
     const holder = new THREE.Group();
-    holder.add(root);
     holder.visible = false; // until it is placed
-    this.scene.add(holder);
-    const width = Math.max(1, box.max.x - box.min.x);
-
     // The pet is a flat picture on the page; here it stands in the scene as a sprite cut from its drawing.
     const tex = new THREE.TextureLoader().load("/mascots/nova-directions.webp");
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -4024,24 +4004,50 @@ void main() {`);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
     sprite.center.set(0.5, 0.04);
     sprite.scale.set(1.9, 1.9, 1);
-    root.add(sprite);
-
     // A ring on the surface the camera is looking at, until the person taps.
     const reticle = new THREE.Mesh(new THREE.RingGeometry(0.07, 0.09, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.9, toneMapped: false }));
     reticle.matrixAutoUpdate = false;
     reticle.visible = false;
-    this.scene.add(reticle);
-
-    const st: ArState = { session, holder, root, reticle, sprite, hitSource: null, placed: false, scale: AR_WIDTH_M / width, saved, onEnd, onState };
+    const st: ArState = { session, holder, root, reticle, sprite, hitSource: null, placed: false, scale: 1, saved, onEnd, onState };
     this.xr = st;
     try {
+      this.scene.background = null;
+      this.scene.fog = null;
+      this.sun.castShadow = false; // the shadow box is sized for the big scene
+      this.camera.near = 0.01;
+      this.camera.updateProjectionMatrix();
+      for (const l of this.lampLights) l.visible = false;
+
+      // Everything goes under one root, so the whole garden can be shrunk and set down as one thing.
+      // The root is shifted so the island's underside is at the holder's origin and it floats just above the table.
+      root.add(...this.scene.children);
+      const box = new THREE.Box3().setFromObject(this.island);
+      const centre = box.getCenter(new THREE.Vector3());
+      // The underside of the island itself: the wide parts only, so the thin waterfall hanging far below doesn't count.
+      let bottom = Infinity;
+      const part = new THREE.Box3();
+      const size = new THREE.Vector3();
+      this.island.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || !m.visible) return;
+        part.setFromObject(m).getSize(size);
+        if (size.x > (box.max.x - box.min.x) * 0.35 && size.z > (box.max.z - box.min.z) * 0.35) bottom = Math.min(bottom, part.min.y);
+      });
+      if (!Number.isFinite(bottom)) bottom = box.min.y;
+      root.position.set(-centre.x, -bottom, -centre.z);
+      st.scale = AR_WIDTH_M / Math.max(1, box.max.x - box.min.x);
+      holder.add(root);
+      root.add(sprite);
+      this.scene.add(holder, reticle);
+
       this.renderer.xr.enabled = true;
       this.renderer.xr.setReferenceSpaceType("local");
       await this.renderer.xr.setSession(session as never);
       const viewer = await session.requestReferenceSpace("viewer");
       st.hitSource = await session.requestHitTestSource({ space: viewer });
     } catch (err) {
-      // Couldn't get going (the phone said no part-way): put the garden back exactly as it was and say so.
+      // Couldn't get going: put the garden back exactly as it was, and let the caller say why.
+      console.error("AR could not start:", err);
       void session.end().catch(() => {});
       this.leaveAR(false);
       throw err;
