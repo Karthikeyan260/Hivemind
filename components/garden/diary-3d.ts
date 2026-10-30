@@ -81,7 +81,7 @@ export class DiaryScene {
   private zoom: "spread" | "left" | "right" = "spread";
   private raf = 0;
   private disposed = false;
-  private clock = new THREE.Clock();
+  private last = 0;
   private elapsed = 0;
   private introT = 0;
   private camPos = new THREE.Vector3();
@@ -110,7 +110,7 @@ export class DiaryScene {
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 
     // Light: a soft sky fill, a warm lamp from the front left that casts the shadows, and a faint candle glow.
@@ -183,7 +183,7 @@ export class DiaryScene {
     window.addEventListener("pointermove", this.onMove);
     window.addEventListener("pointerup", this.onUp);
     window.addEventListener("pointercancel", this.onUp);
-    this.clock.start();
+    this.last = performance.now();
     this.raf = requestAnimationFrame(this.loop);
   }
 
@@ -312,6 +312,8 @@ export class DiaryScene {
     });
     void this.audio?.close().catch(() => {});
     this.renderer.dispose();
+    // Browsers allow only a handful of live WebGL contexts and drop the OLDEST one (the garden's) when over: give this one back.
+    this.renderer.forceContextLoss();
   }
 
   /* ───────── spreads and pages ───────── */
@@ -457,7 +459,9 @@ export class DiaryScene {
   private loop = () => {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.loop);
-    const dt = Math.min(this.clock.getDelta(), 0.05);
+    const now = performance.now();
+    const dt = Math.min((now - this.last) / 1000, 0.05);
+    this.last = now;
     this.elapsed += dt;
     this.introT += dt;
     this.update(dt);
@@ -1021,7 +1025,7 @@ function drawPage(ctx: CanvasRenderingContext2D, page: DiaryPage, side: "left" |
     if (!o.busy) {
       ctx.font = `500 38px ${hand}`;
       ctx.fillStyle = "rgba(59,47,30,0.65)";
-      ctx.fillText("It does that at 10 pm,", TW / 2, 610);
+      ctx.fillText("It does that at 11 pm,", TW / 2, 610);
       ctx.fillText("or tap the button below.", TW / 2, 660);
     }
     return;

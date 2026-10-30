@@ -9,7 +9,7 @@ import type { DiaryPage, DiaryScene, SpreadInfo } from "./diary-3d";
 /**
  * Nova's diary as a book you hold: a real 3D book (see diary-3d.ts) whose cover opens and whose pages bend as they
  * turn. Drag a page corner, tap the outer edge of a page to turn it, tap the middle of a page to zoom in and read it,
- * or use the arrows / arrow keys. Today's page is written at 10 pm, or on the spot with the button.
+ * or use the arrows / arrow keys. Today's page is written at 11 pm, or on the spot with the button.
  */
 const caveat = Caveat({ subsets: ["latin"], display: "swap" });
 // Handwriting for English; the system's own fonts take over for Tamil and anything else.
@@ -130,13 +130,16 @@ export function DiaryBook({ pet, onClose }: { pet: string; onClose: () => void }
   const go = useCallback((by: number) => (by > 0 ? scene.current?.next() : scene.current?.prev()), []);
 
   useEffect(() => {
+    // In the capture phase, and swallowed: the garden behind the book also listens for arrow keys (it would turn its camera).
     const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" && e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
       if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowRight") go(1);
-      else if (e.key === "ArrowLeft") go(-1);
+      else go(e.key === "ArrowRight" ? 1 : -1);
     };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
   }, [go, onClose]);
 
   async function writeToday() {

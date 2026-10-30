@@ -101,8 +101,8 @@ export async function GET(req: Request) {
   // Dream mode: once a night, from its hour until 7 am (marked first, so later checks don't start it again).
   const dreamSet = await getDreamSettings(supabase).catch(() => null);
   const dreaming = !!dreamSet?.enabled && hour >= dreamSet.hour && hour < 7 && state.dream !== date;
-  // Nova's diary: one page a night from 10 pm (marked first, so later checks don't write it again).
-  const diarying = hour >= 22 && state.diary !== date;
+  // Nova's diary: one page a night from 11 pm, after the 9-11 pm check-in window, so the mood and words are in it (marked first, so later checks don't write it again).
+  const diarying = hour >= 23 && state.diary !== date;
   // The news brief: once each morning, after the "good morning" window opens, if topics are set.
   const briefSet = await getBriefSettings(supabase).catch(() => null);
   // Tried up to 3 times a morning, 10 minutes apart; it counts as done only once the brief is saved (see below), so one failure doesn't cost the day.
