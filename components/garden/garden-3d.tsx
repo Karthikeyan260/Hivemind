@@ -652,6 +652,10 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         {ready && g && !bedtime && (
           <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
             <div className="flex gap-2">
+              {/* The diary is also the book on the stump by the cottage; this is the way in for a keyboard, a screen reader, or a first-time visitor. */}
+              <button onClick={() => setDiary(true)} aria-label={`Open ${g?.pet ?? "Nova"}'s diary`} className="flex items-center gap-1.5 rounded-full border border-amber-200/30 bg-[#2a1810]/70 px-3 py-2 text-xs font-medium text-amber-100 shadow-lg backdrop-blur-md transition hover:bg-[#3a2216]/80">
+                📖<span className="hidden sm:inline"> Diary</span>
+              </button>
               <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/40 px-3 py-2 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-black/55">
                 📸<span className="hidden sm:inline"> Share</span>
               </button>
