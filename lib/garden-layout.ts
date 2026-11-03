@@ -127,17 +127,31 @@ export function pondSpot(n: number) {
   return { x: cx + Math.cos(POND_ANGLE) * 0.66 * rx, y: cy + Math.sin(POND_ANGLE) * 0.66 * ry, rx: 0.14 * rx, ry: 0.14 * ry };
 }
 
-/** The clock tower, on the front left of the island, near the camera (the pond is front right, the cottage back centre). */
+/** The clock tower: a landmark on the left side of the island (the pond is front right, the cottage back centre, the telescope out front). */
 export function towerSpot(n: number) {
   const { cx, cy, rx, ry } = islandSize(n);
-  return { x: cx - 0.55 * rx, y: cy + 0.42 * ry };
+  return { x: cx - 0.64 * rx, y: cy + 0.3 * ry };
 }
 
-/** The telescope, on the left of the lawn (the sky card opens on the right, so it stays in view). */
+/** The telescope: out on the front left lawn where nothing stands in front of it (the sky card opens on the right, so it stays in view). */
 export function scopeSpot(n: number) {
   const { cx, cy, rx, ry } = islandSize(n);
-  return { x: cx - 0.36 * rx, y: cy + 0.04 * ry };
+  return { x: cx - 0.3 * rx, y: cy + 0.56 * ry };
 }
+
+/**
+ * Where the night check-in trees stand: a grove that frames the cottage, filled in turn from the
+ * right-back, the left-back and outwards, as (across, down) fractions of the island's half-width and
+ * half-depth from its centre. The oldest tree takes the first place, so a new tree never moves an old one.
+ */
+const TREE_SLOTS: ReadonlyArray<readonly [number, number]> = [
+  [0.569, -0.407],
+  [-0.516, -0.502],
+  [0.683, -0.153],
+  [-0.268, -0.732],
+  [0.304, -0.718],
+  [-0.671, -0.261],
+];
 
 /** Spots kept free: the cottage, its path, the pond and its stream, the clock tower, and the pet's yard in the middle. */
 function blocked(n: number, x: number, y: number) {
@@ -189,6 +203,8 @@ export function layout(items: GardenItem[]): Placed[] {
   for (const h of habits) items.filter((i) => i.kind === "flower" && habit(i) === h).map((i) => i.id).sort().forEach((id, k) => rank.set(id, k));
   const plantRank = new Map<string, number>();
   items.filter((i) => i.kind === "plant").map((i) => i.id).sort().forEach((id, k) => plantRank.set(id, k));
+  const treeRank = new Map<string, number>();
+  items.filter((i) => i.kind === "tree").map((i) => i.id).sort().forEach((id, k) => treeRank.set(id, k));
   const gemRank = new Map<string, number>();
   items.filter((i) => i.kind === "gem").map((i) => i.id).sort().forEach((id, k) => gemRank.set(id, k));
   for (const it of sorted) {
@@ -226,6 +242,18 @@ export function layout(items: GardenItem[]): Placed[] {
         }
       }
       continue;
+    }
+    // The check-in trees make a grove round the back of the cottage.
+    if (it.kind === "tree") {
+      const slot = TREE_SLOTS[treeRank.get(it.id) ?? 99];
+      if (slot) {
+        const x = Math.round(cx + slot[0] * rx);
+        const y = Math.round(cy + slot[1] * ry);
+        if (inside(x, y) && !blocked(n, x, y)) {
+          placed.push({ ...it, x, y });
+          continue;
+        }
+      }
     }
     // A habit's plant stands in the habit garden by the cottage door: rows either side of the path, in
     // a fixed order, so it is easy to find among the flower beds and never moves.

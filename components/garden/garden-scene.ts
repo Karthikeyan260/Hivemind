@@ -3264,6 +3264,7 @@ void main() {`);
     const pw = this.toWorld(pond.x, pond.y);
     const prw = (pond.rx / this.isl.rx) * this.R;
     const taken = [...this.itemsById.values()].map((it) => this.toWorld(it.x, it.y));
+    const props = [towerSpot(n), scopeSpot(n)].map((p) => this.toWorld(p.x, p.y));
     const out: THREE.Vector3[] = [];
     for (let i = 0; out.length < count && i < count * 60; i++) {
       const a = hash01(`${seed}a${i}`) * Math.PI * 2;
@@ -3272,6 +3273,7 @@ void main() {`);
       const z = Math.sin(a) * r;
       if (Math.hypot(x - home.x, z - home.z) < 1.6 || Math.hypot(x - pw.x, z - pw.z) < prw + 0.5) continue;
       if (z > home.z && Math.abs(x - this.pathWorld(z)) < 0.55) continue;
+      if (props.some((p) => Math.hypot(p.x - x, p.z - z) < 2.4)) continue;
       if (taken.some((p) => Math.hypot(p.x - x, p.z - z) < clear) || out.some((p) => Math.hypot(p.x - x, p.z - z) < clear * 2)) continue;
       out.push(new THREE.Vector3(x, this.heightAt(x, z), z));
     }
