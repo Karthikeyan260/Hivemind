@@ -11,6 +11,7 @@ vi.mock("@/lib/private-store", () => ({
 }));
 vi.mock("@/lib/garden-day", () => ({ getGardenDay: async () => day }));
 vi.mock("@/lib/pet", () => ({ petName: async () => "Nova" }));
+vi.mock("@/lib/profile", () => ({ getProfile: async () => ({ name: "Karthikeyan K" }) }));
 vi.mock("@/lib/ai/providers", () => ({
   generateWithFallback: async () => {
     aiCalls++;
@@ -45,6 +46,29 @@ describe("Nova's diary", () => {
     expect(f.join(" ")).toContain("lantern walk");
     expect(f.join(" ")).toContain("Good");
     expect(f.join(" ")).not.toMatch(/songs|notes|games/i);
+  });
+
+  it("tells a lantern walk and a walking habit as ONE outing", () => {
+    const f = dayFacts({ ...empty("2026-10-30"), habits: [{ emoji: "🚶", name: "Walking" }], walked: true });
+    expect(f.join(" ")).toContain("Walking (done as a lantern walk with the pet)");
+    expect(f.join(" ")).not.toMatch(/They took a lantern walk/);
+    // Without a walking habit the lantern walk stands alone.
+    expect(dayFacts({ ...empty("2026-10-30"), habits: [{ emoji: "🧘", name: "Yoga" }], walked: true }).join(" ")).toContain("They took a lantern walk");
+  });
+
+  it("asks the model to use the owner's first name, not 'my person'", async () => {
+    day = { ...empty("2026-10-30"), habits: [{ emoji: "🧘", name: "Yoga" }] };
+    let system = "";
+    ai = async () => ({ text: "Karthikeyan did yoga today and I was so proud of them. — Nova" });
+    const providers = await import("@/lib/ai/providers");
+    const spy = vi.spyOn(providers, "generateWithFallback").mockImplementation(async (_m: unknown, o: { system?: string } = {}) => {
+      system = o.system ?? "";
+      return { text: "Karthikeyan did yoga today and I was so proud of them. — Nova", provider: "gemini", model: "x", latencyMs: 1 } as never;
+    });
+    await writeDiary({} as never, "2026-10-30");
+    spy.mockRestore();
+    expect(system).toContain("Karthikeyan's day");
+    expect(system).toMatch(/never "my person"/);
   });
 
   it("saves the model's page, keeps the dates newest first, and a rewrite replaces the day", async () => {

@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateWithFallback } from "@/lib/ai/providers";
 import { getGardenDay, type GardenDay } from "@/lib/garden-day";
 import { petName } from "@/lib/pet";
+import { getProfile } from "@/lib/profile";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { scrub } from "@/lib/scrub";
 
@@ -29,12 +30,14 @@ export function dayFacts(d: GardenDay): string[] {
   if (d.festival) f.push(`It was ${d.festival}.`);
   if (d.mood) f.push(`Their mood tonight: ${d.mood.emoji} ${d.mood.word}.`);
   if (d.reflection) f.push(`What they wrote about the day: "${clip(d.reflection, 400)}"`);
-  if (d.habits.length) f.push(`Habits they did: ${d.habits.map((h) => h.name).join(", ")}.`);
+  // A lantern walk with Nova and a walking habit are the same outing: list it once, so the diary does not tell it twice.
+  const walkHabit = d.walked && d.habits.some((h) => /walk/i.test(h.name));
+  if (d.habits.length) f.push(`Habits they did: ${d.habits.map((h) => (walkHabit && /walk/i.test(h.name) ? `${h.name} (done as a lantern walk with the pet)` : h.name)).join(", ")}.`);
   if (d.songs.length) f.push(`Songs they played: ${d.songs.slice(0, 5).map((s) => clip(s.title, 50)).join(", ")}.`);
   if (d.notes.length) f.push(`Notes they saved: ${d.notes.slice(0, 5).map((n) => clip(n.title, 60)).join("; ")}.`);
   if (d.memories.length) f.push(`Things they asked HIVEMIND to remember: ${d.memories.slice(0, 4).map((m) => clip(m, 60)).join("; ")}.`);
   if (d.wins.length) f.push(`Games they won: ${d.wins.join(", ")}.`);
-  if (d.walked) f.push("They took a lantern walk together.");
+  if (d.walked && !walkHabit) f.push("They took a lantern walk together.");
   return f;
 }
 
@@ -50,7 +53,9 @@ export function plainEntry(name: string, d: GardenDay): string {
   return `Today ${bits.slice(0, 4).join(", ")}${d.mood ? ` and you felt ${d.mood.word.toLowerCase()}` : ""}. I'm glad I was there. — ${name}`;
 }
 
-const RULES = (name: string) => `You are ${name}, a small garden pet who keeps a diary about your person's day. Write today's diary page.
+const RULES = (name: string, person: string) => `You are ${name}, a small garden pet who keeps a diary about ${person}'s day (${person} is your owner and best friend). Write today's diary page.
+- Call them ${person}, never "my person" or "the human". Talk to the diary, about them, in a loving voice.
+- Say each thing once. If two facts are plainly the same event (a walk and a lantern walk), tell it as one.
 - 2 to 4 short sentences, first person ("I"), warm and a little playful, plain words, no headings, no lists.
 - Use ONLY the facts you are given. Never invent events, people, places, feelings or details that are not in them. If they wrote their own words about the day, you may echo one small thing, but never quote private details at length.
 - Mention at most three things; pick what mattered most. If they felt low, be gentle, not cheerful.
@@ -59,14 +64,15 @@ const RULES = (name: string) => `You are ${name}, a small garden pet who keeps a
 
 /** Writes (or rewrites) the page for a date. Safe to call again; the latest one wins. */
 export async function writeDiary(supabase: SupabaseClient, date: string): Promise<DiaryEntry> {
-  const [day, name] = await Promise.all([getGardenDay(supabase, date), petName(supabase).catch(() => "Nova")]);
+  const [day, name, profile] = await Promise.all([getGardenDay(supabase, date), petName(supabase).catch(() => "Nova"), getProfile(supabase).catch(() => null)]);
+  const person = profile?.name?.split(/\s+/)[0]?.slice(0, 30) || "your friend";
   const facts = dayFacts(day);
   let text = plainEntry(name, day);
   let ai = false;
   if (facts.length) {
     try {
       const r = await generateWithFallback([{ role: "user", content: `TODAY (${date}):\n${facts.map((x) => `- ${x}`).join("\n")}` }], {
-        system: RULES(name),
+        system: RULES(name, person),
         temperature: 0.7,
         maxTokens: 400,
         order: ["gemini", "openrouter", "mistral", "groq"],
