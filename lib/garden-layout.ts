@@ -130,7 +130,7 @@ export function pondSpot(n: number) {
 /** The clock tower: a landmark on the left side of the island (the pond is front right, the cottage back centre, the telescope out front). */
 export function towerSpot(n: number) {
   const { cx, cy, rx, ry } = islandSize(n);
-  return { x: cx - 0.64 * rx, y: cy + 0.3 * ry };
+  return { x: cx - 0.6 * rx, y: cy + 0.3 * ry };
 }
 
 /** The telescope: out on the front left lawn where nothing stands in front of it (the sky card opens on the right, so it stays in view). */
@@ -263,11 +263,15 @@ export function layout(items: GardenItem[]): Placed[] {
         // Out past the lamps and clear of the pet's yard in the middle, a little wider on each row down.
         const row = Math.floor(k / 2);
         const y = Math.round(home.y + ry * (0.24 + row * 0.13));
-        const x = Math.round(pathX(n, y) + (k % 2 ? 1 : -1) * rx * (0.26 + row * 0.025));
-        if (inside(x, y) && !blocked(n, x, y)) {
-          placed.push({ ...it, x, y });
-          continue;
+        // If something stands there (the pond, on a small island), the plant moves in towards the path rather than far away.
+        for (const f of [1, 0.85, 0.7, 1.15]) {
+          const x = Math.round(pathX(n, y) + (k % 2 ? 1 : -1) * rx * (0.26 + row * 0.025) * f);
+          if (inside(x, y) && !blocked(n, x, y)) {
+            placed.push({ ...it, x, y });
+            break;
+          }
         }
+        if (placed.some((p) => p.id === it.id)) continue;
       }
     }
     const gap = it.kind === "tree" ? 70 : it.kind === "plant" ? 40 : it.kind === "gem" ? 26 : 13;
