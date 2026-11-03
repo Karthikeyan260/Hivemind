@@ -1054,6 +1054,17 @@ function drawPage(ctx: CanvasRenderingContext2D, page: DiaryPage, side: "left" |
     lines = wrap(ctx, text, right - left);
     if (lines.length * size * 1.3 <= TH - 360 - 40) break;
   }
+  if (size < 26) {
+    // Too long even at the smallest size: keep what fits (the loop above ran past its last size), and end with an ellipsis.
+    size = 26;
+    ctx.font = `500 ${size}px ${hand}`;
+    lines = wrap(ctx, text, right - left);
+    const most = Math.max(1, Math.floor((TH - 360 - 40) / (size * 1.3)));
+    if (lines.length > most) {
+      lines = lines.slice(0, most);
+      lines[most - 1] = `${lines[most - 1].replace(/\s*\S{0,3}$/, "")}…`;
+    }
+  }
   const lh = Math.round(size * 1.3);
   const y0 = 300;
   rules(ctx, y0 + 8, lh, side);
