@@ -15,6 +15,7 @@ import { composeSnapshot, shareSnapshot, snapshotName } from "@/lib/garden-snaps
 import { festivalById, festivalOn } from "@/lib/pet-looks";
 import type { Sky } from "@/lib/sky";
 import { DiaryBook } from "./diary-book";
+import { SkyDome } from "./sky-dome";
 import { TowerCard } from "./tower-card";
 import type { GardenScene } from "./garden-scene";
 import { type Phase, phaseNow } from "./phase";
@@ -87,6 +88,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   const [day, setDay] = useState<{ date: string; data?: GardenDay; error?: string } | null>(null);
   const [diary, setDiary] = useState(false);
   const [tower, setTower] = useState(false);
+  const [skyOpen, setSkyOpen] = useState(false);
   function ringBell() {
     const n = Math.min(new Date().getHours() % 12 || 12, 5);
     strikeBell(n);
@@ -185,6 +187,11 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     }
     if (id === "diary") {
       setDiary(true);
+      return;
+    }
+    // The telescope: tonight's real sky opens, and the telescope turns to look at it.
+    if (id === "scope") {
+      setSkyOpen(true);
       return;
     }
     // The clock tower: its time card opens, and the bell rings once for each hour (up to five, so it stays short).
@@ -648,6 +655,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         {ready && hint && <div className="pointer-events-none absolute inset-x-0 top-[40%] flex justify-center transition-opacity sm:top-auto sm:right-8 sm:bottom-[8.6rem] sm:left-auto sm:justify-end"><span className="rounded-full border border-white/20 bg-black/30 px-3.5 py-1.5 text-xs font-medium text-white/90 shadow-lg backdrop-blur-md">👆 Drag to look around · pinch to zoom · tap anything</span></div>}
         {day && <DayCard day={day} onClose={() => setDay(null)} />}
         {tower && <TowerCard pet={g?.pet ?? "Nova"} phase={{ icon: PHASE_ICON[phase], name: PHASE_NAME[phase] }} onRing={ringBell} onClose={() => setTower(false)} />}
+        {skyOpen && <SkyDome onAim={(az, alt) => scene.current?.aimScope(az, alt)} onClose={() => setSkyOpen(false)} />}
         {diary && <DiaryBook pet={g?.pet ?? "Nova"} onClose={() => setDiary(false)} />}
         {ready && g && !bedtime && (
           <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">

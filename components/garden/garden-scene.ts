@@ -55,7 +55,7 @@ class GradeEffect extends Effect {
 }
 import { type Phase } from "./phase";
 import { windStrength } from "@/lib/sky";
-import { fireflyCount, hash01, homeSpot, islandSize, pathX, POND_ANGLE, pondSpot, towerSpot, type Placed, type Season } from "@/lib/garden-layout";
+import { fireflyCount, hash01, homeSpot, islandSize, pathX, POND_ANGLE, pondSpot, scopeSpot, towerSpot, type Placed, type Season } from "@/lib/garden-layout";
 
 /**
  * Nova's garden in 3D: a floating island lit by the real sky of the hour. Thousands of grass blades
@@ -445,6 +445,8 @@ export class GardenScene {
   private towerGlow: { m: THREE.MeshStandardMaterial; night: number; wet: number }[] = [];
   private towerHands: { hour: THREE.Object3D[]; min: THREE.Object3D[]; sec: THREE.Object3D[] } = { hour: [], min: [], sec: [] };
   private towerBell: THREE.Object3D | null = null;
+  private scope: { yaw: THREE.Group; pitch: THREE.Group; g: THREE.Group; tYaw: number; tPitch: number; cYaw: number; cPitch: number } | null = null;
+  private scopeBox: THREE.Group | null = null;
   private towerVane: THREE.Object3D | null = null;
   private bellSwing = { amp: 0, strikes: [] as number[] };
   private flowerHeads: { mesh: THREE.InstancedMesh; ids: string[] }[] = [];
@@ -527,6 +529,7 @@ export class GardenScene {
     this.buildGrass();
     this.buildCottage();
     this.buildClockTower();
+    this.buildTelescope();
     this.buildPond();
     this.buildItems(items);
     this.buildVisitors(opts.visitors ?? []);
@@ -2124,6 +2127,132 @@ void main() {`);
     const t = this.clock.elapsedTime;
     this.bellSwing.strikes = Array.from({ length: Math.max(1, count) }, (_, i) => t + i * 1.2);
     return 1200;
+  }
+
+  /**
+   * The telescope (id "scope"): a brass telescope on a wooden tripod on a little stone pad. It swings round to point at
+   * whatever is picked in the sky card (aimScope), at its real compass bearing and height.
+   */
+  private buildTelescope() {
+    const spot = scopeSpot(this.opts.n);
+    const at = this.toWorld(spot.x, spot.y);
+    const g = new THREE.Group();
+    const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25) * 1.45;
+    const stone = new THREE.MeshStandardMaterial({ color: "#a39a88", roughness: 0.96 });
+    const wood = new THREE.MeshStandardMaterial({ color: "#6b4a2d", roughness: 0.85 });
+    const brass = new THREE.MeshStandardMaterial({ color: "#c79a45", roughness: 0.28, metalness: 0.88 });
+    const dark = new THREE.MeshStandardMaterial({ color: "#1e1b18", roughness: 0.5, metalness: 0.6 });
+    const navy = new THREE.MeshStandardMaterial({ color: "#1d3557", roughness: 0.4, metalness: 0.5 });
+    const lens = new THREE.MeshStandardMaterial({ color: "#6fa8ff", roughness: 0.05, metalness: 0.1, emissive: "#4f8cff", emissiveIntensity: 0 });
+    this.towerGlow.push({ m: lens, night: 0.9, wet: 0 });
+    const part = (geo: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D, x = 0, y = 0, z = 0) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      parent.add(m);
+      return m;
+    };
+
+    // A round stone pad with a lip.
+    part(new THREE.CylinderGeometry(0.52, 0.56, 0.08, 20), stone, g, 0, 0.04, 0);
+    part(new THREE.CylinderGeometry(0.4, 0.42, 0.03, 20), new THREE.MeshStandardMaterial({ color: "#b9b0a0", roughness: 0.95 }), g, 0, 0.095, 0);
+
+    // Three wooden legs meeting under the mount.
+    const apex = new THREE.Vector3(0, 0.82, 0);
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + 0.5;
+      const foot = new THREE.Vector3(Math.cos(a) * 0.36, 0.11, Math.sin(a) * 0.36);
+      const dir = apex.clone().sub(foot);
+      const len = dir.length();
+      const geo = new THREE.CylinderGeometry(0.018, 0.026, len, 8);
+      const leg = new THREE.Mesh(geo, wood);
+      leg.position.copy(foot).addScaledVector(dir, 0.5);
+      leg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+      leg.castShadow = true;
+      g.add(leg);
+      part(new THREE.SphereGeometry(0.03, 8, 6), brass, g, foot.x, foot.y, foot.z);
+    }
+    part(new THREE.CylinderGeometry(0.07, 0.09, 0.07, 12), brass, g, 0, 0.82, 0);
+
+    // The mount turns left and right (yaw); the tube tilts up and down (pitch).
+    const yaw = new THREE.Group();
+    yaw.position.y = 0.9;
+    g.add(yaw);
+    part(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 10), dark, yaw, 0, 0, 0);
+    const pitch = new THREE.Group();
+    pitch.position.y = 0.1;
+    yaw.add(pitch);
+    // Forks holding the tube.
+    part(new THREE.BoxGeometry(0.02, 0.16, 0.05), dark, pitch, -0.065, 0, 0);
+    part(new THREE.BoxGeometry(0.02, 0.16, 0.05), dark, pitch, 0.065, 0, 0);
+
+    // The tube points down -z (north) when level; yaw turns it round, pitch lifts it.
+    const tubeGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.0, 20, 1, true);
+    tubeGeo.rotateX(-Math.PI / 2);
+    tubeGeo.translate(0, 0, -0.32);
+    const tube = part(tubeGeo, navy, pitch);
+    (tube.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    // Brass rings along it, a wider dew cap at the front with the lens inside, and an eyepiece at the back.
+    for (const z of [-0.78, -0.42, -0.05, 0.12]) {
+      const band = part(new THREE.TorusGeometry(0.063, 0.008, 6, 20), brass, pitch, 0, 0, z);
+      band.castShadow = false;
+    }
+    const capGeo = new THREE.CylinderGeometry(0.075, 0.07, 0.18, 20, 1, true);
+    capGeo.rotateX(-Math.PI / 2);
+    const cap = part(capGeo, dark, pitch, 0, 0, -0.88);
+    (cap.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    const glass = part(new THREE.CircleGeometry(0.058, 20), lens, pitch, 0, 0, -0.8);
+    glass.castShadow = false;
+    glass.rotation.y = Math.PI;
+    const eye = new THREE.CylinderGeometry(0.022, 0.028, 0.14, 12);
+    eye.rotateX(-Math.PI / 2);
+    part(eye, brass, pitch, 0, 0, 0.2);
+    // A small finder scope riding on top.
+    const fGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.3, 10);
+    fGeo.rotateX(-Math.PI / 2);
+    part(fGeo, dark, pitch, 0, 0.1, -0.35);
+    part(new THREE.BoxGeometry(0.012, 0.05, 0.012), brass, pitch, 0, 0.075, -0.22);
+    part(new THREE.BoxGeometry(0.012, 0.05, 0.012), brass, pitch, 0, 0.075, -0.48);
+
+    // A big, easy tap target round the whole thing.
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(0.85, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+    hit.position.y = 0.8;
+    g.add(hit);
+
+    g.scale.setScalar(S);
+    g.position.copy(at);
+    g.position.y -= 0.02;
+    g.userData.id = "scope";
+    this.pickables.push(g);
+    this.island.add(g);
+    this.plantClear.push({ x: at.x, z: at.z, r: 0.7 * S });
+    this.scope = { yaw, pitch, g, tYaw: -2.2, tPitch: 0.7, cYaw: -2.2, cPitch: 0.7 };
+    this.scopeBox = g;
+  }
+
+  /**
+   * Points the telescope at a bearing (degrees from north through east) and height. North is into the screen and east
+   * is to the right, as in the sky card.
+   */
+  aimScope(azDeg: number, altDeg: number) {
+    if (!this.scope) return;
+    this.scope.tYaw = -THREE.MathUtils.degToRad(azDeg);
+    this.scope.tPitch = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(altDeg, 4, 86));
+  }
+
+  /** Eases the telescope round to where it was told to look. */
+  private updateScope(dt: number) {
+    const s = this.scope;
+    if (!s) return;
+    const k = 1 - Math.exp(-dt * 2.4);
+    // Take the short way round.
+    let d = s.tYaw - s.cYaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    s.cYaw += d * k;
+    s.cPitch += (s.tPitch - s.cPitch) * k;
+    s.yaw.rotation.y = s.cYaw;
+    s.pitch.rotation.x = s.cPitch;
   }
 
   /* ── pond, stream and waterfall ── */
@@ -3836,7 +3965,14 @@ void main() {`);
     let bd = reach;
     const sx = cx - r.left;
     const sy = cy - r.top;
-    // The diary book is small on a phone: a tap near it counts, ahead of the plants around it.
+    // The telescope and the diary book are small on a phone: a tap near them counts, ahead of the plants around them.
+    if (this.scopeBox) {
+      const q = this.scopeBox.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.8, 0)).project(this.camera);
+      if (q.z < 1) {
+        const d = Math.hypot((q.x * 0.5 + 0.5) * r.width - sx, (-q.y * 0.5 + 0.5) * r.height - sy);
+        if (d < reach * 1.2) return "scope";
+      }
+    }
     if (this.diary) {
       const q = this.diary.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.45, 0)).project(this.camera);
       if (q.z < 1) {
@@ -3903,6 +4039,11 @@ void main() {`);
     if (id === "home") {
       const h = homeSpot(this.opts.n);
       this.tip = this.toWorld(h.x, h.y).add(new THREE.Vector3(0, 2.4, 0));
+      return;
+    }
+    if (id === "scope") {
+      const h = scopeSpot(this.opts.n);
+      this.tip = this.toWorld(h.x, h.y).add(new THREE.Vector3(0, 2.2, 0));
       return;
     }
     if (id === "tower") {
@@ -4148,6 +4289,7 @@ void main() {`);
     }
     this.updateDecor(t, dt);
     this.updateTower(t, dt);
+    this.updateScope(dt);
     // Ease towards the song's loudness (quick to rise, slow to settle): no jolts.
     const want = this.musicRgb ? Math.min(1, this.musicLevel * 1.4) : 0;
     this.uBeat.value += (want - this.uBeat.value) * Math.min(1, dt * (want > this.uBeat.value ? 4 : 1.5));

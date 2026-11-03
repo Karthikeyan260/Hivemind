@@ -133,12 +133,20 @@ export function towerSpot(n: number) {
   return { x: cx - 0.55 * rx, y: cy + 0.42 * ry };
 }
 
+/** The telescope, on the left of the lawn (the sky card opens on the right, so it stays in view). */
+export function scopeSpot(n: number) {
+  const { cx, cy, rx, ry } = islandSize(n);
+  return { x: cx - 0.36 * rx, y: cy + 0.04 * ry };
+}
+
 /** Spots kept free: the cottage, its path, the pond and its stream, the clock tower, and the pet's yard in the middle. */
 function blocked(n: number, x: number, y: number) {
   const { cx, cy, rx, ry } = islandSize(n);
   const home = homeSpot(n);
   if (((x - home.x) / 78) ** 2 + ((y - home.y + 8) / 30) ** 2 < 1) return true;
   if (y > home.y && Math.abs(x - pathX(n, y)) < 17) return true;
+  const scope = scopeSpot(n);
+  if (((x - scope.x) / 26) ** 2 + ((y - scope.y) / 10) ** 2 < 1) return true;
   const tower = towerSpot(n);
   if (((x - tower.x) / 42) ** 2 + ((y - tower.y) / 15) ** 2 < 1) return true;
   const pond = pondSpot(n);
