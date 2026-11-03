@@ -10,7 +10,7 @@ import { openTables } from "@/lib/health";
 import { birthdaysToday, runBirthdayAlerts } from "@/lib/birthdays";
 import { briefHeadline, getBriefSettings, makeBrief } from "@/lib/brief";
 import { dream, getDream, getDreamSettings } from "@/lib/dream";
-import { writeDiary } from "@/lib/nova-diary";
+import { getDiaryEntry, writeDiary } from "@/lib/nova-diary";
 import { db } from "@/lib/db";
 import { getWeather, HOME_CITY } from "@/lib/external/weather";
 import { runHabitAlerts } from "@/lib/habits";
@@ -20,7 +20,7 @@ import { todaysKural } from "@/lib/kural";
 import { monthWrapped } from "@/lib/wrapped";
 import { readJSON, writeJSON } from "@/lib/private-store";
 import { notify, pushConfigured } from "@/lib/push";
-import { agenda, dueAlerts, HOME_TZ, releaseAlert } from "@/lib/reminders";
+import { addDays, agenda, dueAlerts, HOME_TZ, releaseAlert } from "@/lib/reminders";
 import { resumeStalled } from "@/lib/web-agent/runner";
 import { ACTIVE, listTasks } from "@/lib/web-agent/store";
 
@@ -56,7 +56,7 @@ export async function GET(req: Request) {
     new Intl.DateTimeFormat("en-CA", { timeZone: HOME_TZ }).format(now),
     Number(new Intl.DateTimeFormat("en-GB", { timeZone: HOME_TZ, hour: "2-digit", hourCycle: "h23" }).format(now)),
   ];
-  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; diary?: string; news?: string; rls?: string; checkin?: string; wrapped?: string; newsTry?: { date: string; n: number; at: number } }>(supabase, "notify-state", {});
+  const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; diary?: string; diaryFill?: string; news?: string; rls?: string; checkin?: string; wrapped?: string; newsTry?: { date: string; n: number; at: number } }>(supabase, "notify-state", {});
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
   if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
@@ -103,6 +103,8 @@ export async function GET(req: Request) {
   const dreaming = !!dreamSet?.enabled && hour >= dreamSet.hour && hour < 7 && state.dream !== date;
   // Nova's diary: one page a night from 11 pm, after the 9-11 pm check-in window, so the mood and words are in it (marked first, so later checks don't write it again).
   const diarying = hour >= 23 && state.diary !== date;
+  // Catch-up, once each morning: if the scheduler was down in last night's 11 pm hour, yesterday's page is written now.
+  const diaryFill = !diarying && hour >= 6 && hour < 23 && state.diaryFill !== date;
   // The news brief: once each morning, after the "good morning" window opens, if topics are set.
   const briefSet = await getBriefSettings(supabase).catch(() => null);
   // Tried up to 3 times a morning, 10 minutes apart; it counts as done only once the brief is saved (see below), so one failure doesn't cost the day.
@@ -112,7 +114,7 @@ export async function GET(req: Request) {
   // Settings shows "scheduler last checked …", so a stopped cron-job.org is visible.
   // Merged into what is stored right now, not the copy read at the start: a brief or dream that finished meanwhile must keep its "done" mark.
   const fresh = await readJSON<typeof state>(supabase, "notify-state", state).catch(() => state);
-  await writeJSON(supabase, "notify-state", { ...fresh, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(diarying ? { diary: date } : {}), ...(news ? { newsTry: { date, n: tries.n + 1, at: now.getTime() } } : {}), ...(checkin ? { checkin: date } : {}), ...(wrapped ? { wrapped: lastMonth } : {}), lastRun: now.toISOString(), lastSent: due.length });
+  await writeJSON(supabase, "notify-state", { ...fresh, ...(brief ? { brief: date } : {}), ...(dreaming ? { dream: date } : {}), ...(diarying ? { diary: date } : {}), ...(diaryFill ? { diaryFill: date } : {}), ...(news ? { newsTry: { date, n: tries.n + 1, at: now.getTime() } } : {}), ...(checkin ? { checkin: date } : {}), ...(wrapped ? { wrapped: lastMonth } : {}), lastRun: now.toISOString(), lastSent: due.length });
   // The jobs that run on their own: a failure becomes a push (once a day each), never silence.
   if (dreaming)
     after(() =>
@@ -122,6 +124,15 @@ export async function GET(req: Request) {
       ),
     );
   // (A missed page isn't an emergency: the book's "write today's page" button makes it by hand.)
+  if (diaryFill)
+    after(async () => {
+      try {
+        const yesterday = addDays(date, -1);
+        if (!(await getDiaryEntry(db(), yesterday))) await writeDiary(db(), yesterday);
+      } catch (e) {
+        console.warn("diary catch-up:", e instanceof Error ? e.message : e);
+      }
+    });
   if (diarying) after(() => writeDiary(db(), date).then(() => undefined, (e) => console.warn("diary:", e instanceof Error ? e.message : e)));
   if (news)
     after(async () => {
