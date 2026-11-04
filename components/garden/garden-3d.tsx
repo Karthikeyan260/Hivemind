@@ -651,7 +651,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/35 to-transparent" />
 
         {/* Title: a quiet line about the hour and season, the name, and how the garden is doing. */}
-        <div className="pointer-events-none absolute top-5 left-5 max-w-[calc(100%-10.5rem)] sm:top-8 sm:left-9 sm:max-w-none">
+        <div className="pointer-events-none absolute top-5 left-5 max-w-[calc(100%-13.5rem)] sm:top-8 sm:left-9 sm:max-w-none">
           <p className="font-mono text-[10px] tracking-[0.34em] text-white/75 uppercase drop-shadow">
             {bedtime ? "🌙 Bedtime" : `${PHASE_ICON[phase]} ${PHASE_NAME[phase]}`} · {season}
           </p>
@@ -685,8 +685,8 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
           </div>
         )}
 
-        {g && ready && !bedtime && dialOpen && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-5 z-10 hidden justify-center sm:flex">
+        {g && ready && !bedtime && dialOpen && !day && !tower && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-24 z-10 flex justify-center sm:bottom-5">
             <div className="pointer-events-auto">
               <SkyDial phase={phase} sky={sky} live={!custom} onPhase={choosePhase} onSky={chooseSky} onLive={goLive} onClose={() => setDialOpen(false)} />
             </div>
@@ -703,7 +703,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
           <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2 sm:top-8 sm:right-9">
             <div className="flex items-center gap-0.5 rounded-full border border-white/15 bg-white/[0.08] p-1 shadow-[0_12px_40px_-12px_rgba(0,0,0,.7),inset_0_1px_0_rgba(255,255,255,.14)] backdrop-blur-2xl">
               {/* The diary is also the book on the stump by the cottage; this is the way in for a keyboard, a screen reader, or a first-time visitor. */}
-              <button onClick={() => setDialOpen((o) => !o)} aria-label="Time of day and weather" aria-pressed={dialOpen} className={`group relative hidden size-10 place-items-center rounded-full text-lg transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200 sm:grid ${dialOpen ? "bg-white/20" : ""}`}>
+              <button onClick={() => setDialOpen((o) => !o)} aria-label="Time of day and weather" aria-pressed={dialOpen} className={`group relative grid size-10 place-items-center rounded-full text-lg transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200 ${dialOpen ? "bg-white/20" : ""}`}>
                 {PHASE_ICON[phase]}
                 <span role="tooltip" className="pointer-events-none absolute top-full right-0 mt-2.5 rounded-lg border border-white/15 bg-[#0b1016]/90 px-2.5 py-1 text-[11px] whitespace-nowrap text-white opacity-0 shadow-xl backdrop-blur-md transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:opacity-100 -translate-y-1">Time of day and weather</span>
               </button>

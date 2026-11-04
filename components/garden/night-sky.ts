@@ -731,7 +731,9 @@ export class NightSky {
 
   /** The real Milky Way: a NASA star map of the whole sky, blurred so the stars baked into it don't double the catalogue's. */
   private loadMilkyWayPhoto() {
-    new THREE.TextureLoader().load("/sky/milkyway.jpg", (t) => {
+    // The photo is blurred in the shader, so a modest size looks the same: 4096 wide, or 2048 on phones and weak graphics (a bigger texture can crash a phone's tab).
+    const small = this.renderer.capabilities.maxTextureSize < 4096 || matchMedia("(pointer: coarse)").matches || Math.min(screen.width, screen.height) < 700;
+    new THREE.TextureLoader().load(small ? "/sky/milkyway-2k.jpg" : "/sky/milkyway-4k.jpg", (t) => {
       if (this.disposed) {
         t.dispose();
         return;

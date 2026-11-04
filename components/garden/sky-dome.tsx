@@ -417,7 +417,7 @@ export function SkyDome({ onAim, onClose }: { onAim: (az: number, alt: number) =
       <div ref={host} className="absolute inset-0" />
       {failed && <p className="absolute inset-0 grid place-items-center px-6 text-center text-sm text-white/70">This device can&apos;t draw the night sky (it needs WebGL).</p>}
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 sm:p-6">
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap items-start justify-between gap-3 p-4 sm:p-6">
         <div className="drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)]">
           <p className="font-mono text-[10px] tracking-[0.32em] text-white/70 uppercase">Tonight over Chennai</p>
           <p className="mt-1 flex items-baseline gap-2 text-2xl font-light tracking-tight">
@@ -428,7 +428,7 @@ export function SkyDome({ onAim, onClose }: { onAim: (az: number, alt: number) =
             Looking {compass(view.az)} · {Math.round(Math.max(0, view.alt))}° up · {Math.round(view.fov)}° wide
           </p>
         </div>
-        <div className={`flex items-center gap-2 transition-opacity duration-700 ${fade}`}>
+        <div className={`flex max-w-full flex-wrap items-center justify-end gap-2 transition-opacity duration-700 ${fade}`}>
           <button onClick={tour ? endTour : startTour} aria-pressed={!!tour} className={`h-9 rounded-full bg-amber-200/90 px-3.5 text-xs font-semibold text-[#3b2f1e] shadow-lg hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-amber-200`}>
             {tour ? "End tour" : "✦ Tour tonight"}
           </button>
