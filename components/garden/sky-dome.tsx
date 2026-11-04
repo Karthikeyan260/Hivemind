@@ -568,7 +568,7 @@ export function SkyDome({ onAim, onClose }: { onAim: (az: number, alt: number) =
       )}
 
       {obj && (
-        <div className={`absolute top-28 left-4 w-[min(21rem,calc(100%-2rem))] rounded-2xl p-4 ${glass} backdrop-blur-xl`} role="region" aria-label={obj.name}>
+        <div className={`absolute top-[12.5rem] left-4 sm:top-28 w-[min(21rem,calc(100%-2rem))] rounded-2xl p-4 ${glass} backdrop-blur-xl`} role="region" aria-label={obj.name}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-mono text-[10px] tracking-[0.25em] text-amber-200/80 uppercase">{obj.kind === "star" ? "Star" : "Deep sky"}</p>
