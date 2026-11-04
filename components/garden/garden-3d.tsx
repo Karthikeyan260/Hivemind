@@ -672,7 +672,7 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         {/* What has grown: one slim strip along the bottom (hover a number for what it counts). */}
         {g && !bedtime && (
           <div className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-center pr-14 sm:hidden">
-            <ul className="pointer-events-auto flex max-w-full items-stretch overflow-x-auto rounded-2xl border border-white/15 bg-white/[0.07] py-2.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,.75),inset_0_1px_0_rgba(255,255,255,.14)] backdrop-blur-2xl [scrollbar-width:none]">
+            <ul className="pointer-events-auto flex max-w-full items-stretch overflow-x-auto rounded-2xl border border-white/15 bg-white/[0.07] py-2.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,.75),inset_0_1px_0_rgba(255,255,255,.14)] backdrop-blur-2xl [mask-image:linear-gradient(to_right,#000_86%,transparent)] [scrollbar-width:none]">
               {stats
                 .map(([e, num, what, why], i) => (
                 <li key={String(what)} title={String(why)} className={`flex shrink-0 flex-col items-center gap-1 px-3.5 text-white transition hover:text-amber-100 sm:px-5 ${i ? "border-l border-white/10" : ""}`}>
