@@ -16,6 +16,8 @@ import { festivalById, festivalOn } from "@/lib/pet-looks";
 import type { Sky } from "@/lib/sky";
 import { DiaryBook } from "./diary-book";
 import { SkyDome } from "./sky-dome";
+import { GardenCard } from "./garden-card";
+import { SkyDial } from "./sky-dial";
 import { TowerCard } from "./tower-card";
 import type { GardenScene } from "./garden-scene";
 import { type Phase, phaseNow } from "./phase";
@@ -89,6 +91,11 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   const [diary, setDiary] = useState(false);
   const [tower, setTower] = useState(false);
   const [skyOpen, setSkyOpen] = useState(false);
+  // The light and weather can be set by hand with the sky dial; then the clock and the real sky stop changing them until "Live".
+  const [custom, setCustom] = useState(false);
+  // The dial is out of the way until you ask for it (the button in the dock).
+  const [dialOpen, setDialOpen] = useState(false);
+  const manual = useRef({ phase: false, sky: false });
   function ringBell() {
     const n = Math.min(new Date().getHours() % 12 || 12, 5);
     strikeBell(n);
@@ -117,12 +124,15 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     setSky((window as unknown as { __hmSky?: Sky }).__hmSky ?? "calm");
     setWind((window as unknown as { __hmWind?: number | null }).__hmWind ?? null);
     const on = (e: Event) => {
+      if (manual.current.sky) return;
       const d = (e as CustomEvent<{ sky: Sky; wind?: number | null }>).detail;
       setSky(d?.sky ?? "calm");
       setWind(d?.wind ?? null);
     };
     window.addEventListener("hivemind:sky", on);
-    const tick = setInterval(() => setPhase(phaseNow()), 5 * 60_000);
+    const tick = setInterval(() => {
+      if (!manual.current.phase) setPhase(phaseNow());
+    }, 5 * 60_000);
     const all = timers.current;
     return () => {
       window.removeEventListener("hivemind:sky", on);
@@ -563,6 +573,37 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
   }
 
   const c = g?.counts;
+  const stats: Array<[string, number | string, string, string]> = [
+    ["🌸", c?.flowers ?? 0, "Flowers", "a day a habit was done"],
+    ["🌳", c?.trees ?? 0, "Trees", "4 night check-ins each"],
+    ["🌱", `${c?.grown ?? 0}/${(c?.grown ?? 0) + (c?.seeds ?? 0)}`, "Habit trees", "21 days in a row each"],
+    ["🏮", c?.lamps ?? 0, "Lamps", "lantern walks"],
+    ["💎", c?.gems ?? 0, "Gems", "games won"],
+    ["🎵", c?.music ?? 0, "Music", "a song you listened to"],
+    ["🦋", c?.butterflies ?? 0, "Butterflies", "songs you played"],
+  ];
+  // What grew on each of the last 14 days (flowers, lamps and gems carry the date they came from).
+  const days = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(Date.now() - (13 - i) * 86_400_000);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return (g?.items ?? []).filter((it) => "date" in it && it.date === key).length;
+  });
+  function choosePhase(p: Phase) {
+    manual.current.phase = true;
+    setCustom(true);
+    setPhase(p);
+  }
+  function chooseSky(k: Sky) {
+    manual.current.sky = true;
+    setCustom(true);
+    setSky(k);
+  }
+  function goLive() {
+    manual.current = { phase: false, sky: false };
+    setCustom(false);
+    setPhase(phaseNow());
+    setSky((window as unknown as { __hmSky?: Sky }).__hmSky ?? "calm");
+  }
   return (
     <div className="w-full">
       <ErrorText error={feed.error} />
@@ -602,53 +643,50 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
             <span className="animate-pulse">Growing the island…</span>
           </div>
         )}
-        {/* Soft dark fades top and bottom, so the glass text reads over any sky. */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/45 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black/55 to-transparent" />
+        {/* A gentle vignette, and a little shade behind the title so it reads over any sky. */}
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,transparent_58%,rgba(4,8,16,0.42)_100%)]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/35 to-transparent" />
 
-        {/* Title. */}
-        <div className="pointer-events-none absolute top-4 left-4 max-w-[calc(100%-6.5rem)] sm:top-7 sm:left-8 sm:max-w-none">
-          <h1 className="text-xl leading-tight font-semibold tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,.55)] sm:text-[2.6rem]">{g?.pet ?? "Nova"}&apos;s garden</h1>
-          <p className="mt-1 hidden max-w-sm text-[13px] text-white/80 drop-shadow sm:block sm:text-sm">Everything you keep up with grows here.</p>
-          {/* What the garden is like right now, as small glass chips (laptop and bigger). */}
-          <div className="mt-3 hidden flex-wrap gap-1.5 sm:flex">
+        {/* Title: a quiet line about the hour and season, the name, and how the garden is doing. */}
+        <div className="pointer-events-none absolute top-5 left-5 max-w-[calc(100%-8rem)] sm:top-8 sm:left-9 sm:max-w-none">
+          <p className="font-mono text-[10px] tracking-[0.34em] text-white/75 uppercase drop-shadow">
+            {bedtime ? "🌙 Bedtime" : `${PHASE_ICON[phase]} ${PHASE_NAME[phase]}`} · {season}
+          </p>
+          <h1 className="mt-1.5 font-serif text-[1.9rem] leading-[1.05] font-normal tracking-tight text-white drop-shadow-[0_2px_18px_rgba(0,0,0,.6)] sm:text-[2.7rem]">
+            {g?.pet ?? "Nova"}&apos;s <span className="italic">garden</span>
+          </h1>
+          <p className="mt-2 hidden max-w-[17rem] text-[13px] leading-snug text-white/80 drop-shadow sm:block">
             {[
-              bedtime ? "🌙 Bedtime" : `${PHASE_ICON[phase]} ${PHASE_NAME[phase]}`,
-              fest ? `${DECOR_ICON[fest] ?? ""} ${festivalById(fest)?.name ?? fest}` : monsoon || wet ? `${DECOR_ICON.monsoon} Monsoon` : "",
-              `${SEASON_ICON[season]} ${season[0].toUpperCase()}${season.slice(1)}`,
-              g && g.streak > 0 ? `🔥 ${g.streak}-day streak` : "",
-              mood !== null ? MOOD_TEXT[mood - 1] : "",
+              fest ? `${DECOR_ICON[fest] ?? ""} ${festivalById(fest)?.name ?? fest}`.trim() : monsoon || wet ? `${DECOR_ICON.monsoon} Monsoon rain` : "",
+              g && g.streak > 0 ? `${g.streak} day${g.streak === 1 ? "" : "s"} growing` : "",
+              mood !== null ? MOOD_TEXT[mood - 1].replace(/^\S+\s/, "") : "",
             ]
               .filter(Boolean)
-              .map((t) => (
-                <span key={t} className="rounded-full border border-white/20 bg-black/25 px-2.5 py-1 text-[11px] font-medium text-white/90 shadow-sm backdrop-blur-md">
-                  {t}
-                </span>
-              ))}
-          </div>
+              .join("  ·  ") || "Everything you keep up with grows here"}
+          </p>
         </div>
 
-        {/* What has grown: glass cards along the bottom. */}
+        {/* What has grown: one slim strip along the bottom (hover a number for what it counts). */}
         {g && !bedtime && (
-          <div className="absolute inset-x-3 bottom-3 flex gap-2 overflow-x-auto pr-16 pb-1 [scrollbar-width:none] sm:inset-x-6 sm:bottom-6 sm:gap-3 sm:pr-0">
-            {[
-              ["🌸", c?.flowers ?? 0, "Flowers", "a day a habit was done"],
-              ["🌳", c?.trees ?? 0, "Trees", "4 night check-ins each"],
-              ["🌱", `${c?.grown ?? 0}/${(c?.grown ?? 0) + (c?.seeds ?? 0)}`, "Habit trees", "21 days in a row each"],
-              ["🏮", c?.lamps ?? 0, "Lamps", "lantern walks"],
-              ["💎", c?.gems ?? 0, "Gems", "games won"],
-              ["🎵", c?.music ?? 0, "Music flowers", "a song you listened to"],
-              ["🦋", c?.butterflies ?? 0, "Butterflies", "songs you played"],
-            ].map(([e, num, what, why]) => (
-              <div key={String(what)} className="flex shrink-0 items-center gap-2 rounded-full border border-white/20 bg-gradient-to-b from-white/20 to-white/5 px-3 py-1.5 text-white shadow-[0_8px_24px_-8px_rgba(0,0,0,.45)] backdrop-blur-xl transition hover:from-white/30 sm:min-w-[150px] sm:gap-3 sm:rounded-2xl sm:px-3.5 sm:py-2.5" title={String(why)}>
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-black/25 text-sm ring-1 ring-white/20 sm:size-10 sm:text-xl">{e}</span>
-                <div className="flex items-baseline gap-1.5 sm:block">
-                  <span className="text-base leading-none font-semibold tabular-nums sm:block sm:text-2xl">{num}</span>
-                  <p className="whitespace-nowrap text-[11px] font-medium text-white/90 sm:mt-0.5">{what}</p>
-                  <p className="hidden text-[10px] leading-tight text-white/60 sm:block">{why}</p>
-                </div>
-              </div>
-            ))}
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 flex justify-center pr-14 sm:hidden">
+            <ul className="pointer-events-auto flex max-w-full items-stretch overflow-x-auto rounded-2xl border border-white/15 bg-white/[0.07] py-2.5 shadow-[0_24px_60px_-24px_rgba(0,0,0,.75),inset_0_1px_0_rgba(255,255,255,.14)] backdrop-blur-2xl [scrollbar-width:none]">
+              {stats
+                .map(([e, num, what, why], i) => (
+                <li key={String(what)} title={String(why)} className={`flex shrink-0 flex-col items-center gap-1 px-3.5 text-white transition hover:text-amber-100 sm:px-5 ${i ? "border-l border-white/10" : ""}`}>
+                  <span className="text-base leading-none opacity-90 sm:text-lg">{e}</span>
+                  <span className="font-serif text-xl leading-none tabular-nums sm:text-[1.7rem]">{num}</span>
+                  <span className="text-[9px] tracking-[0.16em] text-white/55 uppercase sm:text-[10px]">{what}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {g && ready && !bedtime && dialOpen && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-5 z-10 hidden justify-center sm:flex">
+            <div className="pointer-events-auto">
+              <SkyDial phase={phase} sky={sky} live={!custom} onPhase={choosePhase} onSky={chooseSky} onLive={goLive} onClose={() => setDialOpen(false)} />
+            </div>
           </div>
         )}
 
@@ -658,20 +696,27 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         {skyOpen && <SkyDome onAim={(az, alt) => scene.current?.aimScope(az, alt)} onClose={() => setSkyOpen(false)} />}
         {diary && <DiaryBook pet={g?.pet ?? "Nova"} onClose={() => setDiary(false)} />}
         {ready && g && !bedtime && (
-          <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
-            <div className="flex gap-2">
+          <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2 sm:top-8 sm:right-9">
+            <div className="flex items-center gap-0.5 rounded-full border border-white/15 bg-white/[0.08] p-1 shadow-[0_12px_40px_-12px_rgba(0,0,0,.7),inset_0_1px_0_rgba(255,255,255,.14)] backdrop-blur-2xl">
               {/* The diary is also the book on the stump by the cottage; this is the way in for a keyboard, a screen reader, or a first-time visitor. */}
-              <button onClick={() => setDiary(true)} aria-label={`Open ${g?.pet ?? "Nova"}'s diary`} className="flex items-center gap-1.5 rounded-full border border-amber-200/30 bg-[#2a1810]/70 px-3 py-2 text-xs font-medium text-amber-100 shadow-lg backdrop-blur-md transition hover:bg-[#3a2216]/80">
-                📖<span className="hidden sm:inline"> Diary</span>
+              <button onClick={() => setDialOpen((o) => !o)} aria-label="Time of day and weather" aria-pressed={dialOpen} title="Time of day and weather" className={`hidden size-10 place-items-center rounded-full text-lg transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200 sm:grid ${dialOpen ? "bg-white/20" : ""}`}>
+                {PHASE_ICON[phase]}
               </button>
-              <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" className="flex items-center gap-1.5 rounded-full border border-white/25 bg-black/40 px-3 py-2 text-xs font-medium text-white shadow-lg backdrop-blur-md transition hover:bg-black/55">
-                📸<span className="hidden sm:inline"> Share</span>
+              <button onClick={() => setDiary(true)} aria-label={`Open ${g?.pet ?? "Nova"}'s diary`} title="Diary" className="grid size-10 place-items-center rounded-full text-lg text-amber-100 transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200">
+                📖
               </button>
-              <button onClick={() => void goodNight()} aria-label="Good night" className="flex items-center gap-1.5 rounded-full border border-indigo-200/30 bg-[#0d1024]/70 px-3 py-2 text-xs font-medium text-indigo-100 shadow-lg backdrop-blur-md transition hover:bg-[#161a3a]/80">
-                🌙<span className="hidden sm:inline"> Good night</span>
+              <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" title="Share a picture" className="grid size-10 place-items-center rounded-full text-lg transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200">
+                📸
+              </button>
+              <span className="mx-0.5 h-5 w-px bg-white/15" />
+              <button onClick={() => void goodNight()} aria-label="Good night" title="Good night" className="grid size-10 place-items-center rounded-full text-lg text-indigo-100 transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200">
+                🌙
               </button>
             </div>
             {sharing && <p className="rounded-full bg-black/55 px-3 py-1 text-[11px] text-white/90 backdrop-blur-md">{sharing}</p>}
+            <div className="hidden sm:block">
+              <GardenCard total={g.items.length} streak={g.streak ?? 0} days={days} stats={stats} />
+            </div>
           </div>
         )}
         {bedtime && (

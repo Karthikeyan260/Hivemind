@@ -95,7 +95,8 @@ export const hueOf = (key: string) => Math.round(hash01(key, 7) * 360);
 
 /** The island's size: it widens as more grows on it (viewBox units, centre x 500). */
 export function islandSize(n: number) {
-  const rx = Math.min(430, 190 + Math.sqrt(n) * 22);
+  // Roomy: the island is wide enough that the tower, telescope, cottage, grove and pond each have space round them.
+  const rx = Math.min(540, 235 + Math.sqrt(n) * 27);
   // A bigger island floats a little higher, so its rocky underside still fits in the 640-high frame.
   const cy = 400 - Math.max(0, rx - 250) * 0.5;
   return { cx: 500, cy, rx, ry: rx * 0.3, depth: Math.min(rx * 0.78, 630 - cy) };

@@ -77,11 +77,55 @@ type Opts = { n: number; phase: Phase; wet: boolean; butterflies: number; lit: b
 
 /** Each season's grass (the blade's foot and its tip, in full daylight; the tip dims at dusk and night). */
 const SEASON_GRASS: Record<Season, { base: string; tip: string }> = {
-  spring: { base: "#2a5426", tip: "#b9ea72" },
-  summer: { base: "#244a1c", tip: "#a6d65a" },
-  autumn: { base: "#4a4a1c", tip: "#dfa543" },
+  spring: { base: "#2d5a26", tip: "#8fd05a" },
+  summer: { base: "#264d1e", tip: "#7fc24a" },
+  autumn: { base: "#38421c", tip: "#a8a23e" },
   winter: { base: "#2a4a3c", tip: "#b3d5c7" },
 };
+/** Real photographed surfaces (Poly Haven, CC0): colour, bumps and shine for the ground, the cliff, bark and roof tiles. Loaded once, shared. */
+const photoCache = new Map<string, { map: THREE.Texture; normal: THREE.Texture; rough: THREE.Texture }>();
+function photoTextures(name: "ground" | "rock" | "bark" | "roof", repeat: number) {
+  const key = name + repeat;
+  let hit = photoCache.get(key);
+  if (!hit) {
+    const loader = new THREE.TextureLoader();
+    const load = (suffix: string, srgb: boolean) => {
+      const t = loader.load(`/tex/${name}_${suffix}.jpg`);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(repeat, repeat);
+      t.anisotropy = 8;
+      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    hit = { map: load("diff", true), normal: load("nor", false), rough: load("rough", false) };
+    photoCache.set(key, hit);
+  }
+  return hit;
+}
+
+/** A spray of pine needles on a clear card: many fine strokes fanning out from the base. */
+function needleTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  const greens = ["#1f4a2a", "#2d5f35", "#3d7a45", "#274f30"];
+  for (let i = 0; i < 70; i++) {
+    const a = -Math.PI / 2 + (hash01("nd" + i, 3) - 0.5) * 2.2;
+    const len = 38 + hash01("nl" + i, 5) * 56;
+    const x0 = 64 + (hash01("nx" + i, 7) - 0.5) * 18;
+    g.strokeStyle = greens[i % greens.length];
+    g.lineWidth = 1.1 + hash01("nw" + i, 9) * 1.3;
+    g.beginPath();
+    g.moveTo(x0, 122);
+    g.quadraticCurveTo(x0 + Math.cos(a) * len * 0.5, 122 + Math.sin(a) * len * 0.5 + 6, x0 + Math.cos(a) * len, 122 + Math.sin(a) * len);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
 /** Each season's leaves: [dark, light] for pines, blossom trees and ordinary broadleaf trees. */
 const SEASON_LEAF: Record<Season, { pine: [string, string]; blossom: [string, string]; leaf: [string, string] }> = {
   spring: { pine: ["#1f4a2a", "#3d7a45"], blossom: ["#d9659a", "#ffd0e6"], leaf: ["#3a7a30", "#a4dc62"] },
@@ -586,7 +630,7 @@ export class GardenScene {
     const a = this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight);
     // Far enough that the island's full width fits, however narrow the screen.
     const halfW = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * a;
-    return this.R * Math.max(2.65, 1.06 / halfW);
+    return this.R * Math.max(2.85, 1.18 / halfW);
   }
   private placeCamera(s: THREE.Spherical) {
     const v = new THREE.Vector3().setFromSpherical(s);
@@ -1318,12 +1362,14 @@ void main() {`);
     const pos: number[] = [];
     const col: number[] = [];
     const idx: number[] = [];
+    const uvs: number[] = [];
     const c = new THREE.Color();
     const g1 = new THREE.Color("#4f8f37");
     const g2 = new THREE.Color("#7bb245");
     const g3 = new THREE.Color("#3c7432");
     const dirt = new THREE.Color("#8a7350");
     pos.push(0, this.heightAt(0, 0), 0);
+    uvs.push(0, 0);
     col.push(g2.r, g2.g, g2.b);
     for (let i = 1; i <= rings; i++) {
       const r = (i / rings) * R;
@@ -1332,11 +1378,14 @@ void main() {`);
         const x = Math.cos(a) * r;
         const z = Math.sin(a) * r;
         pos.push(x, this.heightAt(x, z), z);
+        uvs.push(x / 1.4, z / 1.4);
         const n = fbm(x * 0.5, 3, z * 0.5, 3);
         c.copy(g1).lerp(g2, THREE.MathUtils.smoothstep(n, 0.35, 0.7)).lerp(g3, THREE.MathUtils.smoothstep(r / R, 0.75, 1) * 0.6);
         if (z > home.z && Math.abs(x - pathW(z)) < 0.32 && r < R * 0.95) c.lerp(dirt, 0.55);
         // The rim curls over into a band of soil under the turf.
         if (r > R * 0.965) c.lerp(new THREE.Color("#4a3322"), THREE.MathUtils.smoothstep(r / R, 0.965, 0.995));
+        // The photo carries the detail; the old colours only tint it.
+        c.lerp(new THREE.Color("#ffffff"), 0.4);
         col.push(c.r, c.g, c.b);
       }
     }
@@ -1353,9 +1402,11 @@ void main() {`);
     const top = new THREE.BufferGeometry();
     top.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     top.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    top.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
     top.setIndex(idx);
     top.computeVertexNormals();
-    this.ground = new THREE.Mesh(top, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
+    const gt = photoTextures("ground", 1);
+    this.ground = new THREE.Mesh(top, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, map: gt.map, normalMap: gt.normal, normalScale: new THREE.Vector2(0.9, 0.9), roughnessMap: gt.rough }));
     this.ground.receiveShadow = true;
     this.island.add(this.ground);
 
@@ -1436,11 +1487,14 @@ void main() {`);
     const deep = new THREE.Color("#2c241e");
     const c = new THREE.Color();
     const yScale = D / 4.4;
+    // One extra column closes the loop, so the photo wraps round the rock with no smeared strip at the seam.
+    const stride = segs + 1;
+    const uv: number[] = [];
     for (let i = 0; i <= rows; i++) {
       const t = i / rows;
       const [rf, yf] = at(t);
-      for (let j = 0; j < segs; j++) {
-        const a = (j / segs) * Math.PI * 2;
+      for (let j = 0; j <= segs; j++) {
+        const a = ((j % segs) / segs) * Math.PI * 2;
         const ca = Math.cos(a);
         const sa = Math.sin(a);
         let rr = rf * R;
@@ -1453,28 +1507,46 @@ void main() {`);
           y += Math.round(fbm(ca * 1.3, 2, sa * 1.3, 2) * 4) * 0.06 * Math.min(1, t * 4);
         }
         pos.push(ca * rr, y, sa * rr);
+        // Photo coordinates: round the rock, and down its face (about one tile per metre).
+        uv.push((j / segs) * ((R * Math.PI * 2) / 1.6), (-y / 1.6) * 1.3);
         const band = fbm(ca * 0.8, y * 2.4, sa * 0.8, 3);
         c.copy(rocks[Math.floor(band * 4) % 4]).lerp(rocks[(Math.floor(band * 4) + 1) % 4], (band * 4) % 1);
         if (t < 0.06) c.copy(soil);
         c.lerp(deep, Math.min(1, t * 1.1) * 0.55);
         c.multiplyScalar(0.8 + fbm(ca * 12, y * 6, sa * 12, 2) * 0.45);
+        // The photo carries the detail; the old colours only tint it (lighter rock higher up, darker towards the point).
+        c.lerp(new THREE.Color("#ffffff"), 0.45);
         col.push(c.r, c.g, c.b);
       }
     }
     for (let i = 0; i < rows; i++)
       for (let j = 0; j < segs; j++) {
-        const a = i * segs + j;
-        const b = i * segs + ((j + 1) % segs);
-        const d = (i + 1) * segs + j;
-        const e = (i + 1) * segs + ((j + 1) % segs);
+        const a = i * stride + j;
+        const b = a + 1;
+        const d = (i + 1) * stride + j;
+        const e = d + 1;
         idx.push(a, d, b, b, d, e);
       }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
     g.setIndex(idx);
     g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+    // The seam's two columns are one place: give them one normal, so no line shows.
+    const nrm = g.attributes.normal;
+    for (let i = 0; i <= rows; i++) {
+      const p = i * stride;
+      const q = p + segs;
+      const nx = nrm.getX(p) + nrm.getX(q);
+      const ny = nrm.getY(p) + nrm.getY(q);
+      const nzz = nrm.getZ(p) + nrm.getZ(q);
+      const l = Math.hypot(nx, ny, nzz) || 1;
+      nrm.setXYZ(p, nx / l, ny / l, nzz / l);
+      nrm.setXYZ(q, nx / l, ny / l, nzz / l);
+    }
+    const tex = photoTextures("rock", 1);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, map: tex.map, normalMap: tex.normal, normalScale: new THREE.Vector2(1.4, 1.4), roughnessMap: tex.rough }));
     m.castShadow = true;
     return m;
   }
@@ -1489,7 +1561,7 @@ void main() {`);
     const pw = this.toWorld(pond.x, pond.y);
     const prw = (pond.rx / this.isl.rx) * R;
     const pathW = (z: number) => ((pathX(n, z * (this.isl.ry / R) + this.isl.cy) - this.isl.cx) / this.isl.rx) * R;
-    const want = Math.round((this.quality === "high" ? 26000 : 9000) * Math.min(1.4, (R / 6.5) ** 2));
+    const want = Math.round((this.quality === "high" ? 46000 : 12000) * Math.min(1.4, (R / 6.5) ** 2));
 
     // One blade: a tapered strip, bending more towards its tip.
     const bp: number[] = [];
@@ -1641,14 +1713,17 @@ void main() {`);
       if (((x - home.x) / 1.25) ** 2 + ((z - home.z + 0.05) / 0.95) ** 2 < 1) continue;
       if (Math.hypot(x - pw.x, (z - pw.z) * (prw / ((pond.ry / this.isl.ry) * R))) < prw * 1.02) continue;
       if (z > home.z && Math.abs(x - pathW(z)) < 0.2 && r < R * 0.95) continue;
-      const tall = 0.16 + hash3(i, 9.1, 3.3) * 0.22 + fbm(x * 0.3, 1, z * 0.3, 2) * 0.12;
+      const tall = 0.12 + hash3(i, 9.1, 3.3) * 0.2 + fbm(x * 0.3, 1, z * 0.3, 2) * 0.1;
       p.set(x, this.heightAt(x, z) - 0.01, z);
       q.setFromAxisAngle(up, hash3(i, 2.9, 8.8) * Math.PI);
-      s.set(0.05 + hash3(i, 4.4, 1.1) * 0.03, tall, 1);
+      s.set(0.034 + hash3(i, 4.4, 1.1) * 0.022, tall, 1);
       m.compose(p, q, s);
       mesh.setMatrixAt(k, m);
-      const v = fbm(x * 0.6, 9, z * 0.6, 2);
-      tint.setRGB(0.85 + v * 0.3, 0.9 + v * 0.2, 0.75 + (1 - v) * 0.2);
+      // Green lawn with dry, straw-coloured patches, and every blade a little different.
+      const v = fbm(x * 0.45, 9, z * 0.45, 3);
+      const patch = THREE.MathUtils.smoothstep(v, 0.42, 0.62);
+      const j = hash3(i, 6.6, 2.1);
+      tint.setRGB(0.78 + patch * 0.5 + j * 0.18, 0.95 - patch * 0.12 + j * 0.1, 0.62 - patch * 0.12 + (1 - j) * 0.14);
       mesh.setColorAt(k, tint);
       k++;
     }
@@ -2626,7 +2701,7 @@ void main() {`);
     }
 
     // Trees, lamps and gems: few enough to be their own objects.
-    const bark = new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.95 });
+    const bark = this.barkMat();
     for (const it of items) {
       if (it.kind === "tree") this.island.add(this.tree(it, bark));
       if (it.kind === "plant") this.island.add(this.plant(it));
@@ -2636,6 +2711,13 @@ void main() {`);
     this.clearGrass();
   }
 
+  /** Bark: a real photographed bark, tinted by the vertex colours. */
+  private barkMat() {
+    const t = photoTextures("bark", 1);
+    return new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 1, map: t.map, normalMap: t.normal, normalScale: new THREE.Vector2(1.2, 1.2), roughnessMap: t.rough });
+  }
+
+  private needleTex: THREE.Texture | null = null;
   private tree(it: Placed & { kind: "tree" }, bark: THREE.Material) {
     const g = new THREE.Group();
     const kind = hash01(it.id, 9);
@@ -2669,8 +2751,12 @@ void main() {`);
     }
     let trunkGeo = mergeGeometries(trunkParts);
     trunkGeo.deleteAttribute("normal");
-    trunkGeo.deleteAttribute("uv");
+    // Keep the photo coordinates (round the trunk, and up it) so the bark texture wraps on.
     trunkGeo = mergeVertices(trunkGeo, 1e-4);
+    {
+      const uv = trunkGeo.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 2.2, uv.getY(i) * trunkH * 2.6);
+    }
     // Bark: dark at the foot and in the grooves, lighter in vertical streaks.
     const tcol = new Float32Array(trunkGeo.attributes.position.count * 3);
     const barkLo = new THREE.Color("#3a2617");
@@ -2682,6 +2768,8 @@ void main() {`);
       const z = trunkGeo.attributes.position.getZ(i);
       const streak = fbm(Math.atan2(z, x) * 3 + sd, y * 1.6, 1.3, 2);
       bc.copy(barkLo).lerp(barkHi, Math.min(1, 0.22 + streak * 0.65 + Math.min(0.2, y * 0.15)));
+      // The photo carries the detail; these colours only tint it.
+      bc.lerp(new THREE.Color("#ffffff"), 0.5);
       tcol.set([bc.r, bc.g, bc.b], i * 3);
     }
     trunkGeo.setAttribute("color", new THREE.BufferAttribute(tcol, 3));
@@ -2758,11 +2846,11 @@ void main() {`);
       const cp = canopy.attributes.position as THREE.BufferAttribute;
       const centre = new THREE.Vector3(0, 1.45, 0);
       const cards: THREE.BufferGeometry[] = [];
-      const count = this.quality === "high" ? 190 : 110;
+      const count = this.quality === "high" ? 360 : 190;
       for (let i = 0; i < count; i++) {
         const v = new THREE.Vector3().fromBufferAttribute(cp, Math.floor(hash01(`${it.id}c${i}`) * cp.count));
         const out = v.clone().sub(centre).normalize();
-        const q = new THREE.PlaneGeometry(0.42, 0.42);
+        const q = new THREE.PlaneGeometry(0.36, 0.36);
         q.rotateX(hash01(`${it.id}x${i}`) * Math.PI);
         q.rotateY(hash01(`${it.id}y${i}`) * Math.PI);
         q.rotateZ(hash01(`${it.id}z${i}`) * Math.PI);
@@ -2770,6 +2858,7 @@ void main() {`);
         // Each leaf cluster its own shade: lighter towards the top and the sun side, with a little random.
         const lt = THREE.MathUtils.clamp((v.y - 0.9) / 1.3 + (hash01(`${it.id}s${i}`) - 0.5) * 0.5 + out.y * 0.15, 0, 1);
         const shade = new THREE.Color(leafCol[0]).lerp(new THREE.Color(leafCol[1]), 0.15 + lt * 0.85);
+        shade.offsetHSL((hash01(`${it.id}h${i}`) - 0.5) * 0.045, (hash01(`${it.id}u${i}`) - 0.5) * 0.12, (hash01(`${it.id}l${i}`) - 0.5) * 0.09);
         q.setAttribute("color", new THREE.BufferAttribute(new Float32Array([shade.r, shade.g, shade.b, shade.r, shade.g, shade.b, shade.r, shade.g, shade.b, shade.r, shade.g, shade.b]), 3));
         cards.push(q);
       }
@@ -2778,6 +2867,33 @@ void main() {`);
       const cm = new THREE.Mesh(cardGeo, cardMat);
       cm.receiveShadow = true;
       g.add(cm);
+    }
+    if (pineTree) {
+      // Sprays of needles over the tiers: a soft, feathery edge instead of hard cones.
+      this.needleTex ??= needleTexture();
+      const cards: THREE.BufferGeometry[] = [];
+      const count = this.quality === "high" ? 520 : 280;
+      for (let i = 0; i < count; i++) {
+        const tier = Math.floor(hash01(`${it.id}t${i}`) * 5);
+        const rMax = 0.68 - tier * 0.1;
+        const along = Math.sqrt(hash01(`${it.id}a${i}`)); // more near the wide lower skirt of the tier
+        const r = rMax * (0.25 + 0.75 * along);
+        const ang = hash01(`${it.id}n${i}`) * Math.PI * 2;
+        const y = 0.7 + tier * 0.36 + 0.34 - along * 0.66;
+        const q = new THREE.PlaneGeometry(0.46, 0.46);
+        // Tilt each spray out and down, like a bough.
+        q.translate(0, 0.2, 0);
+        q.rotateX(-0.9 - hash01(`${it.id}x${i}`) * 0.35);
+        q.rotateY(-ang + Math.PI / 2);
+        q.translate(Math.cos(ang) * r, y, Math.sin(ang) * r);
+        const shade = new THREE.Color(leafCol[0]).lerp(new THREE.Color(leafCol[1]), 0.2 + (y / 2.6) * 0.7 + (hash01(`${it.id}s${i}`) - 0.5) * 0.3);
+        q.setAttribute("color", new THREE.BufferAttribute(new Float32Array([shade.r, shade.g, shade.b, shade.r, shade.g, shade.b, shade.r, shade.g, shade.b, shade.r, shade.g, shade.b]), 3));
+        cards.push(q);
+      }
+      const nm = new THREE.Mesh(mergeGeometries(cards), this.windy(new THREE.MeshStandardMaterial({ map: this.needleTex, alphaTest: 0.35, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85 }), 0.03));
+      nm.castShadow = true;
+      nm.receiveShadow = true;
+      g.add(nm);
     }
     g.scale.setScalar(s);
     g.position.copy(this.toWorld(it.x, it.y));
@@ -2792,7 +2908,7 @@ void main() {`);
   private plant(it: Placed & { kind: "plant" }) {
     if (it.stage === 3) {
       // A grown tree, with glowing fruit in the habit's own colour.
-      const g = this.tree({ ...it, kind: "tree", size: 0.3 } as unknown as Placed & { kind: "tree" }, new THREE.MeshStandardMaterial({ color: "#ffffff", vertexColors: true, roughness: 0.95 }));
+      const g = this.tree({ ...it, kind: "tree", size: 0.3 } as unknown as Placed & { kind: "tree" }, this.barkMat());
       const fruit = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(it.hue / 360, 0.85, 0.62), emissive: new THREE.Color().setHSL(it.hue / 360, 0.9, 0.5), emissiveIntensity: 1.4, roughness: 0.35 });
       for (let k = 0; k < 9; k++) {
         const a = hash01(it.id, 50 + k) * Math.PI * 2;
