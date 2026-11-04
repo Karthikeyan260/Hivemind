@@ -9,26 +9,34 @@ export type GardenItem =
   | { kind: "lamp"; id: string; date: string; label: string }
   | { kind: "gem"; id: string; date: string; label: string; hue: number }
   /** A habit growing: a seed, a sprout, a sapling, and (after 21 days in a row) a tree that stays. */
-  | { kind: "plant"; id: string; label: string; hue: number; stage: PlantStage; streak: number };
+  | { kind: "plant"; id: string; label: string; hue: number; stage: PlantStage; streak: number; /** The habit it belongs to, and its best streak (for the garden card). */ name?: string; emoji?: string; best?: number };
 
 /** 0 seed, 1 sprout (a week in a row), 2 sapling (two weeks), 3 tree (21 days in a row, kept for good). */
 export type PlantStage = 0 | 1 | 2 | 3;
 export const SPROUT_AT = 7;
 export const SAPLING_AT = 14;
 export const TREE_AT = 21;
-/** How far a habit has grown, from its running streak and its best streak ever: a tree once it has had 21 days in a row, whatever happened since. */
+/**
+ * How far a habit has grown, from its best streak ever (and the running one if that is higher). A plant never shrinks:
+ * once it has been a sprout, a sapling or a tree it stays that, even when the streak breaks. Going further needs a
+ * longer run than before.
+ */
 export function plantStage(streak: number, best: number): PlantStage {
-  if (best >= TREE_AT) return 3;
-  return streak >= SAPLING_AT ? 2 : streak >= SPROUT_AT ? 1 : 0;
+  const top = Math.max(streak, best);
+  if (top >= TREE_AT) return 3;
+  return top >= SAPLING_AT ? 2 : top >= SPROUT_AT ? 1 : 0;
 }
 /** What tapping a plant says. */
 export function plantLabel(name: string, emoji: string, stage: PlantStage, streak: number, best: number): string {
   const e = emoji || "🌱";
+  const days = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
   if (stage === 3) return `🌳 ${e} ${name} grew into a tree: ${best} days in a row${streak > 0 && streak < best ? ` (running: ${streak})` : ""}`;
   const names = ["a seed", "a sprout", "a sapling"] as const;
   const next = stage === 0 ? SPROUT_AT : stage === 1 ? SAPLING_AT : TREE_AT;
-  const left = next - streak;
-  return `🌱 ${e} ${name} is ${names[stage]}: ${streak} day${streak === 1 ? "" : "s"} in a row, ${left} more to ${stage === 2 ? "become a tree" : stage === 1 ? "a sapling" : "sprout"}`;
+  const left = Math.max(1, next - streak);
+  // A plant that grew keeps its size when the streak breaks: say both numbers.
+  const run = streak >= best ? `${days(streak)} in a row` : `best ${days(best)} in a row, running ${streak}`;
+  return `🌱 ${e} ${name} is ${names[stage]}: ${run}, ${left} more to ${stage === 2 ? "become a tree" : stage === 1 ? "a sapling" : "sprout"}`;
 }
 
 export type Garden = {

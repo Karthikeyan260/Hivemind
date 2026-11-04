@@ -630,7 +630,7 @@ export class GardenScene {
     const a = this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight);
     // Far enough that the island's full width fits, however narrow the screen.
     const halfW = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * a;
-    return this.R * Math.max(2.85, 1.18 / halfW);
+    return this.R * Math.max(2.85, (a < 0.8 ? 0.98 : 1.18) / halfW);
   }
   private placeCamera(s: THREE.Spherical) {
     const v = new THREE.Vector3().setFromSpherical(s);
@@ -2978,7 +2978,8 @@ void main() {`);
     g.add(hit);
     g.position.copy(this.toWorld(it.x, it.y));
     this.plantClear.push({ x: g.position.x, z: g.position.z, r: 0.55 });
-    g.scale.setScalar(1.8);
+    // A plant that has grown stands taller: a sprout and a sapling are bigger than a seed.
+    g.scale.setScalar(1.8 + it.stage * 0.5);
     g.rotation.y = hash01(it.id, 4) * Math.PI * 2;
     g.userData.id = it.id;
     this.pickables.push(g);

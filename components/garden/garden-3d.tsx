@@ -588,6 +588,8 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     return (g?.items ?? []).filter((it) => "date" in it && it.date === key).length;
   });
+  // Each habit and how far it has grown (a plant keeps the size its best streak gave it).
+  const habitPlants = (g?.items ?? []).flatMap((it) => (it.kind === "plant" && it.name ? [{ name: it.name, emoji: it.emoji ?? "🌱", stage: it.stage, streak: it.streak, best: it.best ?? it.streak }] : []));
   function choosePhase(p: Phase) {
     manual.current.phase = true;
     setCustom(true);
@@ -632,8 +634,9 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         {/* What was tapped, floating over it. */}
         <div ref={tipEl} data-id={sel?.id} className="pointer-events-none absolute top-0 left-0" style={{ visibility: "hidden" }}>
           {sel && (
-            <div key={sel.id} className="pet-pop mb-2 rounded-xl border border-white/15 bg-[#0b1016]/80 px-3 py-1.5 text-xs whitespace-nowrap text-white shadow-xl backdrop-blur-md">
+            <div key={sel.id} className="pet-pop relative mb-3 rounded-2xl border border-amber-100/25 bg-[#0b1016]/85 px-3.5 py-2 text-[13px] whitespace-nowrap text-white shadow-2xl backdrop-blur-xl">
               {sel.label}
+              <span aria-hidden className="absolute top-full left-1/2 h-0 w-0 -translate-x-1/2 border-x-[7px] border-t-[8px] border-x-transparent border-t-[#0b1016]/85" />
             </div>
           )}
         </div>
@@ -648,11 +651,11 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/35 to-transparent" />
 
         {/* Title: a quiet line about the hour and season, the name, and how the garden is doing. */}
-        <div className="pointer-events-none absolute top-5 left-5 max-w-[calc(100%-8rem)] sm:top-8 sm:left-9 sm:max-w-none">
+        <div className="pointer-events-none absolute top-5 left-5 max-w-[calc(100%-10.5rem)] sm:top-8 sm:left-9 sm:max-w-none">
           <p className="font-mono text-[10px] tracking-[0.34em] text-white/75 uppercase drop-shadow">
             {bedtime ? "🌙 Bedtime" : `${PHASE_ICON[phase]} ${PHASE_NAME[phase]}`} · {season}
           </p>
-          <h1 className="mt-1.5 font-serif text-[1.9rem] leading-[1.05] font-normal tracking-tight text-white drop-shadow-[0_2px_18px_rgba(0,0,0,.6)] sm:text-[2.7rem]">
+          <h1 className="mt-1.5 font-serif text-[1.6rem] leading-[1.05] font-normal tracking-tight text-white drop-shadow-[0_2px_18px_rgba(0,0,0,.6)] sm:text-[2.7rem]">
             {g?.pet ?? "Nova"}&apos;s <span className="italic">garden</span>
           </h1>
           <p className="mt-2 hidden max-w-[17rem] text-[13px] leading-snug text-white/80 drop-shadow sm:block">
@@ -695,27 +698,32 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         {tower && <TowerCard pet={g?.pet ?? "Nova"} phase={{ icon: PHASE_ICON[phase], name: PHASE_NAME[phase] }} onRing={ringBell} onClose={() => setTower(false)} />}
         {skyOpen && <SkyDome onAim={(az, alt) => scene.current?.aimScope(az, alt)} onClose={() => setSkyOpen(false)} />}
         {diary && <DiaryBook pet={g?.pet ?? "Nova"} onClose={() => setDiary(false)} />}
-        {ready && g && !bedtime && (
+        {/* The right side belongs to one panel at a time: the dock and card step aside while a day or the tower card is open. */}
+        {ready && g && !bedtime && !day && !tower && (
           <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-2 sm:top-8 sm:right-9">
             <div className="flex items-center gap-0.5 rounded-full border border-white/15 bg-white/[0.08] p-1 shadow-[0_12px_40px_-12px_rgba(0,0,0,.7),inset_0_1px_0_rgba(255,255,255,.14)] backdrop-blur-2xl">
               {/* The diary is also the book on the stump by the cottage; this is the way in for a keyboard, a screen reader, or a first-time visitor. */}
-              <button onClick={() => setDialOpen((o) => !o)} aria-label="Time of day and weather" aria-pressed={dialOpen} title="Time of day and weather" className={`hidden size-10 place-items-center rounded-full text-lg transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200 sm:grid ${dialOpen ? "bg-white/20" : ""}`}>
+              <button onClick={() => setDialOpen((o) => !o)} aria-label="Time of day and weather" aria-pressed={dialOpen} className={`group relative hidden size-10 place-items-center rounded-full text-lg transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200 sm:grid ${dialOpen ? "bg-white/20" : ""}`}>
                 {PHASE_ICON[phase]}
+                <span role="tooltip" className="pointer-events-none absolute top-full right-0 mt-2.5 rounded-lg border border-white/15 bg-[#0b1016]/90 px-2.5 py-1 text-[11px] whitespace-nowrap text-white opacity-0 shadow-xl backdrop-blur-md transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:opacity-100 -translate-y-1">Time of day and weather</span>
               </button>
-              <button onClick={() => setDiary(true)} aria-label={`Open ${g?.pet ?? "Nova"}'s diary`} title="Diary" className="grid size-10 place-items-center rounded-full text-lg text-amber-100 transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200">
+              <button onClick={() => setDiary(true)} aria-label={`Open ${g?.pet ?? "Nova"}'s diary`} className="group relative grid size-10 place-items-center rounded-full text-lg text-amber-100 transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200">
                 📖
+                <span role="tooltip" className="pointer-events-none absolute top-full right-0 mt-2.5 rounded-lg border border-white/15 bg-[#0b1016]/90 px-2.5 py-1 text-[11px] whitespace-nowrap text-white opacity-0 shadow-xl backdrop-blur-md transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:opacity-100 -translate-y-1">Diary</span>
               </button>
-              <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" title="Share a picture" className="grid size-10 place-items-center rounded-full text-lg transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200">
+              <button onClick={() => void shareGarden()} aria-label="Share a picture of the garden" className="group relative grid size-10 place-items-center rounded-full text-lg transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200">
                 📸
+                <span role="tooltip" className="pointer-events-none absolute top-full right-0 mt-2.5 rounded-lg border border-white/15 bg-[#0b1016]/90 px-2.5 py-1 text-[11px] whitespace-nowrap text-white opacity-0 shadow-xl backdrop-blur-md transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:opacity-100 -translate-y-1">Share a picture</span>
               </button>
               <span className="mx-0.5 h-5 w-px bg-white/15" />
-              <button onClick={() => void goodNight()} aria-label="Good night" title="Good night" className="grid size-10 place-items-center rounded-full text-lg text-indigo-100 transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200">
+              <button onClick={() => void goodNight()} aria-label="Good night" className="group relative grid size-10 place-items-center rounded-full text-lg text-indigo-100 transition hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-amber-200">
                 🌙
+                <span role="tooltip" className="pointer-events-none absolute top-full right-0 mt-2.5 rounded-lg border border-white/15 bg-[#0b1016]/90 px-2.5 py-1 text-[11px] whitespace-nowrap text-white opacity-0 shadow-xl backdrop-blur-md transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:opacity-100 -translate-y-1">Good night</span>
               </button>
             </div>
             {sharing && <p className="rounded-full bg-black/55 px-3 py-1 text-[11px] text-white/90 backdrop-blur-md">{sharing}</p>}
             <div className="hidden sm:block">
-              <GardenCard total={g.items.length} streak={g.streak ?? 0} days={days} stats={stats} />
+              <GardenCard total={g.items.length} streak={g.streak ?? 0} days={days} stats={stats} plants={habitPlants} />
             </div>
           </div>
         )}

@@ -10,11 +10,13 @@ describe("how a habit grows", () => {
     expect(plantStage(20, 20)).toBe(2);
     expect(plantStage(21, 21)).toBe(3);
   });
-  it("a tree stays a tree after the streak breaks, but a plant that never got there starts again", () => {
+  it("a plant never shrinks: it keeps the size its best streak gave it when the streak breaks", () => {
     expect(plantStage(0, 30)).toBe(3);
     expect(plantStage(2, 25)).toBe(3);
-    expect(plantStage(0, 18)).toBe(0);
-    expect(plantStage(3, 18)).toBe(0);
+    expect(plantStage(0, 18)).toBe(2);
+    expect(plantStage(3, 18)).toBe(2);
+    expect(plantStage(0, 9)).toBe(1);
+    expect(plantStage(0, 6)).toBe(0);
   });
   it("says where it is and what is left", () => {
     expect(plantLabel("Walking", "🚶", 0, 3, 3)).toContain("3 days in a row, 4 more to sprout");
@@ -22,6 +24,11 @@ describe("how a habit grows", () => {
     expect(plantLabel("Walking", "🚶", 1, 8, 8)).toContain("6 more to a sapling");
     expect(plantLabel("Walking", "🚶", 2, 14, 14)).toContain("7 more to become a tree");
     expect(plantLabel("Walking", "🚶", 0, 1, 1)).toContain("1 day in a row");
+    // The streak broke after it had grown: it stays a sprout, and says so.
+    const broken = plantLabel("Walking", "🚶", 1, 0, 10);
+    expect(broken).toContain("a sprout");
+    expect(broken).toContain("best 10 days in a row, running 0");
+    expect(broken).toContain("14 more to a sapling");
     const tree = plantLabel("Walking", "🚶", 3, 2, 25);
     expect(tree).toContain("grew into a tree: 25 days in a row");
     expect(tree).toContain("(running: 2)");

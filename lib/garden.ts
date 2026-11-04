@@ -53,7 +53,7 @@ export async function getGarden(supabase: SupabaseClient): Promise<Garden> {
   const plants: GardenItem[] = habits.map((h) => {
     const s = habitStats(h, today);
     const stage = plantStage(s.streak, s.best);
-    return { kind: "plant" as const, id: `p:${h.id}`, label: plantLabel(h.name, h.emoji, stage, s.streak, s.best), hue: hueOf(h.id), stage, streak: s.streak };
+    return { kind: "plant" as const, id: `p:${h.id}`, label: plantLabel(h.name, h.emoji, stage, s.streak, s.best), hue: hueOf(h.id), stage, streak: s.streak, name: h.name, emoji: h.emoji, best: s.best };
   });
 
   const nights = checkins.filter((c) => c.date >= since).length;
