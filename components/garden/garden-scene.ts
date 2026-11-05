@@ -1779,7 +1779,8 @@ void main() {`);
     const S = THREE.MathUtils.clamp(this.isl.rx / 300, 0.95, 1.25);
     const plaster = new THREE.MeshStandardMaterial({ color: "#efe2c8", roughness: 0.92 });
     const timber = new THREE.MeshStandardMaterial({ color: "#5a3a24", roughness: 0.85 });
-    const roof = new THREE.MeshStandardMaterial({ color: "#b5452f", roughness: 0.75 });
+    const rt = photoTextures("roof", 2);
+    const roof = new THREE.MeshStandardMaterial({ color: "#ffcdb5", map: rt.map, normalMap: rt.normal, roughnessMap: rt.rough, roughness: 1 });
     const stone = new THREE.MeshStandardMaterial({ color: "#8f877c", roughness: 1 });
     const brick = new THREE.MeshStandardMaterial({ color: "#8a4b36", roughness: 0.95 });
     const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => {
