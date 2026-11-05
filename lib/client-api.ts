@@ -77,6 +77,8 @@ export const MUSIC_STATE_EVENT = "hivemind:music-state";
  * Chat switched a screen effect on or off (screen_effects tool). detail: { effect, on }, effect:
  * "music_lights" | "weather" | "pet_voice" | "lights" (music lights + weather).
  */
+/** Ask the command palette to open (sidebar and phone title bar buttons). */
+export const PALETTE_EVENT = "hivemind:palette";
 export const FX_EVENT = "hivemind:fx";
 /** The owner asked HIVEMIND something by typing (the pet notices when it's being ignored). */
 export const ASKED_EVENT = "hivemind:asked";

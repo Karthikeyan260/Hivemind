@@ -4,10 +4,11 @@ import { Blocks, ChefHat, Images, PartyPopper, Sprout, Gamepad2, Laugh, Moon, Ne
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cx } from "@/components/ui";
+import { PALETTE_EVENT } from "@/lib/client-api";
 import { clearOfflineCache } from "@/lib/offline";
 import { useMyApps } from "@/components/apps/nav-apps";
 
-const NAV = [
+export const NAV = [
   { label: "HIVEMIND", href: "/", icon: Sparkles },
   { label: "Autopilot", href: "/autopilot", icon: Compass },
   { label: "Web tasks", href: "/web", icon: Globe },
@@ -60,6 +61,14 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
           </span>
           <span className="font-mono text-sm font-semibold tracking-[0.3em]">HIVEMIND</span>
         </Link>
+        <button
+          onClick={() => window.dispatchEvent(new Event(PALETTE_EVENT))}
+          className="mx-3 mb-3 flex items-center gap-2.5 rounded-md border border-line px-3 py-2 text-left text-sm text-faint transition-colors hover:border-core/50 hover:text-fg"
+        >
+          <Search size={15} strokeWidth={1.75} />
+          <span className="flex-1">Search</span>
+          <kbd className="font-mono text-[10px]">Ctrl K</kbd>
+        </button>
         <nav className="no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]" aria-label="Main">
           {NAV.map(({ label, href, icon: Icon }) => (
             <Link
@@ -106,6 +115,9 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
           HIVEMIND
         </Link>
         <span className="ml-auto truncate font-mono text-[10.5px] uppercase tracking-wider text-faint">{NAV.find((n) => n.href !== "/" && active(n.href))?.label}</span>
+        <button onClick={() => window.dispatchEvent(new Event(PALETTE_EVENT))} aria-label="Search and jump" className="-my-1 -mr-2 grid size-9 place-items-center rounded-full text-soft active:bg-raised">
+          <Search size={17} strokeWidth={1.75} />
+        </button>
       </header>
     </>
   );
