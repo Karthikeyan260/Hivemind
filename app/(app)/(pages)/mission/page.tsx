@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowUpRight, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Play, Square, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MissionScene } from "@/components/mission/mission-scene";
@@ -21,11 +21,37 @@ export default function MissionPage() {
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState<CrewId | null>(null);
   const [now, setNow] = useState(0);
+  const [touring, setTouring] = useState(false);
+  const [hover, setHover] = useState<{ id: CrewId; x: number; y: number } | null>(null);
 
   const pick = useCallback((id: CrewId | null) => {
     setOpen(id);
     scene.current?.select(id);
   }, []);
+
+  // Anything the user does themselves ends the tour.
+  const userPick = useCallback(
+    (id: CrewId | null) => {
+      setTouring(false);
+      pick(id);
+    },
+    [pick],
+  );
+
+  // The tour: visit each robot in turn, anyone who needs you first.
+  useEffect(() => {
+    if (!touring) return;
+    const order = [...latest.current].sort((a, b) => Number(b.state === "alert") - Number(a.state === "alert"));
+    if (!order.length) return;
+    let i = -1;
+    const step = () => {
+      i = (i + 1) % order.length;
+      pick(order[i].id);
+    };
+    step();
+    const t = setInterval(step, 4800);
+    return () => clearInterval(t);
+  }, [touring, pick]);
 
   // A fresh canvas per effect: a canvas whose WebGL context was released can't get a new one (dev strict mode).
   useEffect(() => {
@@ -36,7 +62,7 @@ export default function MissionPage() {
     host.current.appendChild(el);
     let s: MissionScene;
     try {
-      s = new MissionScene(el, { onSelect: pick, onHover: () => {} });
+      s = new MissionScene(el, { onSelect: userPick, onHover: (id, x, y) => setHover(id ? { id, x, y } : null) });
     } catch {
       el.remove();
       setTimeout(() => setFailed(true));
@@ -49,7 +75,7 @@ export default function MissionPage() {
       el.remove();
       scene.current = null;
     };
-  }, [pick]);
+  }, [userPick]);
 
   useEffect(() => {
     let live = true;
@@ -88,7 +114,7 @@ export default function MissionPage() {
         <Link href="/" aria-label="Back" className="grid size-10 shrink-0 place-items-center rounded-full border border-white/15 bg-white/8 backdrop-blur-md hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-indigo-300">
           <ArrowLeft size={17} />
         </Link>
-        <div className="min-w-0">
+        <div className="min-w-0 pr-24 sm:pr-28">
           <p className="flex items-center gap-2 font-mono text-[10px] tracking-[0.3em] text-white/60 uppercase">
             <span className={`size-1.5 rounded-full ${error ? "bg-rose-400" : "animate-pulse bg-emerald-400"}`} />
             Mission control · {error ? "offline" : "live"}
@@ -105,6 +131,41 @@ export default function MissionPage() {
         </div>
       </div>
 
+      {crew.length > 0 && (
+        <button
+          onClick={() => {
+            if (touring) {
+              setTouring(false);
+              pick(null);
+            } else setTouring(true);
+          }}
+          aria-pressed={touring}
+          className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 z-10 flex h-10 items-center gap-1.5 rounded-full border border-white/15 bg-white/8 px-3.5 text-xs backdrop-blur-md hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-indigo-300 sm:right-6 sm:top-6"
+        >
+          {touring ? <Square size={13} /> : <Play size={13} />}
+          {touring ? "Stop tour" : "Tour"}
+        </button>
+      )}
+
+      {hover &&
+        !chosen &&
+        (() => {
+          const a = crew.find((c) => c.id === hover.id);
+          if (!a) return null;
+          const w = typeof window === "undefined" ? 1200 : window.innerWidth;
+          return (
+            <div className="pointer-events-none absolute z-20 w-60 rounded-xl border border-white/15 bg-[#080d1c]/90 p-3 text-xs shadow-xl backdrop-blur-md" style={{ left: Math.max(8, Math.min(hover.x + 16, w - 250)), top: hover.y + 16 }}>
+              <p className="flex items-center gap-2 font-medium">
+                <span className={`size-2 rounded-full ${DOT[a.state]}`} />
+                {a.name}
+                <span className="font-mono text-[10px] tracking-wider text-white/55 uppercase">{WORD[a.state]}</span>
+              </p>
+              <p className="mt-1.5 leading-snug text-white/80">{a.line}</p>
+              <p className="mt-1.5 text-[10px] text-white/45">Click for details</p>
+            </div>
+          );
+        })()}
+
       {failed && <p className="absolute inset-0 grid place-items-center px-6 text-center text-sm text-white/70">This device can&apos;t draw the command deck (it needs WebGL).</p>}
 
       {crew.length > 0 && (
@@ -113,7 +174,7 @@ export default function MissionPage() {
             {crew.map((c) => (
               <li key={c.id}>
                 <button
-                  onClick={() => pick(open === c.id ? null : c.id)}
+                  onClick={() => userPick(open === c.id ? null : c.id)}
                   aria-pressed={open === c.id}
                   className={`flex h-9 items-center gap-2 rounded-full border px-3 text-xs backdrop-blur-md transition focus-visible:outline-2 focus-visible:outline-indigo-300 ${open === c.id ? "border-white/70 bg-white/90 font-medium text-[#0b1020]" : "border-white/15 bg-white/8 text-white/85 hover:bg-white/15"}`}
                 >
@@ -128,7 +189,7 @@ export default function MissionPage() {
 
       {urgent && !chosen && (
         <button
-          onClick={() => pick(urgent.id)}
+          onClick={() => userPick(urgent.id)}
           className="absolute bottom-28 left-1/2 z-10 flex max-w-[92vw] -translate-x-1/2 items-center gap-2.5 rounded-full border border-rose-400/50 bg-rose-950/70 py-2 pr-4 pl-3 text-left text-sm shadow-[0_0_30px_rgba(244,63,94,0.35)] backdrop-blur-md transition hover:bg-rose-900/70 focus-visible:outline-2 focus-visible:outline-rose-300 sm:bottom-20"
         >
           <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-rose-400" />
@@ -150,7 +211,7 @@ export default function MissionPage() {
               <p className="mt-1 font-serif text-2xl leading-tight">{chosen.name}</p>
               <p className="text-xs text-white/60">{chosen.role}</p>
             </div>
-            <button onClick={() => pick(null)} aria-label="Close" className="-m-1.5 grid size-9 shrink-0 place-items-center rounded-full text-white/75 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-indigo-300">
+            <button onClick={() => userPick(null)} aria-label="Close" className="-m-1.5 grid size-9 shrink-0 place-items-center rounded-full text-white/75 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-indigo-300">
               <X size={16} />
             </button>
           </div>

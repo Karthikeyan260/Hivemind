@@ -9,16 +9,20 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
  */
 
 export type RobotState = "working" | "idle" | "sleeping" | "alert";
+/** What the robot is doing with its hands at a spot: typing, looking through a scope, writing... */
+export type Act = "none" | "type" | "scope" | "crank" | "write" | "hammer" | "ring" | "tidy" | "look" | "sleep" | "chat";
 export const RIG_HEIGHT = 2.66;
 
 export type Rig = {
   root: THREE.Group;
   /** The glowing parts (eyes, ear rings, chest reactor, vents): tinted by mood. */
+  /** The wrists: hang a tool (pen, hammer) on the right one. */
+  hands: [THREE.Object3D, THREE.Object3D];
   glow: THREE.MeshStandardMaterial;
   /** The console's glow: tinted by mood like the rest. */
   holo: THREE.MeshBasicMaterial;
   /** `look`: where the viewer is, as a turn left/right of the robot's front (radians). `greet`: wave hello. */
-  pose(state: RobotState, t: number, dt: number, phase: number, look?: number, greet?: boolean): void;
+  pose(state: RobotState, t: number, dt: number, phase: number, look?: number, greet?: boolean, cheer?: boolean, act?: Act, walk?: number): void;
   dispose(): void;
 };
 
@@ -263,7 +267,7 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
       part(box(0.021, 0.055, 0.026, 0.008), graphite, wrist, x, -0.205, 0.02).rotation.x = -0.35;
     }
     part(box(0.03, 0.06, 0.03, 0.01), steel, wrist, -s * 0.07, -0.08, 0.02).rotation.z = s * 0.5;
-    return { shoulder, elbow };
+    return { shoulder, elbow, wrist };
   });
 
   // ----- a holographic console it types on while working
@@ -371,7 +375,7 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
     }
   }
 
-  function pose(state: RobotState, t: number, dt: number, phase: number, look = 0, greet = false) {
+  function pose(state: RobotState, t: number, dt: number, phase: number, look = 0, greet = false, cheer = false, act: Act = "none", walk = 0) {
     const k = 1 - Math.exp(-7 * dt);
     const breathe = Math.sin(t * 1.5 + phase);
     const p: Pose = {
@@ -441,9 +445,109 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
       gesture(pick, u < 0.12 ? 0 : (u - 0.12) / 0.8, t, p);
     }
 
+    // walking swings the legs and arms; at a spot the hands do the job
+    if (walk > 0.01) {
+      const w = t * 7.5 + phase;
+      p.thigh = [Math.sin(w) * 0.55, -Math.sin(w) * 0.55];
+      p.knee = [Math.max(0, Math.sin(w + 1.6)) * 0.85, Math.max(0, -Math.sin(w + 1.6)) * 0.85];
+      p.sh[0].x = -Math.sin(w) * 0.5;
+      p.sh[1].x = Math.sin(w) * 0.5;
+      p.sh[0].z = -0.12;
+      p.sh[1].z = 0.12;
+      p.el[0] = -0.3;
+      p.el[1] = -0.3;
+      p.spineX = 0.07;
+      p.headX = 0.02;
+      p.drop = 0;
+      p.bounce = Math.abs(Math.cos(w)) * 0.035;
+    } else if ((state === "working" || state === "idle") && act !== "none") {
+      const hit = Math.sin(t * 11 + phase);
+      switch (act) {
+        case "type":
+          p.spineX = 0.12;
+          p.headX = 0.22;
+          for (const i of [0, 1] as const) {
+            p.sh[i].x = -1.05 + (i ? -hit : hit) * 0.07;
+            p.sh[i].z = (i === 0 ? -1 : 1) * 0.16;
+            p.el[i] = -(0.8 + 0.3 * (i ? -hit : hit));
+          }
+          break;
+        case "scope": // both hands up to the eyepiece
+          p.spineX = 0.1;
+          p.headX = -0.04;
+          p.headY = Math.sin(t * 0.5 + phase) * 0.15;
+          for (const i of [0, 1] as const) {
+            p.sh[i].x = -1.45;
+            p.sh[i].z = (i === 0 ? -1 : 1) * 0.2;
+            p.el[i] = -2.0;
+          }
+          break;
+        case "crank": // turning a big handle
+          p.spineX = 0.12 + Math.sin(t * 3) * 0.03;
+          p.headX = 0.15;
+          p.sh[1].x = -0.8 + Math.sin(t * 3) * 0.6;
+          p.el[1] = -1.0 + Math.cos(t * 3) * 0.5;
+          p.sh[0].x = -0.6;
+          p.el[0] = -0.9;
+          break;
+        case "write": // pen in the right hand, left hand holding the page
+          p.spineX = 0.18;
+          p.headX = 0.4;
+          p.sh[1].x = -0.95;
+          p.el[1] = -1.15 + Math.sin(t * 10) * 0.07;
+          p.sh[0].x = -0.75;
+          p.el[0] = -0.9;
+          break;
+        case "hammer": {
+          const swing = Math.sin(t * 7 + phase);
+          p.spineX = 0.16 + Math.max(0, -swing) * 0.08;
+          p.headX = 0.25;
+          p.sh[1].x = -1.1 + swing * 0.65;
+          p.el[1] = -0.7 - Math.max(0, swing) * 0.5;
+          p.sh[0].x = -0.8;
+          p.el[0] = -0.8;
+          break;
+        }
+        case "ring": // pulling a bell rope overhead
+          p.spineX = -0.05 + Math.sin(t * 5) * 0.05;
+          p.headX = -0.3;
+          p.sh[1].x = -2.3 + Math.sin(t * 5) * 0.45;
+          p.sh[1].z = 0.2;
+          p.el[1] = -0.25;
+          p.sh[0].x = -0.3;
+          break;
+        case "tidy": // sorting cubes on a shelf
+          p.headX = -0.05;
+          p.headY = Math.sin(t * 1.2) * 0.3;
+          p.sh[0].x = -1.3 + Math.sin(t * 2.5) * 0.35;
+          p.sh[1].x = -1.3 + Math.sin(t * 2.5 + Math.PI) * 0.35;
+          p.sh[0].z = -0.12;
+          p.sh[1].z = 0.12;
+          p.el[0] = -0.7;
+          p.el[1] = -0.7;
+          break;
+        case "chat": // talking with a colleague: nods and gestures
+          p.headX = 0.04 + Math.sin(t * 2.6 + phase) * 0.06;
+          p.headY = Math.sin(t * 1.1 + phase) * 0.25;
+          p.spineX = 0.03;
+          p.sh[1].x = -0.75 + Math.sin(t * 3.2 + phase) * 0.35;
+          p.sh[1].z = 0.3;
+          p.el[1] = -1.0 + Math.sin(t * 3.2 + phase + 1) * 0.45;
+          p.sh[0].x = -0.25 + Math.sin(t * 1.7) * 0.15;
+          p.el[0] = -0.5;
+          break;
+        case "look": // reading something, hand to chin
+          p.headX = 0.15;
+          p.sh[1].x = -1.0;
+          p.sh[1].z = 0.05;
+          p.el[1] = -2.2 + Math.sin(t * 0.8) * 0.05;
+          break;
+      }
+    }
+
     // awake robots turn their head (and a little of their body) toward whoever is looking
     if (state !== "sleeping") {
-      const w = state === "idle" ? 0.6 : state === "alert" ? 0.5 : 0.35;
+      const w = (state === "idle" ? 0.6 : state === "alert" ? 0.5 : 0.35) * (act !== "none" || walk > 0.01 ? 0.3 : 1);
       p.headY = p.headY * (1 - w) + look * w;
       p.spineY += look * 0.22 * w;
     }
@@ -453,6 +557,19 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
       p.sh[1].z = 2.3 + Math.sin(t * 9 + phase) * 0.18;
       p.el[1] = -0.4 + Math.sin(t * 9 + phase) * 0.4;
       p.headX = -0.08;
+    }
+
+    // a task just finished: both arms up, little jumps
+    if (cheer && state !== "sleeping" && state !== "alert") {
+      p.sh[0].x = 0;
+      p.sh[1].x = 0;
+      p.sh[0].z = -(2.55 + Math.sin(t * 10 + phase) * 0.18);
+      p.sh[1].z = 2.55 + Math.sin(t * 10 + phase + 1) * 0.18;
+      p.el[0] = -0.3;
+      p.el[1] = -0.3;
+      p.headX = -0.28;
+      p.spineX = -0.1;
+      p.bounce = Math.abs(Math.sin(t * 7 + phase)) * 0.12;
     }
 
     ease(spine, "x", p.spineX, k);
@@ -507,6 +624,7 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
 
   return {
     root,
+    hands: [arms[0].wrist, arms[1].wrist],
     glow,
     holo,
     pose,

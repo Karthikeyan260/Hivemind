@@ -4,7 +4,10 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { buildRobot, RIG_HEIGHT, type Rig } from "./robot";
+import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
+import { buildMocapRobot } from "./mocap-robot";
+import { buildRobot, RIG_HEIGHT, type Act, type Rig } from "./robot";
+import { buildStation, HOME, type Station, type Stop } from "./stations";
 import type { AgentState, CrewAgent, CrewId } from "@/lib/mission";
 
 /**
@@ -15,6 +18,7 @@ import type { AgentState, CrewAgent, CrewId } from "@/lib/mission";
 
 const HEX: Record<AgentState, string> = { working: "#34d399", idle: "#38bdf8", sleeping: "#64748b", alert: "#f43f5e" };
 const WORD: Record<AgentState, string> = { working: "WORKING", idle: "READY", sleeping: "ASLEEP", alert: "NEEDS YOU" };
+const MODEL = "/models/xbot.glb";
 const ROBOT_H = 3.1; // height of a robot in world units
 const ROBOT_SCALE = ROBOT_H / RIG_HEIGHT;
 const R = 8.6; // pod ring radius
@@ -23,6 +27,7 @@ const R_PORTRAIT = 6.4; // a tighter ring for tall, narrow screens
 const SPAN_PORTRAIT = Math.PI * 1.08;
 const HOME_TARGET = new THREE.Vector3(0, 2.6, 0);
 const PANEL_Y = 6.5;
+const ALERT_STOP: Stop = { x: 0, z: 1.0, face: 0, act: "none", dwell: 99 };
 // Each agent has its own paint, so the crew reads as individuals; the mood shows in the visor, halo and floor light.
 const PAINT: Record<CrewId, string> = { scheduler: "#f59e0b", autopilot: "#38bdf8", web: "#a78bfa", dream: "#6366f1", brief: "#2dd4bf", reminders: "#f472b6", apps: "#fb923c" };
 
@@ -31,6 +36,18 @@ type Pod = {
   pos: THREE.Vector3;
   group: THREE.Group;
   rig: Rig;
+  station: Station;
+  at: { x: number; z: number };
+  mode: string;
+  stopIdx: number;
+  dwell: number;
+  arrived: boolean;
+  act: Act;
+  walk: number;
+  errand: { x: number; z: number; face: number; host: Pod | null } | null;
+  nextErrand: number;
+  hostUntil: number;
+  hostFace: number;
   halo: THREE.Mesh;
   haloMat: THREE.MeshBasicMaterial;
   prop: THREE.Group;
@@ -51,12 +68,13 @@ type Pod = {
   tgt: THREE.Color;
   phase: number;
   born: number;
+  cele: number;
   lift: number;
   burst: number;
   hv: number;
 };
 
-export type MissionHooks = { onSelect: (id: CrewId | null) => void; onHover: (id: CrewId | null) => void };
+export type MissionHooks = { onSelect: (id: CrewId | null) => void; onHover: (id: CrewId | null, x: number, y: number) => void };
 
 /** A small floating tool that says what this agent does: clock, radar, globe, moon, paper, bell, hammer. */
 function makeProp(id: CrewId, tone: THREE.Color, track: Array<{ dispose(): void }>): THREE.Group {
@@ -148,10 +166,6 @@ function makeProp(id: CrewId, tone: THREE.Color, track: Array<{ dispose(): void 
   return g;
 }
 
-function isSelNow(sel: CrewId | null, id: CrewId) {
-  return sel === id;
-}
-
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxLines: number) {
   const words = text.split(/\s+/);
   const lines: string[] = [];
@@ -235,6 +249,9 @@ export class MissionScene {
   private hit: THREE.Object3D[] = [];
   private disposables: Array<{ dispose(): void }> = [];
   private dead = false;
+  private model: GLTF | null = null;
+  private modelDone = false;
+  private pending: CrewAgent[] | null = null;
   private coreGroup = new THREE.Group();
   private sweep = new THREE.Group();
   private sweepMat!: THREE.MeshBasicMaterial;
@@ -260,6 +277,7 @@ export class MissionScene {
   private tDist = 26;
   private target = HOME_TARGET.clone();
   private tTarget = HOME_TARGET.clone();
+  private follow = new THREE.Vector3();
   private idleSince = performance.now();
   private pointers = new Map<number, { x: number; y: number }>();
   private pinch = 0;
@@ -301,6 +319,23 @@ export class MissionScene {
       composer.addPass(new OutputPass());
       this.composer = composer;
     }
+
+    // The robot body is a real skinned model; the deck waits for it (and falls back to the built robot if it can't load).
+    new GLTFLoader().load(
+      MODEL,
+      (gltf) => {
+        if (this.dead) return;
+        this.model = gltf;
+        this.modelDone = true;
+        if (this.pending) this.setCrew(this.pending);
+      },
+      undefined,
+      () => {
+        if (this.dead) return;
+        this.modelDone = true;
+        if (this.pending) this.setCrew(this.pending);
+      },
+    );
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(canvas);
@@ -454,15 +489,15 @@ export class MissionScene {
 
     const metal = new THREE.MeshStandardMaterial({ color: "#131929", metalness: 0.85, roughness: 0.5, envMapIntensity: 0.45 });
     const ringMat = new THREE.MeshStandardMaterial({ color: "#0b1020", emissive: col, emissiveIntensity: 2.2, roughness: 0.4 });
-    const plinth = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.75, 0.4, 56), metal);
+    const plinth = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.4, 0.4, 64), metal);
     plinth.position.y = 0.2;
     plinth.castShadow = plinth.receiveShadow = true;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.05, 12, 80), ringMat);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.06, 12, 96), ringMat);
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.42;
 
     // the robot itself: built in code, scaled to a fixed height, standing on the plinth
-    const rig = buildRobot(PAINT[a.id], col, a.name);
+    const rig = this.model ? buildMocapRobot(this.model, PAINT[a.id], col, ROBOT_SCALE) : buildRobot(PAINT[a.id], col, a.name);
     rig.root.scale.setScalar(ROBOT_SCALE);
     rig.root.position.y = 0.4;
     this.disposables.push(rig);
@@ -478,7 +513,7 @@ export class MissionScene {
     glow.rotation.x = -Math.PI / 2;
     glow.position.y = 0.03;
     const rippleMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
-    const ripple = new THREE.Mesh(new THREE.RingGeometry(1.8, 1.95, 64), rippleMat);
+    const ripple = new THREE.Mesh(new THREE.RingGeometry(2.4, 2.55, 64), rippleMat);
     ripple.rotation.x = -Math.PI / 2;
     ripple.position.y = 0.05;
 
@@ -495,19 +530,21 @@ export class MissionScene {
     panel.renderOrder = 5;
 
     // click target: a generous invisible column
-    const hit = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 6, 16), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+    const hit = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 6, 20), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
     hit.position.y = 3;
     hit.userData.id = a.id;
     this.hit.push(hit);
 
-    const prop = makeProp(a.id, col, this.disposables);
-    prop.position.set(1.75, 2.55, 0.15);
+    const station = buildStation(a.id, PAINT[a.id], this.disposables);
+    if (station.tool) rig.hands[1].add(station.tool);
+    const prop = makeProp(a.id, col, this.disposables); // kept only so moveProp has something to drive
     const shadowTex = radialTexture([[0, "rgba(0,0,0,0.6)"], [0.6, "rgba(0,0,0,0.25)"], [1, "rgba(0,0,0,0)"]]);
-    const blob = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+    const blob = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
     blob.rotation.x = -Math.PI / 2;
-    blob.position.y = 0.415;
+    blob.position.y = 0.03; // rides with the robot, so its shadow follows it across the deck
     this.disposables.push(shadowTex, blob.material as THREE.Material);
-    group.add(plinth, ring, blob, halo, glow, ripple, panel, hit, prop);
+    rig.root.add(blob);
+    group.add(plinth, ring, halo, glow, ripple, panel, hit, station.group);
     group.add(rig.root);
     group.lookAt(0, 0, 0);
     this.scene.add(group);
@@ -530,16 +567,23 @@ export class MissionScene {
     });
     this.disposables.push(metal, ringMat, haloMat, glowMat, rippleMat, tex, panel.material as THREE.Material, hit.material as THREE.Material, beamMat, packetMat);
 
-    return { id: a.id, pos, group, rig, halo, haloMat, prop, ringMat, glowMat, rippleMat, ripple, beamMat, packetMat, curve, packets, panel, tex, ctx, key: "", state: a.state, col, tgt: col.clone(), phase: i * 1.3, born: performance.now() + 250 + i * 130, lift: this.portrait && i % 2 ? 1.7 : 0, burst: 0, hv: 0 };
+    return { id: a.id, pos, group, rig, station, at: { x: HOME.x, z: HOME.z }, mode: "", stopIdx: 0, dwell: 0, arrived: false, act: "none" as Act, walk: 0, errand: null, nextErrand: performance.now() / 1000 + 4 + i * 1.7, hostUntil: 0, hostFace: 0, halo, haloMat, prop, ringMat, glowMat, rippleMat, ripple, beamMat, packetMat, curve, packets, panel, tex, ctx, key: "", state: a.state, col, tgt: col.clone(), phase: i * 1.3, born: performance.now() + 250 + i * 130, cele: 0, lift: this.portrait && i % 2 ? 1.7 : 0, burst: 0, hv: 0 };
   }
 
   // ---------- data ----------
   setCrew(crew: CrewAgent[]) {
+    if (!this.modelDone) {
+      this.pending = crew; // build the pods once the robot model has arrived
+      return;
+    }
     if (this.pods.length === 0) crew.forEach((a, i) => this.pods.push(this.buildPod(a, i, crew.length)));
     for (const a of crew) {
       const p = this.pods.find((x) => x.id === a.id);
       if (!p) continue;
-      if (p.key && p.state !== a.state) p.burst = 1; // a ring of light when a mood changes
+      if (p.key && p.state !== a.state) {
+        p.burst = 1; // a ring of light when a mood changes
+        if (p.state === "working" && (a.state === "idle" || a.state === "sleeping")) p.cele = 1; // it finished: celebrate
+      }
       p.state = a.state;
       p.tgt.set(HEX[a.state]);
       const key = `${a.state}|${a.name}|${a.role}|${a.line}`;
@@ -548,6 +592,106 @@ export class MissionScene {
         this.drawPanel(p, a);
       }
     }
+  }
+
+  /** Walks the robot between the spots of its set and has it do its job at each one. */
+  private behave(p: Pod, dt: number) {
+    const st = p.station;
+    const mode = p.state === "sleeping" ? "sleep" : p.state === "alert" ? "alert" : p.state === "working" ? "work" : "idle";
+    if (mode !== p.mode) {
+      p.mode = mode;
+      p.stopIdx = 0;
+      p.arrived = false;
+    }
+    const now = performance.now() / 1000;
+    const busy = mode === "work" || mode === "idle";
+    if (p.errand && (!busy || this.selected === p.id)) p.errand = null;
+    if (!p.errand && busy && now > p.nextErrand && this.pods.length > 1 && now > p.hostUntil) this.startErrand(p);
+    const hosting = p.hostUntil > now && busy;
+    const list = mode === "work" ? st.work : mode === "idle" ? st.idle : [mode === "sleep" ? st.sleep : ALERT_STOP];
+    let stop = list[p.stopIdx % list.length];
+    if (p.errand) stop = { x: p.errand.x, z: p.errand.z, face: p.errand.face, act: "chat", dwell: 5.5 };
+    if (hosting) stop = { x: p.at.x, z: p.at.z, face: p.hostFace, act: "chat", dwell: 99 };
+    const dx = stop.x - p.at.x;
+    const dz = stop.z - p.at.z;
+    const dist = Math.hypot(dx, dz);
+    let yaw = stop.face;
+    if (dist > 0.05) {
+      const step = Math.min(dist, (mode === "alert" ? 2.6 : 1.2) * dt);
+      p.at.x += (dx / dist) * step;
+      p.at.z += (dz / dist) * step;
+      yaw = Math.atan2(dx, dz);
+      p.walk = 1;
+      p.act = "none";
+      p.arrived = false;
+    } else {
+      p.walk = 0;
+      if (!p.arrived) {
+        p.arrived = true;
+        p.dwell = stop.dwell * (0.85 + ((p.phase * 7) % 0.3));
+      }
+      p.act = mode === "work" || mode === "idle" ? stop.act : mode === "sleep" ? "sleep" : "none";
+      p.dwell -= dt;
+      if (p.errand && !hosting) {
+        // the visitor has arrived: the host turns to face them and chats back
+        const h = p.errand.host;
+        if (h && h.hostUntil < now + 1) {
+          h.hostUntil = now + p.dwell + 0.6;
+          const w = p.group.localToWorld(new THREE.Vector3(p.at.x, 0, p.at.z));
+          const hl = h.group.worldToLocal(w);
+          h.hostFace = Math.atan2(hl.x - h.at.x, hl.z - h.at.z);
+        }
+        if (p.dwell <= 0) {
+          p.errand = null;
+          p.nextErrand = now + 7 + ((p.phase * 13) % 6);
+          p.arrived = false;
+        }
+      } else if (p.dwell <= 0 && list.length > 1 && !hosting) {
+        p.stopIdx = (p.stopIdx + 1) % list.length;
+        p.arrived = false;
+      }
+    }
+    if (this.selected === p.id && p.act === "none" && p.walk === 0) yaw = Math.PI * 0; // a robot with nothing to do turns to the camera
+    const root = p.rig.root;
+    const d = ((yaw - root.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    root.rotation.y += d * (1 - Math.pow(0.003, dt));
+    root.position.x = p.at.x;
+    root.position.z = p.at.z;
+    // on the plinth it stands at plinth height; walking off, it steps down to the deck
+    const onPlinth = Math.hypot(p.at.x, p.at.z) < 2.0;
+    root.position.y += ((onPlinth ? 0.4 : 0.02) - root.position.y) * (1 - Math.pow(0.001, dt));
+  }
+
+  /** Sends a robot across the deck to visit a colleague (or to report to the core). */
+  private startErrand(p: Pod) {
+    const others = this.pods.filter((o) => o !== p);
+    const toCore = Math.random() < 0.22;
+    const host = toCore ? null : others[Math.floor(Math.random() * others.length)];
+    p.group.updateMatrixWorld(true);
+    const here = p.group.position;
+    let wx: number;
+    let wz: number;
+    let face: number;
+    if (host) {
+      host.group.updateMatrixWorld(true);
+      const hp = host.group.position;
+      const d = new THREE.Vector3(here.x - hp.x, 0, here.z - hp.z).normalize();
+      wx = hp.x + d.x * 1.7;
+      wz = hp.z + d.z * 1.7;
+      const hl = p.group.worldToLocal(new THREE.Vector3(hp.x, 0, hp.z));
+      const tl = p.group.worldToLocal(new THREE.Vector3(wx, 0, wz));
+      face = Math.atan2(hl.x - tl.x, hl.z - tl.z);
+    } else {
+      const d = new THREE.Vector3(here.x, 0, here.z).normalize();
+      wx = d.x * 3.7;
+      wz = d.z * 3.7;
+      const hl = p.group.worldToLocal(new THREE.Vector3(0, 0, 0));
+      const tl = p.group.worldToLocal(new THREE.Vector3(wx, 0, wz));
+      face = Math.atan2(hl.x - tl.x, hl.z - tl.z);
+    }
+    const l = p.group.worldToLocal(new THREE.Vector3(wx, 0, wz));
+    p.errand = { x: l.x, z: l.z, face, host };
+    p.arrived = false;
   }
 
   /** The tool each agent carries bobs, spins or swings; it works harder when the agent is busy. */
@@ -651,8 +795,8 @@ export class MissionScene {
     this.tTarget.set(p.pos.x * 0.92, 2.45, p.pos.z * 0.92);
     this.tDist = this.portrait ? 11 : 7.6;
     this.tPhi = 1.38;
-    // view the robot from outside the ring (it turns round to face us), so the core stays behind it
-    const want = Math.atan2(p.pos.x, p.pos.z);
+    // view the pod from the inner side, a little off to one side, so screens face us and the core stays out of shot
+    const want = Math.atan2(-p.pos.x, -p.pos.z) + (p.pos.x >= 0 ? -0.95 : 0.95);
     const d = ((want - this.theta + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     this.tTheta = this.theta + d;
   }
@@ -728,10 +872,13 @@ export class MissionScene {
     this.ray.setFromCamera(this.ptr, this.camera);
     const hit = this.ray.intersectObjects(this.hit, false)[0];
     const id = (hit?.object.userData.id as CrewId | undefined) ?? null;
-    if (hoverOnly && id !== this.hover) {
-      this.hover = id;
-      this.canvas.style.cursor = id ? "pointer" : "grab";
-      this.hooks.onHover(id);
+    if (hoverOnly) {
+      if (id !== this.hover) {
+        this.hover = id;
+        this.canvas.style.cursor = id ? "pointer" : "grab";
+        if (!id) this.hooks.onHover(null, e.clientX, e.clientY);
+      }
+      if (id) this.hooks.onHover(id, e.clientX, e.clientY);
     }
     return id;
   }
@@ -769,6 +916,14 @@ export class MissionScene {
     this.theta += (this.tTheta - this.theta) * ease;
     this.phi += (this.tPhi - this.phi) * ease;
     this.dist += (this.tDist - this.dist) * ease;
+    // a picked robot is followed wherever it walks
+    if (this.selected) {
+      const sp = this.pods.find((x) => x.id === this.selected);
+      if (sp) {
+        sp.rig.root.getWorldPosition(this.follow);
+        this.tTarget.set(this.follow.x, 2.3, this.follow.z);
+      }
+    }
     this.target.lerp(this.tTarget, ease);
     const th = this.theta + sway;
     const sp = Math.sin(this.phi);
@@ -797,10 +952,9 @@ export class MissionScene {
       // each station pops in, one after another, with a little overshoot
       const inT = THREE.MathUtils.clamp((now - p.born) / 800, 0, 1);
       const back = 1 + 2.70158 * Math.pow(inT - 1, 3) + 1.70158 * Math.pow(inT - 1, 2);
-      p.group.scale.setScalar(inT <= 0 ? 0.001 : Math.max(0.001, back));
+      p.group.scale.setScalar((inT <= 0 ? 0.001 : Math.max(0.001, back)) * (this.portrait ? 0.78 : 1));
       p.group.visible = inT > 0;
       p.hv += ((this.hover === p.id ? 1 : 0) - p.hv) * (1 - Math.pow(0.002, dt));
-      p.rig.root.rotation.y += ((isSelNow(this.selected, p.id) ? Math.PI : 0) - p.rig.root.rotation.y) * (1 - Math.pow(0.02, dt));
       const s = p.state;
       const isSel = this.selected === p.id;
       const pulse = Math.sin(t * (s === "alert" ? 7 : s === "working" ? 3.2 : 1.1) + p.phase);
@@ -809,10 +963,13 @@ export class MissionScene {
       p.rig.glow.emissive.copy(p.col);
       p.rig.holo.color.copy(p.col);
       p.rig.glow.emissiveIntensity = s === "sleeping" ? 0.15 : s === "alert" ? (pulse > 0 ? 3 : 0.6) : s === "working" ? 2.6 : 1.6;
+      this.behave(p, dt);
+
       // where is the viewer, from the robot's point of view?
       const local = p.rig.root.worldToLocal(this.camera.position.clone());
       const look = THREE.MathUtils.clamp(Math.atan2(local.x, local.z), -1.1, 1.1);
-      p.rig.pose(p.state, t, dt, p.phase, look, this.hover === p.id);
+      p.rig.pose(p.state, t, dt, p.phase, look, this.hover === p.id, p.cele > 0, p.act, p.walk);
+      p.station.update(t, dt, p.act, p.state === "working");
       this.moveProp(p, s, t, dt);
       p.haloMat.color.copy(p.col);
       p.haloMat.opacity = s === "sleeping" ? 0.35 : s === "alert" ? (pulse > 0 ? 1 : 0.35) : 0.9;
@@ -825,6 +982,7 @@ export class MissionScene {
       p.packetMat.color.copy(p.col);
 
       p.burst = Math.max(0, p.burst - dt * 0.9);
+      p.cele = Math.max(0, p.cele - dt / 2.8);
       if (s === "alert") {
         const k = (t * 0.7 + p.phase) % 1;
         p.ripple.scale.setScalar(1 + k * 3.2);
