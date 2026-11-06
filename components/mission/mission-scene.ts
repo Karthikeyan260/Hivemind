@@ -234,6 +234,7 @@ export class MissionScene {
   private dead = false;
   private coreGroup = new THREE.Group();
   private sweep = new THREE.Group();
+  private sweepMat!: THREE.MeshBasicMaterial;
   private gyros: THREE.Mesh[] = [];
   private dust!: THREE.Points;
   private raf = 0;
@@ -339,7 +340,7 @@ export class MissionScene {
   }
 
   private buildFloor() {
-    const floorMat = new THREE.MeshPhysicalMaterial({ color: "#0a0f1c", metalness: 0.7, roughness: 0.5, clearcoat: 0.05, clearcoatRoughness: 0.6, envMapIntensity: 0.12 });
+    const floorMat = new THREE.MeshPhysicalMaterial({ color: "#0a0f1c", metalness: 0.2, roughness: 0.9, clearcoat: 0, envMapIntensity: 0 });
     const floor = new THREE.Mesh(new THREE.CircleGeometry(60, 96), floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -355,13 +356,20 @@ export class MissionScene {
     const sg = sc.getContext("2d")!;
     const cone = sg.createConicGradient(0, 256, 256);
     cone.addColorStop(0, "rgba(140,170,255,0)");
-    cone.addColorStop(0.17, "rgba(140,170,255,0.2)");
+    cone.addColorStop(0.17, "rgba(140,170,255,0.16)");
     cone.addColorStop(0.175, "rgba(140,170,255,0)");
     cone.addColorStop(1, "rgba(140,170,255,0)");
     sg.fillStyle = cone;
     sg.beginPath();
     sg.arc(256, 256, 254, 0, Math.PI * 2);
     sg.fill();
+    sg.globalCompositeOperation = "destination-in";
+    const fade = sg.createRadialGradient(256, 256, 0, 256, 256, 254);
+    fade.addColorStop(0, "rgba(0,0,0,0.05)");
+    fade.addColorStop(0.35, "rgba(0,0,0,1)");
+    fade.addColorStop(1, "rgba(0,0,0,0)");
+    sg.fillStyle = fade;
+    sg.fillRect(0, 0, 512, 512);
     const swTex = new THREE.CanvasTexture(sc);
     swTex.colorSpace = THREE.SRGBColorSpace;
     const swMat = new THREE.MeshBasicMaterial({ map: swTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
@@ -369,6 +377,7 @@ export class MissionScene {
     swMesh.rotation.x = -Math.PI / 2;
     swMesh.position.y = 0.02;
     this.sweep.add(swMesh);
+    this.sweepMat = swMat;
     this.scene.add(this.sweep);
     this.disposables.push(floorMat, floor.geometry, ft, decal.geometry, decal.material as THREE.Material, swTex, swMat);
   }
@@ -439,7 +448,7 @@ export class MissionScene {
     group.position.copy(pos);
     const col = new THREE.Color(HEX[a.state]);
 
-    const metal = new THREE.MeshStandardMaterial({ color: "#1a2133", metalness: 0.92, roughness: 0.32 });
+    const metal = new THREE.MeshStandardMaterial({ color: "#131929", metalness: 0.85, roughness: 0.5, envMapIntensity: 0.45 });
     const ringMat = new THREE.MeshStandardMaterial({ color: "#0b1020", emissive: col, emissiveIntensity: 2.2, roughness: 0.4 });
     const plinth = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.75, 0.4, 56), metal);
     plinth.position.y = 0.2;
@@ -763,6 +772,7 @@ export class MissionScene {
     this.camera.lookAt(this.target);
 
     this.sweep.rotation.y -= dt * 0.32;
+    this.sweepMat.opacity += ((this.selected ? 0 : 1) - this.sweepMat.opacity) * (1 - Math.pow(0.02, dt));
 
     // core
     const cg = this.coreGroup;
