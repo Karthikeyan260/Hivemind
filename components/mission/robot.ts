@@ -24,7 +24,7 @@ export type Rig = {
 
 type Disposable = { dispose(): void };
 
-export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color): Rig {
+export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, label = ""): Rig {
   const track: Disposable[] = [];
   const armor = new THREE.MeshPhysicalMaterial({ color: "#e9edf4", metalness: 0.18, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.3 });
   const graphite = new THREE.MeshStandardMaterial({ color: "#1b1f2a", metalness: 0.85, roughness: 0.4, envMapIntensity: 1.2 });
@@ -33,6 +33,67 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
   const trim = new THREE.MeshStandardMaterial({ color: trimColour, metalness: 0.45, roughness: 0.3, envMapIntensity: 1.2 });
   const glow = new THREE.MeshStandardMaterial({ color: "#05070d", emissive: tone, emissiveIntensity: 2, roughness: 0.4 });
   track.push(armor, graphite, steel, glass, trim, glow);
+
+  // Engraved panel seams and rivets on the armour (a bump map), carbon-fibre weave on the frame.
+  const panel = document.createElement("canvas");
+  panel.width = panel.height = 256;
+  {
+    const g = panel.getContext("2d")!;
+    g.fillStyle = "#8c8c8c";
+    g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = "#262626";
+    g.lineWidth = 5;
+    g.strokeRect(7, 7, 242, 242);
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(128, 7);
+    g.lineTo(128, 84);
+    g.moveTo(7, 172);
+    g.lineTo(249, 172);
+    g.moveTo(190, 172);
+    g.lineTo(190, 249);
+    g.stroke();
+    g.fillStyle = "#dcdcdc";
+    for (const [x, y] of [[24, 24], [232, 24], [24, 232], [232, 232], [128, 110]]) {
+      g.beginPath();
+      g.arc(x, y, 5, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  const panelTex = new THREE.CanvasTexture(panel);
+  armor.bumpMap = panelTex;
+  armor.bumpScale = 2.2;
+  const weave = document.createElement("canvas");
+  weave.width = weave.height = 64;
+  {
+    const g = weave.getContext("2d")!;
+    g.fillStyle = "#777";
+    g.fillRect(0, 0, 64, 64);
+    g.strokeStyle = "#bbb";
+    g.lineWidth = 6;
+    for (let i = -64; i < 128; i += 16) {
+      g.beginPath();
+      g.moveTo(i, 0);
+      g.lineTo(i + 64, 64);
+      g.stroke();
+    }
+    g.strokeStyle = "#333";
+    g.lineWidth = 3;
+    for (let i = -64; i < 128; i += 16) {
+      g.beginPath();
+      g.moveTo(i + 8, 64);
+      g.lineTo(i + 72, 0);
+      g.stroke();
+    }
+  }
+  const weaveTex = new THREE.CanvasTexture(weave);
+  weaveTex.wrapS = weaveTex.wrapT = THREE.RepeatWrapping;
+  weaveTex.repeat.set(3, 3);
+  graphite.bumpMap = weaveTex;
+  graphite.bumpScale = 1.5;
+  track.push(panelTex, weaveTex);
+  const rubber = new THREE.MeshStandardMaterial({ color: "#0d0f15", metalness: 0.2, roughness: 0.7 });
+  track.push(rubber);
 
   const part = (geo: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D, x = 0, y = 0, z = 0) => {
     const m = new THREE.Mesh(geo, mat);
@@ -58,6 +119,11 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
   part(box(0.6, 0.2, 0.36, 0.07), graphite, hips);
   part(box(0.64, 0.05, 0.4, 0.02), trim, hips, 0, 0.1, 0);
   part(box(0.2, 0.16, 0.05, 0.03), armor, hips, 0, -0.01, 0.19);
+  for (const sd of [-1, 1]) {
+    part(box(0.17, 0.2, 0.04, 0.02), armor, hips, sd * 0.2, -0.12, 0.17).rotation.set(0.12, 0, sd * 0.1);
+    part(box(0.012, 0.16, 0.01, 0.004), glow, hips, sd * 0.2, -0.12, 0.2);
+  }
+  part(box(0.34, 0.2, 0.04, 0.02), armor, hips, 0, -0.1, -0.18).rotation.x = -0.1;
 
   // ----- legs
   const legs = [-1, 1].map((s) => {
@@ -73,11 +139,17 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
     part(box(0.17, 0.33, 0.2, 0.06), armor, knee, 0, -0.2, 0.045);
     part(box(0.055, 0.26, 0.02, 0.01), trim, knee, 0, -0.2, 0.155);
     part(box(0.15, 0.2, 0.1, 0.04), graphite, knee, 0, -0.2, -0.09); // calf pack
+    part(box(0.014, 0.28, 0.012, 0.004), glow, hip, s * 0.1, -0.22, 0.095);
+    part(box(0.012, 0.26, 0.01, 0.004), glow, knee, s * 0.088, -0.2, 0.1);
+    part(new THREE.CylinderGeometry(0.022, 0.022, 0.2, 10), rubber, hip, s * 0.07, -0.16, -0.11);
+    part(new THREE.CylinderGeometry(0.012, 0.012, 0.26, 8), steel, hip, s * 0.07, -0.3, -0.11);
+    for (let v = 0; v < 3; v++) part(box(0.1, 0.014, 0.01, 0.003), rubber, knee, 0, -0.1 - v * 0.05, 0.16);
     const ankle = pivot(knee, 0, -0.47, 0);
     part(new THREE.SphereGeometry(0.06, 14, 10), steel, ankle);
     part(box(0.2, 0.09, 0.4, 0.04), graphite, ankle, 0, -0.07, 0.07);
     part(box(0.2, 0.07, 0.17, 0.035), armor, ankle, 0, -0.045, 0.2);
     part(box(0.2, 0.025, 0.42, 0.01), steel, ankle, 0, -0.115, 0.07); // sole
+    for (let tr = 0; tr < 4; tr++) part(box(0.2, 0.012, 0.03, 0.004), rubber, ankle, 0, -0.13, -0.08 + tr * 0.1); // treads
     return { hip, knee };
   });
 
@@ -100,6 +172,36 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
     part(box(0.16, 0.05, 0.02, 0.008), trim, chest, s * 0.17, 0.1, 0.245);
   }
   part(box(0.84, 0.05, 0.5, 0.02), graphite, chest, 0, 0.02, 0); // waist ring
+  part(box(0.5, 0.012, 0.01, 0.004), glow, chest, 0, 0.55, 0.246);
+  for (const sd of [-1, 1]) part(box(0.012, 0.3, 0.01, 0.004), glow, chest, sd * 0.38, 0.3, 0.2);
+  // the agent's name on a little plate under the reactor
+  const plate = document.createElement("canvas");
+  plate.width = 256;
+  plate.height = 64;
+  {
+    const g = plate.getContext("2d")!;
+    g.fillStyle = "#0a0d14";
+    g.fillRect(0, 0, 256, 64);
+    g.strokeStyle = "#" + new THREE.Color(trimColour).getHexString();
+    g.lineWidth = 4;
+    g.strokeRect(3, 3, 250, 58);
+    g.fillStyle = "#f2f5fb";
+    g.font = "700 34px ui-monospace, Consolas, monospace";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(label.toUpperCase().slice(0, 10), 128, 34);
+  }
+  const plateTex = new THREE.CanvasTexture(plate);
+  plateTex.colorSpace = THREE.SRGBColorSpace;
+  plateTex.anisotropy = 4;
+  const plateMat = new THREE.MeshStandardMaterial({ map: plateTex, roughness: 0.4, metalness: 0.3 });
+  track.push(plateTex, plateMat);
+  const nameplate = part(new THREE.PlaneGeometry(0.34, 0.085), plateMat, chest, 0, 0.115, 0.2455);
+  nameplate.castShadow = false;
+  // a ring of tick marks that turns around the reactor
+  const spinRing = pivot(chest, 0, 0.3, 0.28);
+  const ticks = part(new THREE.TorusGeometry(0.125, 0.007, 6, 32, Math.PI * 1.5), glow, spinRing);
+  ticks.castShadow = false;
   part(box(0.52, 0.44, 0.22, 0.05), graphite, chest, 0, 0.34, -0.34); // back pack
   for (let i = 0; i < 4; i++) part(box(0.36, 0.022, 0.012, 0.005), glow, chest, 0, 0.5 - i * 0.09, -0.455);
   for (const s of [-1, 1]) part(new THREE.CylinderGeometry(0.045, 0.06, 0.2, 14), steel, chest, s * 0.17, 0.62, -0.34); // exhausts
@@ -112,7 +214,7 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
   // ----- head
   const head = pivot(chest, 0, 0.68, 0);
   part(new RoundedBoxGeometry(0.5, 0.4, 0.46, 5, 0.15), armor, head, 0, 0.2, 0);
-  part(box(0.41, 0.2, 0.1, 0.06), glass, head, 0, 0.22, 0.2);
+  part(box(0.41, 0.2, 0.1, 0.06), glass, head, 0, 0.22, 0.21);
   for (const s of [-1, 1]) {
     part(box(0.1, 0.034, 0.02, 0.012), glow, head, s * 0.09, 0.235, 0.255);
     const ear = part(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 28), graphite, head, s * 0.27, 0.2, 0);
@@ -121,6 +223,13 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
     ring.rotation.y = Math.PI / 2;
   }
   part(box(0.06, 0.025, 0.3, 0.01), trim, head, 0, 0.405, 0); // crest
+  part(box(0.45, 0.25, 0.07, 0.03), steel, head, 0, 0.22, 0.185); // visor frame
+  part(box(0.44, 0.03, 0.13, 0.012), armor, head, 0, 0.35, 0.19).rotation.x = -0.18; // brow
+  part(box(0.28, 0.07, 0.2, 0.03), graphite, head, 0, 0.03, 0.12); // chin
+  for (const sd of [-1, 1]) {
+    part(box(0.05, 0.14, 0.22, 0.02), armor, head, sd * 0.235, 0.14, 0.1);
+    part(box(0.01, 0.08, 0.14, 0.004), glow, head, sd * 0.262, 0.14, 0.1);
+  }
   part(new THREE.CylinderGeometry(0.011, 0.011, 0.22, 8), steel, head, 0.13, 0.5, -0.05);
   const bulb = part(new THREE.SphereGeometry(0.03, 12, 8), glow, head, 0.13, 0.62, -0.05);
   bulb.castShadow = false;
@@ -132,6 +241,11 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
     const pad = part(new THREE.SphereGeometry(0.17, 20, 14), armor, shoulder, s * 0.04, 0.045, 0);
     pad.scale.set(0.9, 0.78, 1);
     part(box(0.04, 0.05, 0.2, 0.01), trim, shoulder, s * 0.115, 0.1, 0);
+    part(box(0.05, 0.2, 0.24, 0.02), trim, shoulder, s * 0.19, 0.0, 0).rotation.z = s * -0.25;
+    const lamp = part(new THREE.SphereGeometry(0.022, 10, 8), glow, shoulder, s * 0.06, 0.2, 0.0);
+    lamp.castShadow = false;
+    part(box(0.012, 0.2, 0.01, 0.004), glow, shoulder, s * 0.07, -0.18, 0.075);
+    part(new THREE.CylinderGeometry(0.016, 0.016, 0.28, 8), steel, shoulder, -s * 0.078, -0.2, 0.05);
     part(new THREE.CylinderGeometry(0.07, 0.06, 0.37, 18), graphite, shoulder, 0, -0.2, 0);
     part(box(0.15, 0.22, 0.16, 0.05), armor, shoulder, 0, -0.16, 0);
     const elbow = pivot(shoulder, 0, -0.39, 0);
@@ -139,10 +253,15 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
     part(new THREE.CylinderGeometry(0.06, 0.047, 0.34, 18), graphite, elbow, 0, -0.18, 0);
     part(box(0.135, 0.23, 0.15, 0.05), armor, elbow, 0, -0.15, 0.01);
     part(box(0.05, 0.18, 0.012, 0.005), trim, elbow, 0, -0.15, 0.09);
+    part(box(0.012, 0.2, 0.01, 0.004), glow, elbow, s * 0.07, -0.16, 0.085);
+    part(new THREE.CylinderGeometry(0.014, 0.014, 0.22, 8), steel, elbow, -s * 0.06, -0.14, 0.05);
     const wrist = pivot(elbow, 0, -0.36, 0);
     part(new THREE.SphereGeometry(0.048, 12, 10), steel, wrist);
     part(box(0.105, 0.09, 0.055, 0.02), graphite, wrist, 0, -0.07, 0);
-    for (const x of [-0.034, 0, 0.034]) part(box(0.024, 0.075, 0.03, 0.01), steel, wrist, x, -0.15, 0.005);
+    for (const x of [-0.034, 0, 0.034]) {
+      part(box(0.024, 0.07, 0.03, 0.01), steel, wrist, x, -0.145, 0.005);
+      part(box(0.021, 0.055, 0.026, 0.008), graphite, wrist, x, -0.205, 0.02).rotation.x = -0.35;
+    }
     part(box(0.03, 0.06, 0.03, 0.01), steel, wrist, -s * 0.07, -0.08, 0.02).rotation.z = s * 0.5;
     return { shoulder, elbow };
   });
@@ -288,9 +407,9 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
       p.spineX = 0.34 + breathe * 0.02;
       p.headX = 0.7 + breathe * 0.03;
       p.headY = 0;
-      p.drop = -0.095;
-      p.thigh = [-0.5, -0.5];
-      p.knee = [0.9, 0.9];
+      p.drop = -0.13;
+      p.thigh = [-0.62, -0.62];
+      p.knee = [1.1, 1.1];
       for (const i of [0, 1] as const) {
         p.sh[i].x = 0.15;
         p.sh[i].z = (i === 0 ? -1 : 1) * 0.06;
@@ -352,6 +471,8 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color):
       ease(a.shoulder, "z", p.sh[i].z, k);
       ease(a.elbow, "x", p.el[i], k);
     });
+
+    spinRing.rotation.z -= dt * (state === "working" ? 3.2 : state === "sleeping" ? 0.2 : 1.2);
 
     // eyes blink now and then
     const blink = (t * 0.37 + phase) % 3.1 < 0.12 ? 0.15 : 1;

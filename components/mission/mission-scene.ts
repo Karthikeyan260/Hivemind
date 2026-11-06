@@ -339,7 +339,7 @@ export class MissionScene {
   }
 
   private buildFloor() {
-    const floorMat = new THREE.MeshPhysicalMaterial({ color: "#0a0f1c", metalness: 0.7, roughness: 0.5, clearcoat: 0.1, clearcoatRoughness: 0.5, envMapIntensity: 0.3 });
+    const floorMat = new THREE.MeshPhysicalMaterial({ color: "#0a0f1c", metalness: 0.7, roughness: 0.5, clearcoat: 0.05, clearcoatRoughness: 0.6, envMapIntensity: 0.12 });
     const floor = new THREE.Mesh(new THREE.CircleGeometry(60, 96), floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -449,7 +449,7 @@ export class MissionScene {
     ring.position.y = 0.42;
 
     // the robot itself: built in code, scaled to a fixed height, standing on the plinth
-    const rig = buildRobot(PAINT[a.id], col);
+    const rig = buildRobot(PAINT[a.id], col, a.name);
     rig.root.scale.setScalar(ROBOT_SCALE);
     rig.root.position.y = 0.4;
     this.disposables.push(rig);
@@ -635,8 +635,8 @@ export class MissionScene {
     const p = this.pods.find((x) => x.id === id);
     if (!p) return;
     p.burst = 1;
-    this.tTarget.set(p.pos.x * 0.92, 2.7, p.pos.z * 0.92);
-    this.tDist = this.portrait ? 14 : 10.5;
+    this.tTarget.set(p.pos.x * 0.92, 2.45, p.pos.z * 0.92);
+    this.tDist = this.portrait ? 11 : 7.6;
     this.tPhi = 1.38;
     // view the robot from outside the ring (it turns round to face us), so the core stays behind it
     const want = Math.atan2(p.pos.x, p.pos.z);
