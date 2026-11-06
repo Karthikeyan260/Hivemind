@@ -74,7 +74,7 @@ type Pod = {
   hv: number;
 };
 
-export type MissionHooks = { onSelect: (id: CrewId | null) => void; onHover: (id: CrewId | null, x: number, y: number) => void };
+export type MissionHooks = { onSelect: (id: CrewId | null) => void; onHover: (id: CrewId | null, x: number, y: number) => void; onReady?: () => void };
 
 /** A small floating tool that says what this agent does: clock, radar, globe, moon, paper, bell, hammer. */
 function makeProp(id: CrewId, tone: THREE.Color, track: Array<{ dispose(): void }>): THREE.Group {
@@ -278,6 +278,11 @@ export class MissionScene {
   private target = HOME_TARGET.clone();
   private tTarget = HOME_TARGET.clone();
   private follow = new THREE.Vector3();
+  private tmp = new THREE.Vector3();
+  private ema = 0.016;
+  private lastFrame = performance.now();
+  private level = 0;
+  private since = performance.now();
   private idleSince = performance.now();
   private pointers = new Map<number, { x: number; y: number }>();
   private pinch = 0;
@@ -289,14 +294,11 @@ export class MissionScene {
     this.mobile = window.matchMedia("(pointer: coarse)").matches || Math.min(window.innerWidth, window.innerHeight) < 600;
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: !this.mobile, powerPreference: "high-performance" });
     this.renderer = renderer;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.mobile ? 1.5 : 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.mobile ? 1.25 : 1.5));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    if (!this.mobile) {
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    }
+    renderer.shadowMap.enabled = false;
 
     const scene = this.scene;
     scene.background = new THREE.Color("#04060d");
@@ -357,7 +359,7 @@ export class MissionScene {
     s.add(new THREE.HemisphereLight("#8e9cff", "#080a14", 0.7));
     const key = new THREE.DirectionalLight("#cfdcff", 2.1);
     key.position.set(7, 16, 13);
-    if (!this.mobile) {
+    if (false as boolean) {
       key.castShadow = true;
       key.shadow.mapSize.set(2048, 2048);
       const c = key.shadow.camera;
@@ -576,13 +578,25 @@ export class MissionScene {
       this.pending = crew; // build the pods once the robot model has arrived
       return;
     }
-    if (this.pods.length === 0) crew.forEach((a, i) => this.pods.push(this.buildPod(a, i, crew.length)));
+    if (this.pods.length === 0) {
+      crew.forEach((a, i) => this.pods.push(this.buildPod(a, i, crew.length)));
+      this.hooks.onReady?.();
+    }
     for (const a of crew) {
       const p = this.pods.find((x) => x.id === a.id);
       if (!p) continue;
       if (p.key && p.state !== a.state) {
         p.burst = 1; // a ring of light when a mood changes
-        if (p.state === "working" && (a.state === "idle" || a.state === "sleeping")) p.cele = 1; // it finished: celebrate
+        const was = p.state;
+        if (was === "working" && (a.state === "idle" || a.state === "sleeping")) {
+          p.cele = 1; // it finished: celebrate, then carry the result to the core
+          setTimeout(() => !this.dead && this.startErrand(p, null), 2800);
+        }
+        // Clockwork is what wakes the others: when a job starts, it walks over to set it going
+        if (a.state === "working" && was !== "working" && p.id !== "scheduler") {
+          const clock = this.pods.find((x) => x.id === "scheduler");
+          if (clock) this.startErrand(clock, p);
+        }
       }
       p.state = a.state;
       p.tgt.set(HEX[a.state]);
@@ -606,7 +620,6 @@ export class MissionScene {
     const now = performance.now() / 1000;
     const busy = mode === "work" || mode === "idle";
     if (p.errand && (!busy || this.selected === p.id)) p.errand = null;
-    if (!p.errand && busy && now > p.nextErrand && this.pods.length > 1 && now > p.hostUntil) this.startErrand(p);
     const hosting = p.hostUntil > now && busy;
     const list = mode === "work" ? st.work : mode === "idle" ? st.idle : [mode === "sleep" ? st.sleep : ALERT_STOP];
     let stop = list[p.stopIdx % list.length];
@@ -643,7 +656,6 @@ export class MissionScene {
         }
         if (p.dwell <= 0) {
           p.errand = null;
-          p.nextErrand = now + 7 + ((p.phase * 13) % 6);
           p.arrived = false;
         }
       } else if (p.dwell <= 0 && list.length > 1 && !hosting) {
@@ -662,11 +674,9 @@ export class MissionScene {
     root.position.y += ((onPlinth ? 0.4 : 0.02) - root.position.y) * (1 - Math.pow(0.001, dt));
   }
 
-  /** Sends a robot across the deck to visit a colleague (or to report to the core). */
-  private startErrand(p: Pod) {
-    const others = this.pods.filter((o) => o !== p);
-    const toCore = Math.random() < 0.22;
-    const host = toCore ? null : others[Math.floor(Math.random() * others.length)];
+  /** Sends a robot across the deck for a reason: to hand its result to the core (host null), or to start a colleague (host). */
+  private startErrand(p: Pod, host: Pod | null) {
+    if (p.errand || p.state === "sleeping" || p.state === "alert") return;
     p.group.updateMatrixWorld(true);
     const here = p.group.position;
     let wx: number;
@@ -966,7 +976,7 @@ export class MissionScene {
       this.behave(p, dt);
 
       // where is the viewer, from the robot's point of view?
-      const local = p.rig.root.worldToLocal(this.camera.position.clone());
+      const local = p.rig.root.worldToLocal(this.tmp.copy(this.camera.position));
       const look = THREE.MathUtils.clamp(Math.atan2(local.x, local.z), -1.1, 1.1);
       p.rig.pose(p.state, t, dt, p.phase, look, this.hover === p.id, p.cele > 0, p.act, p.walk);
       p.station.update(t, dt, p.act, p.state === "working");
@@ -1019,6 +1029,23 @@ export class MissionScene {
     }
     arr.needsUpdate = true;
 
+    // watch the frame time; if it stays slow, shed the expensive extras one at a time
+    this.ema += ((now - this.lastFrame) / 1000 - this.ema) * 0.05;
+    this.lastFrame = now;
+    if (now - this.since > 2500 && this.ema > 0.034 && this.level < 3) {
+      this.level++;
+      this.since = now;
+      if (this.level === 1) {
+        this.composer?.dispose();
+        this.composer = null;
+      } else if (this.level === 2) {
+        this.renderer.setPixelRatio(1);
+        this.renderer.setSize(this.w, this.h, false);
+      } else {
+        this.dust.visible = false;
+        this.scene.fog = null;
+      }
+    }
     if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
   }

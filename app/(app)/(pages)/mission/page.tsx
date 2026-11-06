@@ -22,6 +22,7 @@ export default function MissionPage() {
   const [open, setOpen] = useState<CrewId | null>(null);
   const [now, setNow] = useState(0);
   const [touring, setTouring] = useState(false);
+  const [ready, setReady] = useState(false);
   const [hover, setHover] = useState<{ id: CrewId; x: number; y: number } | null>(null);
 
   const pick = useCallback((id: CrewId | null) => {
@@ -62,7 +63,7 @@ export default function MissionPage() {
     host.current.appendChild(el);
     let s: MissionScene;
     try {
-      s = new MissionScene(el, { onSelect: userPick, onHover: (id, x, y) => setHover(id ? { id, x, y } : null) });
+      s = new MissionScene(el, { onSelect: userPick, onHover: (id, x, y) => setHover(id ? { id, x, y } : null), onReady: () => setReady(true) });
     } catch {
       el.remove();
       setTimeout(() => setFailed(true));
@@ -165,6 +166,15 @@ export default function MissionPage() {
             </div>
           );
         })()}
+
+      {!ready && !failed && (
+        <div className="pointer-events-none absolute inset-0 z-[5] grid place-items-center">
+          <div className="flex flex-col items-center gap-3 text-sm text-white/70">
+            <span className="size-8 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
+            Building the deck…
+          </div>
+        </div>
+      )}
 
       {failed && <p className="absolute inset-0 grid place-items-center px-6 text-center text-sm text-white/70">This device can&apos;t draw the command deck (it needs WebGL).</p>}
 
