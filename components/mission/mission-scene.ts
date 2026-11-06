@@ -19,6 +19,8 @@ const ROBOT_H = 3.1; // height of a robot in world units
 const ROBOT_SCALE = ROBOT_H / RIG_HEIGHT;
 const R = 8.6; // pod ring radius
 const SPAN = Math.PI * 1.2; // arc the pods sit on, open toward the camera
+const R_PORTRAIT = 6.4; // a tighter ring for tall, narrow screens
+const SPAN_PORTRAIT = Math.PI * 1.08;
 const HOME_TARGET = new THREE.Vector3(0, 2.6, 0);
 const PANEL_Y = 6.5;
 // Each agent has its own paint, so the crew reads as individuals; the mood shows in the visor, halo and floor light.
@@ -49,6 +51,7 @@ type Pod = {
   tgt: THREE.Color;
   phase: number;
   born: number;
+  lift: number;
   burst: number;
   hv: number;
 };
@@ -442,8 +445,9 @@ export class MissionScene {
   }
 
   private buildPod(a: CrewAgent, i: number, n: number): Pod {
-    const ang = (n === 1 ? 0 : i / (n - 1) - 0.5) * SPAN;
-    const pos = new THREE.Vector3(Math.sin(ang) * R, 0, -Math.cos(ang) * R);
+    const ringR = this.portrait ? R_PORTRAIT : R;
+    const ang = (n === 1 ? 0 : i / (n - 1) - 0.5) * (this.portrait ? SPAN_PORTRAIT : SPAN);
+    const pos = new THREE.Vector3(Math.sin(ang) * ringR, 0, -Math.cos(ang) * ringR);
     const group = new THREE.Group();
     group.position.copy(pos);
     const col = new THREE.Color(HEX[a.state]);
@@ -526,7 +530,7 @@ export class MissionScene {
     });
     this.disposables.push(metal, ringMat, haloMat, glowMat, rippleMat, tex, panel.material as THREE.Material, hit.material as THREE.Material, beamMat, packetMat);
 
-    return { id: a.id, pos, group, rig, halo, haloMat, prop, ringMat, glowMat, rippleMat, ripple, beamMat, packetMat, curve, packets, panel, tex, ctx, key: "", state: a.state, col, tgt: col.clone(), phase: i * 1.3, born: performance.now() + 250 + i * 130, burst: 0, hv: 0 };
+    return { id: a.id, pos, group, rig, halo, haloMat, prop, ringMat, glowMat, rippleMat, ripple, beamMat, packetMat, curve, packets, panel, tex, ctx, key: "", state: a.state, col, tgt: col.clone(), phase: i * 1.3, born: performance.now() + 250 + i * 130, lift: this.portrait && i % 2 ? 1.7 : 0, burst: 0, hv: 0 };
   }
 
   // ---------- data ----------
@@ -654,7 +658,7 @@ export class MissionScene {
   }
 
   private homeDist() {
-    return this.portrait ? 43 : 25;
+    return this.portrait ? 31 : 25;
   }
 
   // ---------- input ----------
@@ -842,11 +846,11 @@ export class MissionScene {
 
       // label always faces the viewer, upright
       p.panel.quaternion.copy(p.group.quaternion).invert().multiply(this.camera.quaternion);
-      p.panel.position.y = PANEL_Y + (isSel ? 0.1 : 0) + Math.sin(t * 0.9 + p.phase) * 0.05;
+      p.panel.position.y = PANEL_Y + p.lift + (isSel ? 0.1 : 0) + Math.sin(t * 0.9 + p.phase) * 0.05;
       const pm = p.panel.material as THREE.MeshBasicMaterial;
       pm.opacity += ((this.selected && !isSel ? 0.1 : 1) - pm.opacity) * (1 - Math.pow(0.01, dt));
       const d = cam.distanceTo(p.group.position);
-      p.panel.scale.setScalar(THREE.MathUtils.clamp(d / 22, 0.5, 1.1) * (1 + 0.12 * p.hv));
+      p.panel.scale.setScalar(THREE.MathUtils.clamp(d / 22, 0.5, 1.1) * (1 + 0.12 * p.hv) * (this.portrait ? 0.72 : 1));
     }
 
     const arr = this.dust.geometry.attributes.position as THREE.BufferAttribute;
