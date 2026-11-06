@@ -17,6 +17,7 @@ export const VOICE_PAGES = [
   { path: "/settings", what: "settings" },
   { path: "/autopilot", what: "Autopilot: what HIVEMIND noticed on its own, run it now, its schedule" },
   { path: "/web", what: "Web tasks: HIVEMIND driving a cloud browser, approvals, live view" },
+  { path: "/mission", what: "Mission control: a live 3D room where a robot for each background agent (scheduler, autopilot, web agent, dream, brief, reminders, app builder) shows what it is doing" },
   { path: "/map", what: "Map: where you are, your devices, places nearby, routes" },
   { path: "/apps", what: "Apps HIVEMIND built for the owner (create, change, delete)" },
   { path: "/routines", what: "Routines: one phrase that does several things (good morning, gym mode)" },

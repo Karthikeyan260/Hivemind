@@ -1,6 +1,6 @@
 "use client";
 
-import { Blocks, ChefHat, Images, PartyPopper, Sprout, Gamepad2, Laugh, Moon, Newspaper, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
+import { Activity, Blocks, ChefHat, Images, PartyPopper, Sprout, Gamepad2, Laugh, Moon, Newspaper, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
@@ -19,6 +19,7 @@ const TABS = [
 const MORE = [
   { label: "Autopilot", href: "/autopilot", icon: Compass },
   { label: "Web tasks", href: "/web", icon: Globe },
+  { label: "Mission control", href: "/mission", icon: Activity },
   { label: "Map", href: "/map", icon: MapIcon },
   { label: "Apps", href: "/apps", icon: Blocks },
   { label: "Routines", href: "/routines", icon: Zap },
