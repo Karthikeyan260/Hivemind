@@ -39,6 +39,8 @@ export type NetHooks = {
 const BEAT_MS = 4000;
 /** A new opener waits this long for friends already watching to say where the film is, before it speaks for the film itself. */
 const GRACE_MS = 6000;
+/** How long a new opener waits for answers to "where is the film?" before it decides what to believe. */
+const ASK_WINDOW_MS = 2500;
 /** A friend that has not reached an opener for this many knocks tries to become the opener itself. */
 const KNOCKS_BEFORE_CLAIM = 2;
 /** A connection that has been "disconnected" this long is dropped (it may heal in a blip, so not at once). */
@@ -64,11 +66,16 @@ export class TheatreNet {
   private opener = false;
   /** An opener who just arrived may not speak for the film until it knows where the others are (see GRACE_MS). */
   private authoritative = true;
+  /** The answers to "where is the film?" collected while a new opener is deciding, by who gave them. */
+  private answers = new Map<string, { m: Playback; at: number }>();
+  private deciding = false;
+  /** The answers disagreed, so a new opener believes nobody and stays quiet about the film. */
+  private undecided = false;
   private claiming = false;
   private knocks = 0;
   private dialing: { dc: DataConnection; at: number } | null = null;
-  /** When we last asked the room where the film is: an answer from a friend (not the opener) only counts shortly after. */
-  private askedAt = 0;
+  /** Who we asked where the film is, and when: an answer counts only from one of them, once, and only shortly after. */
+  private asked = new Map<string, number>();
   talking = false;
 
   constructor(
@@ -189,12 +196,59 @@ export class TheatreNet {
     this.hooks.line("", fresh ? "The room is open. Share the room link and press play when your friends are in." : "You are running the room now. The room link works as before.", true);
     // Arriving first we may be the only one here, or friends already watching may be about to knock: wait to hear where they are.
     this.authoritative = !fresh;
-    if (fresh) this.timers.push(setTimeout(() => (this.authoritative = true), GRACE_MS));
+    // (Not if the answers we heard disagreed: then we say nothing about the film until a later round settles it.)
+    if (fresh) this.timers.push(setTimeout(() => void (this.undecided || (this.authoritative = true)), GRACE_MS));
     this.timers.push(
       setInterval(() => {
         if (this.authoritative && this.conns.size) this.send({ t: "hb", ...this.hooks.here() });
       }, BEAT_MS),
     );
+  }
+
+  /** A new opener asks each newcomer where the film is, then (after a short wait for the answers) decides once. */
+  private startDecision() {
+    if (this.deciding) return;
+    this.deciding = true;
+    this.timers.push(setTimeout(() => this.decide(), ASK_WINDOW_MS));
+  }
+
+  /**
+   * What to believe about the film's place, from the answers we collected. Nobody has anywhere real to be: it is a new
+   * room, and we speak for the film. Otherwise we believe the place that most answerers agree on, and only if that is
+   * more than half of them: one hostile newcomer can't move the film of a room whose friends say otherwise, and when the
+   * answers split evenly we believe nobody and say nothing about the film (a later newcomer's answer can settle it).
+   */
+  private decide() {
+    this.deciding = false;
+    const answers = [...this.answers.values()];
+    this.answers.clear();
+    this.asked.clear(); // the window for answers is over: a late "answer" no longer counts
+    if (this.authoritative || this.dead) return;
+    const now = Date.now();
+    // A film that was playing has moved on since the answer was given.
+    const list = answers.map(({ m, at }) => ({ ...m, time: m.playing ? m.time + (now - at) / 1000 : m.time }));
+    // Only a place somebody really got to counts as a place (a friend who just arrived is at 0:00), but every answerer
+    // counts in the vote: someone with nothing to report is a vote against a forged place.
+    const real = list.filter((a) => a.playing || a.time > 2);
+    if (real.length === 0) {
+      this.undecided = false;
+      this.authoritative = true;
+      this.send({ t: "state", ...this.hooks.here() });
+      return;
+    }
+    let best: Playback[] = [];
+    for (const a of real) {
+      const agree = real.filter((b) => b.movie === a.movie && Math.abs(b.time - a.time) <= 15);
+      if (agree.length > best.length) best = agree;
+    }
+    if (best.length * 2 > list.length) {
+      this.undecided = false;
+      this.authoritative = true;
+      this.hooks.playback(best[0]);
+    } else {
+      this.undecided = true;
+      if (this.debugOn) this.dbg("answers disagree, believing nobody");
+    }
   }
 
   /**
@@ -245,7 +299,10 @@ export class TheatreNet {
   }
 
   send(m: Msg, to?: DataConnection) {
-    if (m.t === "ask") this.askedAt = Date.now();
+    if (m.t === "ask") {
+      const now = Date.now();
+      for (const c of to ? [to] : this.conns.values()) if (c.open) this.asked.set(c.peer, now);
+    }
     if (to) {
       if (to.open) to.send(m);
       return;
@@ -395,14 +452,7 @@ export class TheatreNet {
           if (this.authoritative) this.send({ t: "state", ...h.here() }, dc);
           else {
             this.send({ t: "ask" }, dc);
-            // A newcomer who has nothing to tell (a new room) answers with a place that doesn't count: then we speak for the film.
-            this.timers.push(
-              setTimeout(() => {
-                if (this.authoritative) return; // somebody told us where the film is: nothing more to say
-                this.authoritative = true;
-                this.send({ t: "state", ...h.here() }, dc);
-              }, 2500),
-            );
+            this.startDecision();
           }
         }
         if (this.talking) this.callPeer(id);
@@ -419,12 +469,20 @@ export class TheatreNet {
       case "state":
       case "hb": {
         // The heartbeat is the opener's alone. A "state" is the answer to "where is the film": from the opener, or from a friend we just asked.
-        if (m.t === "hb" ? id !== this.hostId : id !== this.hostId && Date.now() - this.askedAt > 10_000) break;
-        const real = m.playing || m.time > 2;
-        // Until we know where the film is, only a place somebody really got to counts: a friend who just arrived is at 0:00.
+        if (m.t === "hb") {
+          if (id !== this.hostId) break;
+        } else if (id !== this.hostId) {
+          // From a friend: only the answer to a question we put to that very friend, once, and soon after.
+          const at = this.asked.get(id);
+          this.asked.delete(id);
+          if (at === undefined || Date.now() - at > 10_000) break;
+        }
+        // Until we know where the film is, we only collect answers (see decide()): a friend who just arrived is at 0:00,
+        // and one answer alone, from someone we know nothing about, is not enough to move everybody's film.
         if (this.opener && !this.authoritative) {
-          if (!real) break;
-          this.authoritative = true;
+          // (an answer from someone who is only at 0:00 is kept too: it counts as saying "nothing to report", against a forged place)
+          if (this.answers.size < MAX_CONNS) this.answers.set(id, { m: { movie: m.movie, time: m.time, playing: m.playing }, at: Date.now() });
+          break;
         }
         h.playback({ movie: m.movie, time: m.time, playing: m.playing });
         break;

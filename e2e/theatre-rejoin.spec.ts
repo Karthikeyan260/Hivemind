@@ -39,6 +39,9 @@ async function arrive(browser: Browser, code: string, name: string, query = ""):
   await page.locator("#nm").fill(name);
   await page.getByRole("button", { name: /Open the room|Join the screening/ }).click();
   await expect(page.getByPlaceholder(BOX)).toBeVisible({ timeout: T });
+  // The chat box is there as soon as "join" is pressed, before the room is really open or connected. Wait for the real
+  // thing, or two people arriving one after the other can race for the room and the first one may not be the opener.
+  await expect(page.locator("aside").getByText(/The room is open|You are running the room now|\bjoined$/).first()).toBeVisible({ timeout: T });
   const person = { name, ctx, page };
   everyone.add(person);
   return person;
@@ -116,7 +119,7 @@ test.describe("one permanent room link", () => {
 
     // The original opener returns by the very same link: they join the friend's room.
     host = await arrive(browser, code, "Host", `?m=${film.id}&host=1`);
-    await expect(priya.page.getByText("Host joined")).toBeVisible({ timeout: T });
+    await expect(priya.page.getByText("Host joined")).toHaveCount(2, { timeout: T }); // once the first time, once on returning
     await expect(host.page.getByText(/The room is open/)).toHaveCount(0);
     await talk(host, priya, "back");
     await Promise.all([host.ctx.close(), priya.ctx.close()]);

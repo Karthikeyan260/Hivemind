@@ -124,6 +124,8 @@ async function arrive(browser: Browser, room: string, name: string): Promise<{ c
   await page.locator("#nm").fill(name);
   await page.getByRole("button", { name: /Open the room|Join the screening/ }).click();
   await expect(page.getByPlaceholder(BOX)).toBeVisible({ timeout: T });
+  // Wait until the room is really open or connected (the chat box shows as soon as "join" is pressed).
+  await expect(page.locator("aside").getByText(/The room is open|You are running the room now|\bjoined$/).first()).toBeVisible({ timeout: T });
   return { ctx, page, errors };
 }
 
@@ -137,10 +139,8 @@ test.describe("a hostile peer inside a live room", () => {
     await expect(host.page.getByText("Priya joined")).toBeVisible({ timeout: T });
     await expect(friend.page.getByText("Host joined")).toBeVisible({ timeout: T });
 
-    // In its first seconds a new opener asks whoever arrives "where is the film?" and believes the answer (that's how a room
-    // that was empty for a moment learns where the others are; every member can already press play or seek). Once the room
-    // has settled, forged heartbeats and states mean nothing: that is what this test attacks, so let the room settle first.
-    await host.page.waitForTimeout(12_000);
+    // No waiting for the room to settle: even in a new opener's first seconds, when it asks everyone "where is the film?",
+    // a forged answer must not move the film (an honest friend who has only just arrived answers "nothing yet", and outvotes it).
 
     // The attacker: another browser holding the same link, speaking the room's protocol by hand.
     const actx = await browser.newContext();

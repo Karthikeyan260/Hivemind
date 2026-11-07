@@ -390,9 +390,97 @@ describe("only the opener does the opener's jobs", () => {
     const { h, peer } = await openRoom();
     const guest = arrive(peer, "guest", "Priya");
     guest.receive({ t: "state", movie: "other-film", time: 0, playing: false });
+    vi.advanceTimersByTime(3000);
     expect(h.playback).not.toHaveBeenCalled();
-    guest.receive({ t: "state", movie: FILM, time: 3600, playing: true });
-    expect(h.playback).toHaveBeenCalledWith({ movie: FILM, time: 3600, playing: true });
+    // (the answer is weighed after a short wait, and a film that was playing has moved on a little since)
+    const lone = await openRoom();
+    const only = arrive(lone.peer, "only", "Priya");
+    only.receive({ t: "state", movie: FILM, time: 3600, playing: true });
+    vi.advanceTimersByTime(3000);
+    expect(lone.h.playback).toHaveBeenCalledTimes(1);
+    const got = vi.mocked(lone.h.playback).mock.calls[0][0];
+    expect(got.movie).toBe(FILM);
+    expect(got.playing).toBe(true);
+    expect(got.time).toBeGreaterThanOrEqual(3600);
+    expect(got.time).toBeLessThan(3610);
+  });
+});
+
+describe("a new opener and the answers it gets about where the film is", () => {
+  const settle = () => vi.advanceTimersByTime(3000);
+  const statesSent = (c: InstanceType<typeof fake.Conn>) => c.sent.filter((m) => (m as { t?: string }).t === "state").length;
+
+  it("one hostile answer against one honest one: it believes nobody and says nothing about the film", async () => {
+    const { h, peer } = await openRoom();
+    const honest = arrive(peer, "honest", "Priya");
+    const liar = arrive(peer, "liar", "Mallory");
+    honest.receive({ t: "state", movie: FILM, time: 1200, playing: true });
+    liar.receive({ t: "state", movie: "other-film", time: 5000, playing: true });
+    settle();
+    expect(h.playback).not.toHaveBeenCalled(); // not moved to the liar's film...
+    expect(statesSent(honest)).toBe(0); // ...and the room is not told a made-up place either
+    vi.advanceTimersByTime(20_000); // the heartbeat stays silent too, even after the opener's first seconds
+    expect(honest.sent.some((m) => (m as { t?: string }).t === "hb")).toBe(false);
+  });
+
+  it("a hostile answer against a friend who has just arrived (nothing to report) is not believed either", async () => {
+    const { h, peer } = await openRoom();
+    const fresh = arrive(peer, "fresh", "Priya");
+    const liar = arrive(peer, "liar", "Mallory");
+    fresh.receive({ t: "state", movie: FILM, time: 0, playing: false });
+    liar.receive({ t: "state", movie: "other-film", time: 5000, playing: true });
+    settle();
+    expect(h.playback).not.toHaveBeenCalled();
+    expect(statesSent(fresh)).toBe(0);
+  });
+
+  it("two honest answers outvote one hostile answer", async () => {
+    const { h, peer } = await openRoom();
+    const a = arrive(peer, "a", "Priya");
+    const b = arrive(peer, "b", "Ravi");
+    const liar = arrive(peer, "liar", "Mallory");
+    a.receive({ t: "state", movie: FILM, time: 1200, playing: false });
+    b.receive({ t: "state", movie: FILM, time: 1205, playing: false });
+    liar.receive({ t: "state", movie: "other-film", time: 5000, playing: true });
+    settle();
+    expect(h.playback).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(h.playback).mock.calls[0][0].movie).toBe(FILM);
+    expect(vi.mocked(h.playback).mock.calls[0][0].time).toBeLessThan(1210);
+  });
+
+  it("answers that agree on the film but not on the minute are not a majority", async () => {
+    const { h, peer } = await openRoom();
+    const a = arrive(peer, "a", "Priya");
+    const b = arrive(peer, "b", "Ravi");
+    a.receive({ t: "state", movie: FILM, time: 600, playing: false });
+    b.receive({ t: "state", movie: FILM, time: 4000, playing: false });
+    settle();
+    expect(h.playback).not.toHaveBeenCalled();
+  });
+
+  it("when nobody has anywhere real to be, it is a new room and the opener speaks for the film", async () => {
+    const { peer } = await openRoom();
+    const a = arrive(peer, "a", "Priya");
+    a.receive({ t: "state", movie: "other-film", time: 0, playing: false });
+    settle();
+    expect(statesSent(a)).toBe(1);
+  });
+
+  it("a later newcomer can settle a standoff", async () => {
+    const { h, peer } = await openRoom();
+    const honest = arrive(peer, "honest", "Priya");
+    const liar = arrive(peer, "liar", "Mallory");
+    honest.receive({ t: "state", movie: FILM, time: 1200, playing: false });
+    liar.receive({ t: "state", movie: "other-film", time: 5000, playing: false });
+    settle();
+    expect(h.playback).not.toHaveBeenCalled();
+    const third = arrive(peer, "third", "Ravi");
+    honest.receive({ t: "state", movie: FILM, time: 1200, playing: false });
+    liar.receive({ t: "state", movie: "other-film", time: 5000, playing: false });
+    third.receive({ t: "state", movie: FILM, time: 1203, playing: false });
+    settle();
+    expect(h.playback).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(h.playback).mock.calls[0][0].movie).toBe(FILM);
   });
 });
 
@@ -498,5 +586,50 @@ describe("a flood of raw traffic", () => {
       vi.advanceTimersByTime(11_000);
     }
     expect(c.closed).toBe(false);
+  });
+});
+
+describe("answers to 'where is the film?' come only from who was asked, once", () => {
+  it("a stranger who arrives after the question can't answer it, however recently it was asked of someone else", async () => {
+    const { h, net, peer } = await openRoom();
+    const friend = arrive(peer, "friend", "Priya");
+    vi.advanceTimersByTime(3000); // the opener has settled
+    net.send({ t: "ask" }); // "catch up": asks everyone who is here now (the friend)
+    const stranger = arrive(peer, "stranger", "Mallory");
+    stranger.receive({ t: "state", movie: "other-film", time: 5000, playing: true });
+    expect(h.playback).not.toHaveBeenCalled();
+    friend.receive({ t: "state", movie: FILM, time: 100, playing: true });
+    expect(h.playback).toHaveBeenCalledTimes(1);
+  });
+
+  it("an answer counts once: the same friend can't keep steering the film with more 'answers'", async () => {
+    const { h, net, peer } = await openRoom();
+    const friend = arrive(peer, "friend", "Priya");
+    vi.advanceTimersByTime(3000);
+    net.send({ t: "ask" });
+    friend.receive({ t: "state", movie: FILM, time: 100, playing: true });
+    friend.receive({ t: "state", movie: "other-film", time: 4000, playing: true });
+    friend.receive({ t: "state", movie: FILM, time: 9000, playing: true });
+    expect(h.playback).toHaveBeenCalledTimes(1);
+  });
+
+  it("nothing is accepted from a settled opener's friend that nobody asked for", async () => {
+    const { h, peer } = await openRoom();
+    const friend = arrive(peer, "friend", "Priya");
+    vi.advanceTimersByTime(3000);
+    friend.receive({ t: "state", movie: FILM, time: 100, playing: true });
+    expect(h.playback).not.toHaveBeenCalled();
+  });
+});
+
+describe("answers expire", () => {
+  it("an answer that comes ten seconds after the question is too late", async () => {
+    const { h, net, peer } = await openRoom();
+    const friend = arrive(peer, "friend", "Priya");
+    vi.advanceTimersByTime(3000);
+    net.send({ t: "ask" });
+    vi.advanceTimersByTime(11_000);
+    friend.receive({ t: "state", movie: FILM, time: 100, playing: true });
+    expect(h.playback).not.toHaveBeenCalled();
   });
 });
