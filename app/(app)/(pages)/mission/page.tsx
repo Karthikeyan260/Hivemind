@@ -107,29 +107,29 @@ export default function MissionPage() {
   return (
     <div className="fixed inset-0 z-[350] select-none overflow-hidden bg-[#04060d] text-white">
       <div ref={host} className="absolute inset-0" />
-      <div className="pointer-events-none absolute inset-0 [background:radial-gradient(ellipse_at_center,transparent_55%,rgba(2,4,10,0.6)_100%)]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#04060d]/85 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#04060d]/80 to-transparent" />
+      <div className="pointer-events-none absolute inset-0 [background:radial-gradient(ellipse_at_center,transparent_55%,rgba(8,4,20,0.55)_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-[#0b0718]/80 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#0b0718]/70 to-transparent" />
 
       <div className="absolute inset-x-0 top-0 flex items-start gap-3 p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:p-6">
         <Link href="/" aria-label="Back" className="grid size-10 shrink-0 place-items-center rounded-full border border-white/15 bg-white/8 backdrop-blur-md hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-indigo-300">
           <ArrowLeft size={17} />
         </Link>
-        <div className="min-w-0 pr-24 sm:pr-28">
-          <p className="flex items-center gap-2 font-mono text-[10px] tracking-[0.3em] text-white/60 uppercase">
-            <span className={`size-1.5 rounded-full ${error ? "bg-rose-400" : "animate-pulse bg-emerald-400"}`} />
-            Mission control · {error ? "offline" : "live"}
-          </p>
-          <p className="mt-0.5 font-serif text-2xl leading-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)] sm:text-3xl">{mission ? mission.summary : error ? "Can't reach the crew" : "Waking the crew…"}</p>
-          {mission && (
-            <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-white/60">
-              <span>{count("working")} working</span>
-              <span>{count("idle")} ready</span>
-              <span>{count("sleeping")} asleep</span>
-              <span className={count("alert") ? "text-rose-300" : ""}>{count("alert")} need you</span>
-            </p>
-          )}
+        <div className="min-w-0 pr-36 sm:pr-56">
+          <h1 className="font-sans text-3xl leading-[1.05] font-bold tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.7)] sm:text-5xl">
+            An AI Army
+            <br />
+            Working for <span className="bg-gradient-to-r from-violet-400 to-indigo-300 bg-clip-text text-transparent">You</span>
+          </h1>
+          <p className="mt-2 max-w-md text-xs leading-snug text-white/75 drop-shadow-[0_1px_8px_rgba(0,0,0,0.8)] sm:text-sm">{mission ? mission.summary : error ? "Can't reach the crew" : "Waking the crew…"}</p>
         </div>
+      </div>
+
+      <div className="pointer-events-none absolute top-[max(1rem,env(safe-area-inset-top))] right-4 z-10 flex items-center gap-2 sm:top-6 sm:right-6">
+        <span className="flex h-10 items-center gap-2 rounded-full border border-emerald-400/30 bg-black/40 px-3.5 text-xs backdrop-blur-md">
+          <span className={`size-2 rounded-full ${error ? "bg-rose-400" : "animate-pulse bg-emerald-400"}`} />
+          {error ? "Offline" : `Live · ${crew.length} agents`}
+        </span>
       </div>
 
       {crew.length > 0 && (
@@ -141,7 +141,7 @@ export default function MissionPage() {
             } else setTouring(true);
           }}
           aria-pressed={touring}
-          className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 z-10 flex h-10 items-center gap-1.5 rounded-full border border-white/15 bg-white/8 px-3.5 text-xs backdrop-blur-md hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-indigo-300 sm:right-6 sm:top-6"
+          className="absolute top-[max(1rem,env(safe-area-inset-top))] right-4 mt-12 z-10 flex h-9 items-center gap-1.5 rounded-full border border-white/15 bg-white/8 px-3.5 text-xs backdrop-blur-md hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-indigo-300 sm:right-6 sm:top-6"
         >
           {touring ? <Square size={13} /> : <Play size={13} />}
           {touring ? "Stop tour" : "Tour"}
@@ -194,6 +194,27 @@ export default function MissionPage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {crew.length > 0 && (
+        <div className="pointer-events-none absolute bottom-6 left-6 hidden items-center gap-3 rounded-2xl border border-white/12 bg-black/40 py-3 pr-5 pl-3 backdrop-blur-md xl:flex">
+          <span className="grid size-10 place-items-center rounded-xl bg-violet-500/25 text-violet-200">
+            <span className="flex h-4 items-end gap-0.5">
+              <i className="block w-1 rounded-sm bg-current" style={{ height: "40%" }} />
+              <i className="block w-1 rounded-sm bg-current" style={{ height: "100%" }} />
+              <i className="block w-1 rounded-sm bg-current" style={{ height: "65%" }} />
+            </span>
+          </span>
+          <span className="text-xs leading-tight">
+            <b className="block text-sm font-semibold">
+              {count("working") + count("idle")} of {crew.length} agents active
+            </b>
+            <span className="mt-0.5 flex items-center gap-1.5 text-white/65">
+              <span className={`size-1.5 rounded-full ${count("alert") ? "bg-rose-400" : "bg-emerald-400"}`} />
+              {count("alert") ? `${count("alert")} need you` : "All systems nominal"}
+            </span>
+          </span>
         </div>
       )}
 

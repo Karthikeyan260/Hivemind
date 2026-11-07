@@ -17,16 +17,40 @@ import type { AgentState, CrewAgent, CrewId } from "@/lib/mission";
  */
 
 const HEX: Record<AgentState, string> = { working: "#34d399", idle: "#38bdf8", sleeping: "#64748b", alert: "#f43f5e" };
-const WORD: Record<AgentState, string> = { working: "WORKING", idle: "READY", sleeping: "ASLEEP", alert: "NEEDS YOU" };
 const MODEL = "/models/xbot.glb";
-const ROBOT_H = 3.1; // height of a robot in world units
+const ROBOT_H = 2.45; // height of a robot in world units
 const ROBOT_SCALE = ROBOT_H / RIG_HEIGHT;
 const R = 8.6; // pod ring radius
-const SPAN = Math.PI * 1.2; // arc the pods sit on, open toward the camera
+const SPAN = Math.PI * 1.2;
+const PLACE: Record<string, { a: number; r: number }> = {
+  scheduler: { a: -0.52, r: 10.6 },
+  autopilot: { a: -0.4, r: 8.8 },
+  web: { a: -0.16, r: 12.6 },
+  dream: { a: 0.06, r: 10.6 },
+  brief: { a: 0.26, r: 8.8 },
+  reminders: { a: 0.4, r: 11.2 },
+  apps: { a: 0.57, r: 8.6 },
+}; // arc the pods sit on, open toward the camera
 const R_PORTRAIT = 6.4; // a tighter ring for tall, narrow screens
 const SPAN_PORTRAIT = Math.PI * 1.08;
-const HOME_TARGET = new THREE.Vector3(0, 2.6, 0);
+const HOME_TARGET = new THREE.Vector3(0, 2.4, -3.6);
 const PANEL_Y = 6.5;
+// Why a robot leaves its area: who it goes to see and what it is doing there (shown on its label while it is out).
+const JOBS: Record<CrewId, Array<{ to: CrewId | "core"; text: string }>> = {
+  scheduler: [{ to: "autopilot", text: "Winding up Scout's schedule" }, { to: "core", text: "Syncing the clocks with the core" }, { to: "apps", text: "Fetching gears from Maker" }],
+  autopilot: [{ to: "web", text: "Comparing sky data with Rover" }, { to: "core", text: "Sending sweep results to the core" }],
+  web: [{ to: "brief", text: "Handing research to Scribe" }, { to: "core", text: "Uploading findings to the core" }],
+  dream: [{ to: "brief", text: "Sharing last night's notes" }],
+  brief: [{ to: "web", text: "Asking Rover for sources" }, { to: "reminders", text: "Passing the brief to Bell" }, { to: "core", text: "Filing the brief in the core" }],
+  reminders: [{ to: "apps", text: "Warning Maker of a deadline" }, { to: "brief", text: "Checking the calendar with Scribe" }],
+  apps: [{ to: "scheduler", text: "Asking Clockwork for timing" }, { to: "core", text: "Delivering a new app to the core" }],
+};
+const STROLLS = [
+  { z: 5.5, text: "Stretching its legs" },
+  { z: 8, text: "Looking out over the city" },
+  { z: 6.5, text: "Checking the hall is tidy" },
+];
+const GLYPH: Record<CrewId, string> = { scheduler: "⚙", autopilot: "🔭", web: "</>", dream: "☾", brief: "✎", reminders: "🔔", apps: "⬢" };
 const ALERT_STOP: Stop = { x: 0, z: 1.0, face: 0, act: "none", dwell: 99 };
 // Each agent has its own paint, so the crew reads as individuals; the mood shows in the visor, halo and floor light.
 const PAINT: Record<CrewId, string> = { scheduler: "#f59e0b", autopilot: "#38bdf8", web: "#a78bfa", dream: "#6366f1", brief: "#2dd4bf", reminders: "#f472b6", apps: "#fb923c" };
@@ -46,6 +70,11 @@ type Pod = {
   walk: number;
   errand: { x: number; z: number; face: number; host: Pod | null } | null;
   nextErrand: number;
+  fw: number; // half-width of its floor (box rooms)
+  fd: number; // half-depth, or the radius for round floors
+  fr: number; // radius for round floors, 0 for box rooms
+  note: string | null; // what it is doing right now, shown on its label while it is out on a job
+  agent: CrewAgent;
   hostUntil: number;
   hostFace: number;
   halo: THREE.Mesh;
@@ -200,6 +229,51 @@ function radialTexture(stops: Array<[number, string]>) {
   return t;
 }
 
+/** A holographic Earth: glowing blue sphere with a lat/long grid and light continents. */
+function globeTexture() {
+  const W = 1024;
+  const H = 512;
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const g = c.getContext("2d")!;
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#1b3fa8");
+  bg.addColorStop(0.5, "#2563eb");
+  bg.addColorStop(1, "#1b3fa8");
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W, H);
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  g.fillStyle = "rgba(160,235,255,0.85)";
+  const lands: Array<[number, number, number]> = [[220, 190, 1], [330, 340, 0.8], [520, 180, 1.1], [560, 320, 0.9], [760, 170, 1.2], [850, 360, 0.6], [140, 120, 0.5]];
+  for (const [lx, ly, sc] of lands) {
+    for (let i = 0; i < 26; i++) {
+      g.beginPath();
+      g.ellipse(lx + (rnd() - 0.5) * 120 * sc, ly + (rnd() - 0.5) * 90 * sc, (14 + rnd() * 36) * sc, (10 + rnd() * 26) * sc, rnd() * 3, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  g.strokeStyle = "rgba(190,240,255,0.55)";
+  g.lineWidth = 1.5;
+  for (let x = 0; x <= W; x += W / 24) {
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, H);
+    g.stroke();
+  }
+  for (let y = 0; y <= H; y += H / 12) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(W, y);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
 /** Concentric rings and tick marks drawn on the floor, like a landing pad. */
 function floorTexture() {
   const S = 2048;
@@ -244,7 +318,7 @@ export class MissionScene {
   private renderer: THREE.WebGLRenderer;
   private composer: EffectComposer | null = null;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(42, 1, 0.1, 140);
+  private camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400);
   private pods: Pod[] = [];
   private hit: THREE.Object3D[] = [];
   private disposables: Array<{ dispose(): void }> = [];
@@ -257,6 +331,7 @@ export class MissionScene {
   private sweepMat!: THREE.MeshBasicMaterial;
   private gyros: THREE.Mesh[] = [];
   private dust!: THREE.Points;
+  private sky: THREE.Mesh | null = null;
   private raf = 0;
   private last = performance.now();
   private t0 = performance.now();
@@ -279,6 +354,8 @@ export class MissionScene {
   private tTarget = HOME_TARGET.clone();
   private follow = new THREE.Vector3();
   private tmp = new THREE.Vector3();
+  private sepA = new THREE.Vector3();
+  private sepB = new THREE.Vector3();
   private ema = 0.016;
   private lastFrame = performance.now();
   private level = 0;
@@ -301,17 +378,19 @@ export class MissionScene {
     renderer.shadowMap.enabled = false;
 
     const scene = this.scene;
-    scene.background = new THREE.Color("#04060d");
-    scene.fog = new THREE.Fog("#04060d", 30, 70);
+    scene.background = new THREE.Color("#1a1230");
+    scene.fog = new THREE.Fog("#241a38", 34, 70); // same as the sky's horizon, so the floor melts into it
+    this.buildSky();
     const pmrem = new THREE.PMREMGenerator(renderer);
     const env = pmrem.fromScene(new RoomEnvironment(), 0.04);
     scene.environment = env.texture;
-    scene.environmentIntensity = 0.7;
+    scene.environmentIntensity = 0.55;
     this.disposables.push(pmrem, env);
 
     this.buildLights();
     this.buildFloor();
     this.buildCore();
+    this.buildHall();
     this.buildDust();
 
     if (!this.mobile) {
@@ -356,8 +435,8 @@ export class MissionScene {
   // ---------- build ----------
   private buildLights() {
     const s = this.scene;
-    s.add(new THREE.HemisphereLight("#8e9cff", "#080a14", 0.7));
-    const key = new THREE.DirectionalLight("#cfdcff", 2.1);
+    s.add(new THREE.HemisphereLight("#ffc9a0", "#2a1c40", 0.55));
+    const key = new THREE.DirectionalLight("#ffb27a", 1.5);
     key.position.set(7, 16, 13);
     if (false as boolean) {
       key.castShadow = true;
@@ -371,23 +450,23 @@ export class MissionScene {
       key.shadow.normalBias = 0.03;
     }
     s.add(key);
-    const rim = new THREE.DirectionalLight("#7c6cff", 1.1);
+    const rim = new THREE.DirectionalLight("#6a7cff", 1.7);
     rim.position.set(-12, 8, -14);
     s.add(rim);
-    const core = new THREE.PointLight("#818cf8", 45, 22, 2);
+    const core = new THREE.PointLight("#5aa0ff", 45, 26, 2);
     core.position.set(0, 3.2, 0);
     s.add(core);
   }
 
   private buildFloor() {
-    const floorMat = new THREE.MeshPhysicalMaterial({ color: "#0a0f1c", metalness: 0.2, roughness: 0.9, clearcoat: 0, envMapIntensity: 0 });
+    const floorMat = new THREE.MeshPhysicalMaterial({ color: "#25222f", metalness: 0.65, roughness: 0.3, clearcoat: 0.5, clearcoatRoughness: 0.25, envMapIntensity: 1.0 });
     const floor = new THREE.Mesh(new THREE.CircleGeometry(60, 96), floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.scene.add(floor);
 
     const ft = floorTexture();
-    const decal = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ map: ft, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    const decal = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ map: ft, color: "#ffb36b", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     decal.rotation.x = -Math.PI / 2;
     decal.position.y = 0.012;
     this.scene.add(decal);
@@ -424,7 +503,7 @@ export class MissionScene {
 
   private buildCore() {
     const g = this.coreGroup;
-    const metal = new THREE.MeshStandardMaterial({ color: "#1b2236", metalness: 0.9, roughness: 0.3 });
+    const metal = new THREE.MeshStandardMaterial({ color: "#2c2a3c", metalness: 0.8, roughness: 0.28 });
     const glowCol = new THREE.Color("#818cf8");
     const base = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.5, 0.5, 64), metal);
     base.position.y = 0.25;
@@ -437,17 +516,19 @@ export class MissionScene {
     stem.position.y = 1.2;
     stem.castShadow = true;
 
-    const coreMat = new THREE.MeshStandardMaterial({ color: "#0b1020", emissive: glowCol, emissiveIntensity: 3, roughness: 0.2, metalness: 0.2 });
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.62, 48, 32), coreMat);
+    const globeTex = globeTexture();
+    const coreMat = new THREE.MeshStandardMaterial({ color: "#1a2f80", map: globeTex, emissive: "#ffffff", emissiveMap: globeTex, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.93 });
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(1.35, 48, 32), coreMat);
+    this.disposables.push(globeTex);
     orb.position.y = 3.1;
-    const cage = new THREE.Mesh(new THREE.IcosahedronGeometry(1.15, 1), new THREE.MeshBasicMaterial({ color: "#a5b4fc", wireframe: true, transparent: true, opacity: 0.55, toneMapped: false }));
+    const cage = new THREE.Mesh(new THREE.IcosahedronGeometry(1.62, 2), new THREE.MeshBasicMaterial({ color: "#7dd3fc", wireframe: true, transparent: true, opacity: 0.22, toneMapped: false }));
     cage.position.y = 3.1;
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), new THREE.MeshBasicMaterial({ map: radialTexture([[0, "rgba(129,140,248,0.4)"], [0.4, "rgba(99,102,241,0.1)"], [1, "rgba(99,102,241,0)"]]), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     glow.rotation.x = -Math.PI / 2;
     glow.position.y = 0.04;
 
     const gyroMat = new THREE.MeshStandardMaterial({ color: "#2a3350", metalness: 1, roughness: 0.25, emissive: "#4f46e5", emissiveIntensity: 0.5 });
-    for (const [r, tilt] of [[1.55, 0], [1.9, Math.PI / 3], [2.25, -Math.PI / 3]] as const) {
+    for (const [r, tilt] of [[2.0, 0], [2.35, Math.PI / 3], [2.7, -Math.PI / 3]] as const) {
       const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.035, 12, 128), gyroMat);
       m.position.y = 3.1;
       m.rotation.x = Math.PI / 2 + tilt;
@@ -461,6 +542,191 @@ export class MissionScene {
     g.userData.coreMat = coreMat;
     this.scene.add(g);
     this.disposables.push(metal, baseRingMat, coreMat, gyroMat, glow.material as THREE.Material);
+  }
+
+  /** A dusk sky over a sci-fi city, seen through the hangar windows. */
+  private buildSky() {
+    const W = 1024;
+    const H = 512;
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    const g = c.getContext("2d")!;
+    // top of the image = zenith, middle = horizon
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, "#150f33");
+    grad.addColorStop(0.22, "#2b2060");
+    grad.addColorStop(0.38, "#6d3f80");
+    grad.addColorStop(0.46, "#c8606a");
+    grad.addColorStop(0.5, "#f0905a");
+    grad.addColorStop(0.52, "#1a1230");
+    grad.addColorStop(1, "#1a1230");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, H);
+    // nebula clouds
+    const clouds: Array<[number, number, number, string]> = [
+      [200, 150, 190, "rgba(255,190,150,0.35)"],
+      [520, 100, 230, "rgba(190,140,255,0.30)"],
+      [820, 170, 200, "rgba(130,190,255,0.28)"],
+      [360, 215, 170, "rgba(255,150,190,0.30)"],
+      [960, 90, 150, "rgba(255,200,160,0.30)"],
+    ];
+    for (const [x, y, r, col] of clouds) {
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, col);
+      rg.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = rg;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // a sci-fi city skyline at dusk: two layers of towers with lit windows, and a few flying ships
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const towers = (fill: string, hMin: number, hMax: number, lit: number) => {
+      for (let x = 0; x < W; ) {
+        const bw = 12 + rnd() * 30;
+        const bh = hMin + rnd() * rnd() * (hMax - hMin);
+        g.fillStyle = fill;
+        g.fillRect(x, H * 0.52 - bh, bw, bh);
+        if (rnd() < 0.3) g.fillRect(x + bw * 0.45, H * 0.52 - bh - 14 - rnd() * 24, 3, 24); // antenna
+        for (let wy = H * 0.52 - bh + 4; wy < H * 0.52 - 3; wy += 6) {
+          for (let wx = x + 3; wx < x + bw - 3; wx += 5) {
+            if (rnd() < lit) {
+              g.fillStyle = rnd() < 0.7 ? "rgba(255,200,130,0.85)" : "rgba(130,210,255,0.85)";
+              g.fillRect(wx, wy, 2, 3);
+            }
+          }
+        }
+        x += bw + 1 + rnd() * 3;
+      }
+    };
+    towers("#3a2a5e", 20, 90, 0.08);
+    towers("#14102a", 16, 120, 0.22);
+    g.fillStyle = "rgba(255,230,200,0.9)";
+    for (let i = 0; i < 9; i++) g.fillRect(rnd() * W, H * (0.3 + rnd() * 0.12), 7, 2);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false, toneMapped: false });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(125, 48, 24), mat);
+    dome.renderOrder = -10;
+    this.sky = dome;
+    this.scene.add(dome);
+    this.disposables.push(tex, mat, dome.geometry);
+  }
+
+  /** The hangar around the deck: a window wall onto the city, a skylight ring, the hologram column, a K emblem, plants. */
+  private buildHall() {
+    const sc = this.scene;
+    const dark = new THREE.MeshStandardMaterial({ color: "#1d1a29", metalness: 0.7, roughness: 0.4, envMapIntensity: 0.6, side: THREE.BackSide });
+    const metal = new THREE.MeshStandardMaterial({ color: "#2b2738", metalness: 0.8, roughness: 0.35, envMapIntensity: 0.7 });
+    const amber = new THREE.MeshBasicMaterial({ color: "#ffae5e", toneMapped: false });
+    const blue = new THREE.MeshBasicMaterial({ color: "#60b4ff", toneMapped: false });
+    this.disposables.push(dark, metal, amber, blue);
+    const RW = 31;
+    // low wall and window mullions all the way round
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(RW, RW, 4.2, 64, 1, true), dark);
+    wall.position.y = 2.1;
+    const sill = new THREE.Mesh(new THREE.TorusGeometry(RW - 0.1, 0.12, 6, 96), amber);
+    sill.rotation.x = Math.PI / 2;
+    sill.position.y = 4.25;
+    const base = new THREE.Mesh(new THREE.TorusGeometry(RW - 0.1, 0.07, 6, 96), amber);
+    base.rotation.x = Math.PI / 2;
+    base.position.y = 0.5;
+    sc.add(wall, sill, base);
+    const mull = new THREE.BoxGeometry(0.7, 15, 0.7);
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2;
+      const m = new THREE.Mesh(mull, metal);
+      m.position.set(Math.sin(a) * RW, 4.2 + 7.5, -Math.cos(a) * RW);
+      m.rotation.z = Math.sin(a * 2) * 0.05;
+      sc.add(m);
+    }
+    // ceiling: a dark annulus with a skylight over the hologram, lit rings round the opening
+    const ceil = new THREE.Mesh(new THREE.RingGeometry(6.2, RW + 1, 64, 1), new THREE.MeshStandardMaterial({ color: "#16131f", metalness: 0.8, roughness: 0.4, side: THREE.FrontSide }));
+    ceil.rotation.x = Math.PI / 2;
+    ceil.position.y = 19;
+    sc.add(ceil);
+    for (const [r, y, mat] of [[6.2, 18.85, blue], [7.1, 18.85, amber], [RW - 1, 18.85, amber]] as const) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.1, 6, 96), mat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = y;
+      sc.add(ring);
+    }
+    this.disposables.push(ceil.material as THREE.Material);
+    // the hologram column from the skylight down to the dais
+    const cc = document.createElement("canvas");
+    cc.width = 4;
+    cc.height = 256;
+    const cg = cc.getContext("2d")!;
+    const gr = cg.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, "rgba(96,180,255,0.35)");
+    gr.addColorStop(0.5, "rgba(70,140,255,0.08)");
+    gr.addColorStop(1, "rgba(96,180,255,0.3)");
+    cg.fillStyle = gr;
+    cg.fillRect(0, 0, 4, 256);
+    const ct = new THREE.CanvasTexture(cc);
+    ct.colorSpace = THREE.SRGBColorSpace;
+    const colMat = new THREE.MeshBasicMaterial({ map: ct, transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.1, 18.6, 48, 1, true), colMat);
+    col.position.y = 9.3;
+    sc.add(col);
+    this.disposables.push(ct, colMat);
+    // the K emblem on the back wall
+    const ec = document.createElement("canvas");
+    ec.width = ec.height = 512;
+    const eg = ec.getContext("2d")!;
+    const rg = eg.createRadialGradient(256, 256, 40, 256, 256, 250);
+    rg.addColorStop(0, "#3a3550");
+    rg.addColorStop(1, "#15121f");
+    eg.fillStyle = rg;
+    eg.beginPath();
+    eg.arc(256, 256, 240, 0, Math.PI * 2);
+    eg.fill();
+    eg.strokeStyle = "#cfd3e6";
+    eg.lineWidth = 16;
+    eg.stroke();
+    eg.strokeStyle = "#ffb36b";
+    eg.lineWidth = 5;
+    eg.beginPath();
+    eg.arc(256, 256, 214, 0, Math.PI * 2);
+    eg.stroke();
+    eg.font = "900 330px Georgia, serif";
+    eg.textAlign = "center";
+    eg.textBaseline = "middle";
+    eg.shadowColor = "#ffb36b";
+    eg.shadowBlur = 24;
+    eg.fillStyle = "#e9ecf8";
+    eg.fillText("K", 256, 282);
+    const et = new THREE.CanvasTexture(ec);
+    et.colorSpace = THREE.SRGBColorSpace;
+    et.anisotropy = 8;
+    const emblem = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({ map: et, transparent: true, toneMapped: false }));
+    emblem.position.set(-9, 11, -(RW - 0.8));
+    sc.add(emblem);
+    this.disposables.push(et, emblem.material as THREE.Material);
+    // plants in pots round the edge and between the stations
+    const potGeo = new THREE.CylinderGeometry(0.55, 0.42, 0.9, 12);
+    const leafGeo = new THREE.SphereGeometry(0.5, 8, 6);
+    const potMat = new THREE.MeshStandardMaterial({ color: "#3a3446", metalness: 0.3, roughness: 0.5 });
+    const leafMat = new THREE.MeshStandardMaterial({ color: "#2f8a52", roughness: 0.6, emissive: "#0c3a1c", emissiveIntensity: 0.4 });
+    this.disposables.push(potGeo, leafGeo, potMat, leafMat);
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 + 0.2;
+      const r = i % 2 ? RW - 2 : 20.5;
+      const g2 = new THREE.Group();
+      g2.position.set(Math.sin(a) * r, 0, -Math.cos(a) * r);
+      const pot = new THREE.Mesh(potGeo, potMat);
+      pot.position.y = 0.45;
+      g2.add(pot);
+      for (let k = 0; k < 9; k++) {
+        const lf = new THREE.Mesh(leafGeo, leafMat);
+        const ka = (k / 9) * Math.PI * 2;
+        lf.scale.set(0.35, 1.5 + (k % 3) * 0.35, 0.6);
+        lf.position.set(Math.sin(ka) * 0.32, 1.5 + (k % 3) * 0.25, Math.cos(ka) * 0.32);
+        lf.rotation.set(Math.cos(ka) * 0.5, ka, -Math.sin(ka) * 0.5);
+        g2.add(lf);
+      }
+      sc.add(g2);
+    }
   }
 
   private buildDust() {
@@ -482,21 +748,157 @@ export class MissionScene {
   }
 
   private buildPod(a: CrewAgent, i: number, n: number): Pod {
-    const ringR = this.portrait ? R_PORTRAIT : R;
-    const ang = (n === 1 ? 0 : i / (n - 1) - 0.5) * (this.portrait ? SPAN_PORTRAIT : SPAN);
+    // Not an even ring: every area sits at its own angle and distance, so the hall reads as seven different places.
+    const spot = PLACE[a.id] ?? { a: (n === 1 ? 0 : i / (n - 1) - 0.5) * 1.2, r: R };
+    const ang = spot.a * Math.PI * (this.portrait ? SPAN_PORTRAIT / SPAN : 1);
+    const ringR = spot.r * (this.portrait ? R_PORTRAIT / R : 1);
     const pos = new THREE.Vector3(Math.sin(ang) * ringR, 0, -Math.cos(ang) * ringR);
     const group = new THREE.Group();
     group.position.copy(pos);
     const col = new THREE.Color(HEX[a.state]);
 
-    const metal = new THREE.MeshStandardMaterial({ color: "#131929", metalness: 0.85, roughness: 0.5, envMapIntensity: 0.45 });
+    const metal = new THREE.MeshStandardMaterial({ color: "#2a2638", metalness: 0.7, roughness: 0.35, envMapIntensity: 0.7 });
     const ringMat = new THREE.MeshStandardMaterial({ color: "#0b1020", emissive: col, emissiveIntensity: 2.2, roughness: 0.4 });
-    const plinth = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.4, 0.4, 64), metal);
-    plinth.position.y = 0.2;
-    plinth.castShadow = plinth.receiveShadow = true;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.06, 12, 96), ringMat);
-    ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.42;
+    // Each agent has its own kind of place: round clock dais, observatory deck, control room, bedroom, study, bell plaza, workshop.
+    const TH: Record<string, { shape: "round" | "oct" | "box"; w: number; d: number; floor: string; wall: string | null; rough: number }> = {
+      scheduler: { shape: "round", w: 2.9, d: 2.9, floor: "#6a4a30", wall: null, rough: 0.5 },
+      autopilot: { shape: "oct", w: 2.9, d: 2.9, floor: "#2b3a58", wall: null, rough: 0.35 },
+      web: { shape: "box", w: 5.4, d: 4.7, floor: "#1e2a46", wall: "#16203a", rough: 0.3 },
+      dream: { shape: "box", w: 5.3, d: 4.7, floor: "#6b4a33", wall: "#43356a", rough: 0.6 },
+      brief: { shape: "box", w: 5.3, d: 4.7, floor: "#7a5a3a", wall: "#4a3a2a", rough: 0.6 },
+      reminders: { shape: "oct", w: 2.9, d: 2.9, floor: "#7a4a62", wall: null, rough: 0.45 },
+      apps: { shape: "box", w: 5.4, d: 4.7, floor: "#3a3d46", wall: "#2e3038", rough: 0.55 },
+    };
+    const th = TH[a.id] ?? TH.web;
+    const W = th.w;
+    const D = th.d;
+    const floorMat = new THREE.MeshStandardMaterial({ color: th.floor, metalness: 0.25, roughness: th.rough, envMapIntensity: 0.7 });
+    const wallMat = new THREE.MeshStandardMaterial({ color: th.wall ?? "#2a2433", metalness: 0.3, roughness: 0.55, envMapIntensity: 0.6 });
+    this.disposables.push(floorMat, wallMat);
+    const ring = new THREE.Group();
+    let slab: THREE.Mesh;
+    let plinth: THREE.Mesh;
+    if (th.shape === "box") {
+      slab = new THREE.Mesh(new THREE.BoxGeometry(W + 0.3, 0.14, D + 0.3), metal);
+      slab.position.y = 0.07;
+      plinth = new THREE.Mesh(new THREE.BoxGeometry(W, 0.26, D), floorMat);
+      plinth.position.y = 0.27;
+      const back = new THREE.Mesh(new THREE.BoxGeometry(W, 2.8, 0.16), wallMat);
+      back.position.set(0, 0.4 + 1.4, -D / 2 + 0.08);
+      const topStrip = new THREE.Mesh(new THREE.BoxGeometry(W, 0.07, 0.2), ringMat);
+      topStrip.position.set(0, 0.4 + 2.8, -D / 2 + 0.08);
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(W, 0.05, 0.2), ringMat);
+      skirt.position.set(0, 0.43, -D / 2 + 0.09);
+      const frontEdge = new THREE.Mesh(new THREE.BoxGeometry(W, 0.05, 0.08), ringMat);
+      frontEdge.position.set(0, 0.41, D / 2 - 0.04);
+      ring.add(back, topStrip, skirt, frontEdge);
+      // half-height side walls so each room feels enclosed from the front
+      for (const sx of [-1, 1]) {
+        const sw = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.1, D * 0.55), wallMat);
+        sw.position.set((sx * (W - 0.14)) / 2, 0.4 + 0.55, -D * 0.22);
+        const rl = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, D * 0.55), ringMat);
+        rl.position.set((sx * (W - 0.14)) / 2, 0.4 + 1.1, -D * 0.22);
+        ring.add(sw, rl);
+      }
+    } else {
+      const seg = th.shape === "round" ? 56 : 8;
+      slab = new THREE.Mesh(new THREE.CylinderGeometry(W + 0.35, W + 0.45, 0.14, seg), metal);
+      slab.position.y = 0.07;
+      plinth = new THREE.Mesh(new THREE.CylinderGeometry(W, W + 0.1, 0.26, seg), floorMat);
+      plinth.position.y = 0.27;
+      const edge = new THREE.Mesh(new THREE.TorusGeometry(W - 0.12, 0.05, 6, seg), ringMat);
+      edge.rotation.x = Math.PI / 2;
+      if (th.shape === "oct") edge.rotation.z = Math.PI / 8;
+      edge.position.y = 0.41;
+      ring.add(edge);
+      if (a.id === "autopilot") {
+        // observatory railing round the back half
+        const railMat = new THREE.MeshStandardMaterial({ color: "#aab3c6", metalness: 0.9, roughness: 0.3 });
+        this.disposables.push(railMat);
+        for (let k = 0; k <= 8; k++) {
+          const t = Math.PI * (0.08 + (k / 8) * 0.84);
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.1, 8), railMat);
+          post.position.set(Math.cos(t) * (W - 0.25), 0.95, -Math.sin(t) * (W - 0.25));
+          ring.add(post);
+        }
+        const rail = new THREE.Mesh(new THREE.TorusGeometry(W - 0.25, 0.035, 6, 48, Math.PI), railMat);
+        rail.rotation.x = -Math.PI / 2;
+        rail.position.y = 1.5;
+        ring.add(rail);
+      }
+      // steps up to the dais
+      const step = new THREE.Mesh(new THREE.CylinderGeometry(W + 0.75, W + 0.85, 0.07, seg), floorMat);
+      step.position.y = 0.035;
+      ring.add(step);
+    }
+    // a rug or floor marking that gives each place its own character
+    const rugCol: Record<string, string> = { dream: "#3c2a66", brief: "#5b3a8a", apps: "#facc15", web: "#2a4b8a" };
+    if (a.id === "dream" || a.id === "brief" || a.id === "web") {
+      const rug = new THREE.Mesh(a.id === "dream" ? new THREE.CircleGeometry(1.6, 40) : new THREE.PlaneGeometry(a.id === "web" ? 3.4 : 2.8, 1.9), new THREE.MeshStandardMaterial({ color: rugCol[a.id], roughness: 0.95 }));
+      rug.rotation.x = -Math.PI / 2;
+      rug.position.set(0, 0.405, 0.35);
+      this.disposables.push(rug.geometry, rug.material as THREE.Material);
+      ring.add(rug);
+    }
+    if (a.id === "apps") {
+      // yellow/black hazard stripes along the front of the workshop
+      const hz = new THREE.BoxGeometry(0.36, 0.03, 0.2);
+      const hy = new THREE.MeshBasicMaterial({ color: "#facc15", toneMapped: false });
+      const hk = new THREE.MeshBasicMaterial({ color: "#14141a", toneMapped: false });
+      this.disposables.push(hz, hy, hk);
+      for (let k = 0; k < 14; k++) {
+        const hm = new THREE.Mesh(hz, k % 2 ? hk : hy);
+        hm.position.set(-W / 2 + 0.3 + k * ((W - 0.6) / 13), 0.41, D / 2 - 0.2);
+        ring.add(hm);
+      }
+    }
+    const mark = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.01, 64), ringMat);
+    mark.rotation.x = -Math.PI / 2;
+    mark.position.y = 0.405;
+    ring.add(mark);
+    // clutter that makes it a working space: crates in one back corner, a warm lamp and a plant in the other
+    const crateMat = new THREE.MeshStandardMaterial({ color: "#5a4636", metalness: 0.4, roughness: 0.55, envMapIntensity: 0.6 });
+    const bandMat = new THREE.MeshBasicMaterial({ color: "#ffae5e", toneMapped: false });
+    const crateGeo = new THREE.BoxGeometry(0.95, 0.7, 0.95);
+    const crateGeo2 = new THREE.BoxGeometry(0.7, 0.55, 0.7);
+    const bandGeo = new THREE.BoxGeometry(0.97, 0.06, 0.97);
+    const c1 = new THREE.Mesh(crateGeo, crateMat);
+    c1.position.set(-2.0, 0.75, -1.65);
+    const c2 = new THREE.Mesh(crateGeo2, crateMat);
+    c2.position.set(-2.05, 1.38, -1.62);
+    c2.rotation.y = 0.5;
+    const c3 = new THREE.Mesh(crateGeo, crateMat);
+    c3.position.set(-1.0, 0.75, -1.85);
+    c3.rotation.y = -0.2;
+    for (const m of a.id === "scheduler" || a.id === "apps" || a.id === "autopilot" ? [c1, c3] : []) {
+      const band = new THREE.Mesh(bandGeo, bandMat);
+      band.position.copy(m.position);
+      band.rotation.y = m.rotation.y;
+      ring.add(band);
+    }
+    const poleMat = new THREE.MeshStandardMaterial({ color: "#2a2638", metalness: 0.8, roughness: 0.35 });
+    const lampGlow = new THREE.SpriteMaterial({ map: radialTexture([[0, "rgba(255,190,110,0.95)"], [0.35, "rgba(255,160,70,0.35)"], [1, "rgba(255,150,60,0)"]]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.7, 8), poleMat);
+    pole.position.set(2.1, 1.25, 1.95);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), bandMat);
+    bulb.position.set(2.1, 2.18, 1.95);
+    const gl = new THREE.Sprite(lampGlow);
+    gl.position.copy(bulb.position);
+    gl.scale.setScalar(2.2);
+    const potM = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.27, 0.5, 12), poleMat);
+    potM.position.set(-2.1, 0.65, 1.9);
+    for (let k = 0; k < 7; k++) {
+      const lf = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshStandardMaterial({ color: "#2f8a52", roughness: 0.6, emissive: "#0c3a1c", emissiveIntensity: 0.4 }));
+      const ka = (k / 7) * Math.PI * 2;
+      lf.scale.set(0.3, 1.5, 0.5);
+      lf.position.set(-2.1 + Math.sin(ka) * 0.2, 1.3 + (k % 2) * 0.15, 1.9 + Math.cos(ka) * 0.2);
+      lf.rotation.set(Math.cos(ka) * 0.5, ka, -Math.sin(ka) * 0.5);
+      ring.add(lf);
+      this.disposables.push(lf.geometry, lf.material as THREE.Material);
+    }
+    if (a.id === "scheduler" || a.id === "apps" || a.id === "autopilot") ring.add(c1, c2, c3);
+    ring.add(pole, bulb, gl, potM);
+    this.disposables.push(crateMat, bandMat, crateGeo, crateGeo2, bandGeo, poleMat, lampGlow, pole.geometry, bulb.geometry, potM.geometry);
 
     // the robot itself: built in code, scaled to a fixed height, standing on the plinth
     const rig = this.model ? buildMocapRobot(this.model, PAINT[a.id], col, ROBOT_SCALE) : buildRobot(PAINT[a.id], col, a.name);
@@ -522,12 +924,12 @@ export class MissionScene {
     // hologram label (billboarded each frame)
     const cv = document.createElement("canvas");
     cv.width = 640;
-    cv.height = 360;
+    cv.height = 200;
     const ctx = cv.getContext("2d")!;
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.91), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.06), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
     panel.position.y = PANEL_Y;
     panel.renderOrder = 5;
 
@@ -546,7 +948,7 @@ export class MissionScene {
     blob.position.y = 0.03; // rides with the robot, so its shadow follows it across the deck
     this.disposables.push(shadowTex, blob.material as THREE.Material);
     rig.root.add(blob);
-    group.add(plinth, ring, halo, glow, ripple, panel, hit, station.group);
+    group.add(slab, plinth, ring, halo, glow, ripple, panel, hit, station.group);
     group.add(rig.root);
     group.lookAt(0, 0, 0);
     this.scene.add(group);
@@ -569,7 +971,7 @@ export class MissionScene {
     });
     this.disposables.push(metal, ringMat, haloMat, glowMat, rippleMat, tex, panel.material as THREE.Material, hit.material as THREE.Material, beamMat, packetMat);
 
-    return { id: a.id, pos, group, rig, station, at: { x: HOME.x, z: HOME.z }, mode: "", stopIdx: 0, dwell: 0, arrived: false, act: "none" as Act, walk: 0, errand: null, nextErrand: performance.now() / 1000 + 4 + i * 1.7, hostUntil: 0, hostFace: 0, halo, haloMat, prop, ringMat, glowMat, rippleMat, ripple, beamMat, packetMat, curve, packets, panel, tex, ctx, key: "", state: a.state, col, tgt: col.clone(), phase: i * 1.3, born: performance.now() + 250 + i * 130, cele: 0, lift: this.portrait && i % 2 ? 1.7 : 0, burst: 0, hv: 0 };
+    return { id: a.id, pos, group, rig, station, at: { x: HOME.x, z: HOME.z }, mode: "", stopIdx: 0, dwell: 0, arrived: false, act: "none" as Act, walk: 0, errand: null, nextErrand: performance.now() / 1000 + 2 + i * 1.1, fw: th.shape === "box" ? W / 2 : W, fd: th.shape === "box" ? D / 2 : W, fr: th.shape === "box" ? 0 : W, note: null, agent: a, hostUntil: 0, hostFace: 0, halo, haloMat, prop, ringMat, glowMat, rippleMat, ripple, beamMat, packetMat, curve, packets, panel, tex, ctx, key: "", state: a.state, col, tgt: col.clone(), phase: i * 1.3, born: performance.now() + 250 + i * 130, cele: 0, lift: this.portrait && i % 2 ? 1.7 : 0, burst: 0, hv: 0 };
   }
 
   // ---------- data ----------
@@ -585,6 +987,7 @@ export class MissionScene {
     for (const a of crew) {
       const p = this.pods.find((x) => x.id === a.id);
       if (!p) continue;
+      p.agent = a;
       if (p.key && p.state !== a.state) {
         p.burst = 1; // a ring of light when a mood changes
         const was = p.state;
@@ -619,18 +1022,35 @@ export class MissionScene {
     }
     const now = performance.now() / 1000;
     const busy = mode === "work" || mode === "idle";
-    if (p.errand && (!busy || this.selected === p.id)) p.errand = null;
+    if (p.errand && (!busy || this.selected === p.id)) this.endErrand(p);
+    // Every so often a robot has a reason to walk across the hall to a colleague or to the core.
+    if (!p.errand && busy && this.selected !== p.id && now > p.nextErrand) {
+      p.nextErrand = now + 9 + ((p.phase * 17) % 8);
+      const jobs = JOBS[p.id].filter((j) => j.to === "core" || this.pods.find((x) => x.id === j.to)?.state !== "sleeping");
+      const job = jobs[Math.floor(Math.random() * jobs.length)];
+      // sometimes it just strolls out onto the open floor in front of its area, to stretch its legs or look around
+      if (Math.abs(p.group.position.x) > 4 && Math.random() < 0.4) {
+        const spots = STROLLS[Math.floor(Math.random() * STROLLS.length)];
+        this.startErrand(p, null, spots.text, { x: p.group.position.x * 0.92, z: spots.z });
+      } else if (job) this.startErrand(p, job.to === "core" ? null : (this.pods.find((x) => x.id === job.to) ?? null), job.text);
+    }
     const hosting = p.hostUntil > now && busy;
     const list = mode === "work" ? st.work : mode === "idle" ? st.idle : [mode === "sleep" ? st.sleep : ALERT_STOP];
     let stop = list[p.stopIdx % list.length];
     if (p.errand) stop = { x: p.errand.x, z: p.errand.z, face: p.errand.face, act: "chat", dwell: 5.5 };
     if (hosting) stop = { x: p.at.x, z: p.at.z, face: p.hostFace, act: "chat", dwell: 99 };
+    // Rooms have walls and props: to get in or out, walk through the open front.
+    const inside = (x: number, z: number) => (p.fr > 0 ? Math.hypot(x, z) < p.fr - 0.15 : Math.abs(x) < p.fw - 0.15 && Math.abs(z) < p.fd - 0.15);
+    const gate = { x: 0, z: p.fd + 0.75 };
+    if (inside(p.at.x, p.at.z) !== inside(stop.x, stop.z) && Math.hypot(gate.x - p.at.x, gate.z - p.at.z) > 0.25) {
+      stop = { x: gate.x, z: gate.z, face: 0, act: "none", dwell: 0 };
+    }
     const dx = stop.x - p.at.x;
     const dz = stop.z - p.at.z;
     const dist = Math.hypot(dx, dz);
     let yaw = stop.face;
     if (dist > 0.05) {
-      const step = Math.min(dist, (mode === "alert" ? 2.6 : 1.2) * dt);
+      const step = Math.min(dist, (mode === "alert" ? 2.6 : p.errand ? 1.6 : 1.2) * dt);
       p.at.x += (dx / dist) * step;
       p.at.z += (dz / dist) * step;
       yaw = Math.atan2(dx, dz);
@@ -655,7 +1075,7 @@ export class MissionScene {
           h.hostFace = Math.atan2(hl.x - h.at.x, hl.z - h.at.z);
         }
         if (p.dwell <= 0) {
-          p.errand = null;
+          this.endErrand(p);
           p.arrived = false;
         }
       } else if (p.dwell <= 0 && list.length > 1 && !hosting) {
@@ -670,38 +1090,51 @@ export class MissionScene {
     root.position.x = p.at.x;
     root.position.z = p.at.z;
     // on the plinth it stands at plinth height; walking off, it steps down to the deck
-    const onPlinth = Math.hypot(p.at.x, p.at.z) < 2.0;
+    const onPlinth = inside(p.at.x, p.at.z);
     root.position.y += ((onPlinth ? 0.4 : 0.02) - root.position.y) * (1 - Math.pow(0.001, dt));
   }
 
-  /** Sends a robot across the deck for a reason: to hand its result to the core (host null), or to start a colleague (host). */
-  private startErrand(p: Pod, host: Pod | null) {
+  /** Sends a robot across the deck for a reason: to hand its result to the core (host null), or to see a colleague (host). */
+  private startErrand(p: Pod, host: Pod | null, note?: string, to?: { x: number; z: number }) {
     if (p.errand || p.state === "sleeping" || p.state === "alert") return;
     p.group.updateMatrixWorld(true);
     const here = p.group.position;
     let wx: number;
     let wz: number;
-    let face: number;
-    if (host) {
+    let lookAt: THREE.Vector3;
+    if (to) {
+      wx = to.x;
+      wz = to.z;
+      lookAt = new THREE.Vector3(0, 0, 0);
+    } else if (host) {
       host.group.updateMatrixWorld(true);
-      const hp = host.group.position;
-      const d = new THREE.Vector3(here.x - hp.x, 0, here.z - hp.z).normalize();
-      wx = hp.x + d.x * 1.7;
-      wz = hp.z + d.z * 1.7;
-      const hl = p.group.worldToLocal(new THREE.Vector3(hp.x, 0, hp.z));
-      const tl = p.group.worldToLocal(new THREE.Vector3(wx, 0, wz));
-      face = Math.atan2(hl.x - tl.x, hl.z - tl.z);
+      const g = host.group.localToWorld(new THREE.Vector3(0, 0, host.fd + 1.1)); // just outside the host's open front
+      wx = g.x;
+      wz = g.z;
+      lookAt = new THREE.Vector3(host.group.position.x, 0, host.group.position.z);
     } else {
       const d = new THREE.Vector3(here.x, 0, here.z).normalize();
       wx = d.x * 3.7;
       wz = d.z * 3.7;
-      const hl = p.group.worldToLocal(new THREE.Vector3(0, 0, 0));
-      const tl = p.group.worldToLocal(new THREE.Vector3(wx, 0, wz));
-      face = Math.atan2(hl.x - tl.x, hl.z - tl.z);
+      lookAt = new THREE.Vector3(0, 0, 0);
     }
+    const hl = p.group.worldToLocal(lookAt.clone());
     const l = p.group.worldToLocal(new THREE.Vector3(wx, 0, wz));
+    const face = Math.atan2(hl.x - l.x, hl.z - l.z);
     p.errand = { x: l.x, z: l.z, face, host };
     p.arrived = false;
+    if (note) {
+      p.note = note;
+      this.drawPanel(p, p.agent);
+    }
+  }
+
+  private endErrand(p: Pod) {
+    p.errand = null;
+    if (p.note) {
+      p.note = null;
+      this.drawPanel(p, p.agent);
+    }
   }
 
   /** The tool each agent carries bobs, spins or swings; it works harder when the agent is busy. */
@@ -731,62 +1164,55 @@ export class MissionScene {
   private drawPanel(p: Pod, a: CrewAgent) {
     const g = p.ctx;
     const W = 640;
-    const H = 360;
+    const H = 200;
     const accent = HEX[a.state];
     g.clearRect(0, 0, W, H);
-    const bg = g.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, "rgba(14,22,46,0.88)");
-    bg.addColorStop(1, "rgba(6,10,24,0.78)");
-    g.fillStyle = bg;
+    // a compact dark-glass speech pill: icon tile, name, one line of status, a status dot
+    g.save();
+    g.shadowColor = "rgba(0,0,0,0.5)";
+    g.shadowBlur = 18;
+    g.fillStyle = "rgba(34,30,50,0.86)";
     g.beginPath();
-    g.roundRect(6, 6, W - 12, H - 12, 26);
+    g.roundRect(10, 8, W - 20, 152, 34);
     g.fill();
-    g.lineWidth = 3;
-    g.strokeStyle = accent;
-    g.globalAlpha = 0.85;
+    g.restore();
+    g.lineWidth = 2;
+    g.strokeStyle = "rgba(255,255,255,0.16)";
+    g.beginPath();
+    g.roundRect(10, 8, W - 20, 152, 34);
     g.stroke();
-    g.globalAlpha = 1;
-    g.fillStyle = accent;
+    // little tail pointing down at the robot
+    g.fillStyle = "rgba(34,30,50,0.86)";
     g.beginPath();
-    g.roundRect(34, 40, 8, 56, 4);
+    g.moveTo(W / 2 - 16, 158);
+    g.lineTo(W / 2, 190);
+    g.lineTo(W / 2 + 16, 158);
     g.fill();
-    g.fillStyle = "rgba(160,190,255,0.035)";
-    for (let y = 14; y < H - 14; y += 6) g.fillRect(14, y, W - 28, 2);
-
+    // icon tile
+    const tile = g.createLinearGradient(30, 30, 130, 130);
+    tile.addColorStop(0, "#8b5cf6");
+    tile.addColorStop(1, "#6d28d9");
+    g.fillStyle = tile;
+    g.beginPath();
+    g.roundRect(30, 32, 100, 100, 26);
+    g.fill();
+    g.fillStyle = "#ffffff";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = "600 56px system-ui, 'Segoe UI Emoji', sans-serif";
+    g.fillText(GLYPH[a.id], 80, 84);
+    g.textAlign = "left";
     g.textBaseline = "alphabetic";
     g.fillStyle = "#ffffff";
-    g.font = "600 56px Georgia, 'Times New Roman', serif";
-    g.fillText(a.name, 58, 82);
-    g.fillStyle = "rgba(255,255,255,0.58)";
-    g.font = "400 25px system-ui, sans-serif";
-    g.fillText(a.role, 58, 118);
-
-    g.font = "600 22px ui-monospace, Consolas, monospace";
-    const word = WORD[a.state];
-    const cw = g.measureText(word).width + 52;
-    g.fillStyle = accent;
-    g.globalAlpha = 0.18;
-    g.beginPath();
-    g.roundRect(W - 34 - cw, 40, cw, 40, 20);
-    g.fill();
-    g.globalAlpha = 1;
+    g.font = "600 46px system-ui, 'Segoe UI', sans-serif";
+    g.fillText(a.name, 152, 78);
+    g.fillStyle = "rgba(255,255,255,0.68)";
+    g.font = "400 28px system-ui, 'Segoe UI', sans-serif";
+    g.fillText(wrap(g, p.note ?? a.line, W - 152 - 70, 1)[0] ?? "", 152, 120);
     g.fillStyle = accent;
     g.beginPath();
-    g.arc(W - 34 - cw + 22, 60, 6, 0, Math.PI * 2);
+    g.arc(W - 48, 50, 11, 0, Math.PI * 2);
     g.fill();
-    g.fillText(word, W - 34 - cw + 38, 68);
-
-    g.strokeStyle = "rgba(255,255,255,0.12)";
-    g.lineWidth = 2;
-    g.beginPath();
-    g.moveTo(34, 142);
-    g.lineTo(W - 34, 142);
-    g.stroke();
-
-    g.fillStyle = "rgba(255,255,255,0.92)";
-    g.font = "400 31px system-ui, sans-serif";
-    const lines = wrap(g, a.line, W - 80, 3);
-    lines.forEach((l, i) => g.fillText(l, 36, 192 + i * 44));
     p.tex.needsUpdate = true;
   }
 
@@ -809,6 +1235,37 @@ export class MissionScene {
     const want = Math.atan2(-p.pos.x, -p.pos.z) + (p.pos.x >= 0 ? -0.95 : 0.95);
     const d = ((want - this.theta + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     this.tTheta = this.theta + d;
+  }
+
+  /** Robots never walk through each other: a walker is nudged aside from anyone within arm's reach. */
+  private separate(dt: number) {
+    const va = this.sepA;
+    const vb = this.sepB;
+    for (let i = 0; i < this.pods.length; i++) {
+      for (let j = i + 1; j < this.pods.length; j++) {
+        const a = this.pods[i];
+        const b = this.pods[j];
+        if (a.walk === 0 && b.walk === 0) continue;
+        a.group.localToWorld(va.set(a.at.x, 0, a.at.z));
+        b.group.localToWorld(vb.set(b.at.x, 0, b.at.z));
+        const dx = va.x - vb.x;
+        const dz = va.z - vb.z;
+        const d = Math.hypot(dx, dz);
+        const min = 1.25;
+        if (d >= min || d < 0.001) continue;
+        const push = (min - d) * Math.min(1, 6 * dt);
+        const mover = a.walk > 0 && b.walk > 0 ? 0.5 : 1;
+        const move = (p: Pod, wx: number, wz: number, k: number) => {
+          const ry = p.group.rotation.y;
+          const c = Math.cos(ry);
+          const sn = Math.sin(ry);
+          p.at.x += (wx * c - wz * sn) * k;
+          p.at.z += (wx * sn + wz * c) * k;
+        };
+        if (a.walk > 0) move(a, dx / d, dz / d, push * mover);
+        if (b.walk > 0) move(b, -dx / d, -dz / d, push * mover);
+      }
+    }
   }
 
   private homeDist() {
@@ -949,13 +1406,14 @@ export class MissionScene {
     const cage = cg.userData.cage as THREE.Mesh;
     cage.rotation.y = t * 0.3;
     cage.rotation.x = t * 0.17;
-    orb.scale.setScalar(1 + Math.sin(t * 1.6) * 0.04);
-    (cg.userData.coreMat as THREE.MeshStandardMaterial).emissiveIntensity = 2.6 + Math.sin(t * 1.6) * 0.5;
+    orb.rotation.y = t * 0.22;
+    (cg.userData.coreMat as THREE.MeshStandardMaterial).emissiveIntensity = 1.0 + Math.sin(t * 1.6) * 0.18;
     this.gyros.forEach((m, i) => {
       m.rotation.y = t * m.userData.speed * (i % 2 ? -1 : 1);
     });
 
     // pods
+    this.separate(dt);
     const cam = this.camera.position;
     for (const p of this.pods) {
       p.col.lerp(p.tgt, 1 - Math.pow(0.02, dt));
@@ -1021,6 +1479,7 @@ export class MissionScene {
       p.panel.scale.setScalar(THREE.MathUtils.clamp(d / 22, 0.5, 1.1) * (1 + 0.12 * p.hv) * (this.portrait ? 0.72 : 1));
     }
 
+    if (this.sky) this.sky.rotation.y += dt * 0.004;
     const arr = this.dust.geometry.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < arr.count; i++) {
       let y = arr.getY(i) + dt * 0.12;

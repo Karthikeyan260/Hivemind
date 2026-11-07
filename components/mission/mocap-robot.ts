@@ -19,6 +19,7 @@ export function buildMocapRobot(gltf: GLTF, trimColour: string, tone: THREE.Colo
   root.add(body);
   const model = cloneSkinned(gltf.scene) as THREE.Group;
   body.add(model);
+  model.rotation.y = Math.PI; // the captured model faces the other way from the station layout
 
   // size from the skeleton, feet on the ground
   model.updateMatrixWorld(true);
@@ -40,7 +41,8 @@ export function buildMocapRobot(gltf: GLTF, trimColour: string, tone: THREE.Colo
 
   // skin: glossy painted shell, glowing joints
   const paint = new THREE.Color(trimColour);
-  const shell = new THREE.MeshPhysicalMaterial({ color: new THREE.Color("#8d96a8").lerp(paint, 0.45), metalness: 0.7, roughness: 0.34, clearcoat: 0.6, clearcoatRoughness: 0.2, envMapIntensity: 1.0 });
+  // friendly white glossy plastic with a hint of the agent's colour
+  const shell = new THREE.MeshPhysicalMaterial({ color: new THREE.Color("#f6f4fc").lerp(paint, 0.14), metalness: 0.08, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.12, envMapIntensity: 0.9 });
   const glow = new THREE.MeshStandardMaterial({ color: "#07090f", emissive: tone, emissiveIntensity: 1.6, roughness: 0.45, metalness: 0.5 });
   track.push(shell, glow);
   model.traverse((o) => {
@@ -119,18 +121,36 @@ export function buildMocapRobot(gltf: GLTF, trimColour: string, tone: THREE.Colo
   const bone = (n: string) => bones[n] as THREE.Bone | undefined;
   const head = bone("mixamorigHead");
   const neck = bone("mixamorigNeck");
-  const spine = bone("mixamorigSpine1");
-  const arm = [bone("mixamorigLeftArm"), bone("mixamorigRightArm")];
-  const fore = [bone("mixamorigLeftForeArm"), bone("mixamorigRightForeArm")];
 
-  const q = new THREE.Quaternion();
-  const e = new THREE.Euler();
-  /** Adds a rotation (radians, in the bone's own axes) on top of whatever the clip set this frame. */
-  const add = (b: THREE.Bone | undefined, x: number, y: number, z: number) => {
-    if (!b) return;
-    q.setFromEuler(e.set(x, y, z));
-    b.quaternion.multiply(q);
-  };
+  // a friendly face: big head, dark visor with glowing happy eyes, and headphones in the agent's colour
+  if (head) {
+    model.updateMatrixWorld(true);
+    const hs = Math.max(head.getWorldScale(v).x, 1e-4); // rig units per head-bone unit
+    head.scale.multiplyScalar(2.3); // chibi: a big head on a small robot
+    const face = new THREE.Group();
+    face.scale.setScalar(1 / hs);
+    face.rotation.y = Math.PI / 2; // the head bone's forward is sideways in this rig
+    const visorMat = new THREE.MeshPhysicalMaterial({ color: "#0b0e1a", metalness: 0.2, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05 });
+    const cupMat = new THREE.MeshStandardMaterial({ color: paint, metalness: 0.2, roughness: 0.35, emissive: paint, emissiveIntensity: 0.25 });
+    track.push(visorMat, cupMat);
+    const visor = new THREE.Mesh(new THREE.SphereGeometry(0.115, 24, 16), visorMat);
+    visor.scale.set(1.12, 0.86, 0.6);
+    visor.position.set(0, 0.125, 0.085);
+    face.add(visor);
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.TorusGeometry(0.026, 0.0075, 6, 14, Math.PI), glow);
+      eye.position.set(sx * 0.052, 0.118, 0.15);
+      face.add(eye);
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.045, 20), cupMat);
+      cup.rotation.z = Math.PI / 2;
+      cup.position.set(sx * 0.15, 0.125, 0);
+      face.add(cup);
+    }
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.011, 8, 28, Math.PI), cupMat);
+    band.position.set(0, 0.125, 0);
+    face.add(band);
+    head.add(face);
+  }
 
   let lie = 0;
   let zOn = 0;
@@ -141,12 +161,14 @@ export function buildMocapRobot(gltf: GLTF, trimColour: string, tone: THREE.Colo
       seeded = true;
       for (const a of acts.values()) a.time = phase % 1;
     }
-    const sleeping = state === "sleeping";
+    // only lie down once it has actually walked to the bed (not mid-stride, not in mid-air)
+    const sleeping = state === "sleeping" && walk < 0.01;
     const nodding = greet || cheer || act === "chat";
     // which captured clip?
     if (sleeping) play("sad_pose", 1);
     else if (walk > 0.01) play("walk", 0.62);
     else if (state === "alert") play("headShake", 1.6);
+    else if (state === "sleeping") play("idle", 0.85);
     else if (cheer) play("agree", 1.5);
     else if (act === "chat") play(Math.floor((t + phase) / 3) % 2 ? "headShake" : "agree", 0.9);
     else if (greet) play("agree", 1.1);
@@ -157,67 +179,13 @@ export function buildMocapRobot(gltf: GLTF, trimColour: string, tone: THREE.Colo
     // lie down on the bed, or stand
     lie += ((sleeping ? 1 : 0) - lie) * (1 - Math.exp(-4 * dt));
     body.rotation.x = -lie * (Math.PI / 2 - 0.1);
+    model.rotation.y = Math.PI * (1 - lie); // turn over so it lies on its back, face up
     body.position.y = lie * 0.32;
     body.scale.setScalar(1 - lie * 0.22);
 
     // the head follows whoever is looking (awake and standing still)
     if (!sleeping && !nodding && walk < 0.01 && head) head.rotation.y += look * 0.55;
     if (!sleeping && walk < 0.01 && neck && !nodding) neck.rotation.y += look * 0.2;
-
-    // hands at the job
-    if (!sleeping && walk < 0.01 && state !== "alert") {
-      const hit = Math.sin(t * 11 + phase);
-      switch (act) {
-        case "type":
-          for (const i of [0, 1] as const) {
-            add(arm[i], 0, 0, (i ? 1 : -1) * 0.55);
-            add(fore[i], 0, 0, (i ? 1 : -1) * (0.9 + 0.12 * (i ? -hit : hit)));
-          }
-          add(spine, 0.1, 0, 0);
-          break;
-        case "hammer":
-          add(arm[1], 0, 0, 0.5 + Math.max(0, Math.sin(t * 7)) * 0.7);
-          add(fore[1], 0, 0, 1.0 + Math.sin(t * 7) * 0.6);
-          add(arm[0], 0, 0, -0.5);
-          add(fore[0], 0, 0, -0.9);
-          add(spine, 0.12, 0, 0);
-          break;
-        case "write":
-          add(arm[1], 0, 0, 0.55);
-          add(fore[1], 0, 0, 0.95 + Math.sin(t * 10) * 0.05);
-          add(arm[0], 0, 0, -0.45);
-          add(fore[0], 0, 0, -0.8);
-          add(spine, 0.16, 0, 0);
-          break;
-        case "scope":
-          for (const i of [0, 1] as const) {
-            add(arm[i], 0, 0, (i ? 1 : -1) * 0.9);
-            add(fore[i], 0, 0, (i ? 1 : -1) * 1.5);
-          }
-          add(spine, 0.08, 0, 0);
-          break;
-        case "crank":
-          add(arm[1], 0, 0, 0.7 + Math.sin(t * 3) * 0.4);
-          add(fore[1], 0, 0, 0.9 + Math.cos(t * 3) * 0.4);
-          add(arm[0], 0, 0, -0.5);
-          add(fore[0], 0, 0, -0.8);
-          break;
-        case "ring":
-          add(arm[1], 0, 0, 1.6 + Math.sin(t * 5) * 0.3);
-          add(fore[1], 0, 0, 0.3);
-          break;
-        case "tidy":
-          for (const i of [0, 1] as const) {
-            add(arm[i], 0, 0, (i ? 1 : -1) * (0.8 + Math.sin(t * 2.5 + i * Math.PI) * 0.25));
-            add(fore[i], 0, 0, (i ? 1 : -1) * 0.7);
-          }
-          break;
-        case "look":
-          add(arm[1], 0, 0, 0.7);
-          add(fore[1], 0, 0, 1.9);
-          break;
-      }
-    }
 
     zOn += ((sleeping ? 1 : 0) - zOn) * (1 - Math.exp(-6 * dt));
     bangOn += ((state === "alert" ? 1 : 0) - bangOn) * (1 - Math.exp(-6 * dt));

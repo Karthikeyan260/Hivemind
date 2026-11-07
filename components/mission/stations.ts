@@ -353,5 +353,305 @@ export function buildStation(id: StationId, accent: THREE.Color | string, track:
     }
   }
 
+  // ---- chunky toy-like detail: bright rounded plastic pieces with lots of small parts, animated while working ----
+  const toy = (c: string, rough = 0.42) => {
+    const m = new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: 0.05, envMapIntensity: 0.8 });
+    track.push(m);
+    return m;
+  };
+  const makeGear = (r: number, teeth: number, mat: THREE.Material, hub: THREE.Material) => {
+    const gr = new THREE.Group();
+    add(gr, cyl(r, r, 0.12, 28), mat).rotation.x = PI2;
+    for (let i = 0; i < teeth; i++) {
+      const ang = (i / teeth) * Math.PI * 2;
+      add(gr, new THREE.BoxGeometry(r * 0.3, r * 0.34, 0.12), mat, Math.sin(ang) * (r + r * 0.1), Math.cos(ang) * (r + r * 0.1), 0).rotation.z = -ang;
+    }
+    add(gr, cyl(r * 0.35, r * 0.35, 0.16, 18), hub).rotation.x = PI2;
+    add(gr, cyl(r * 0.12, r * 0.12, 0.2, 10), mat).rotation.x = PI2;
+    return gr;
+  };
+  const bookRow = (parent: THREE.Object3D, x: number, y: number, z: number, n: number, colours: string[]) => {
+    let cx = x;
+    for (let i = 0; i < n; i++) {
+      const w = 0.07 + ((i * 37) % 5) * 0.012;
+      const h = 0.3 + ((i * 53) % 4) * 0.05;
+      add(parent, rbox(w, h, 0.22, 0.012), toy(colours[i % colours.length]), cx, y + h / 2, z);
+      cx += w + 0.012;
+    }
+  };
+  let extraTick: ((t: number, dt: number, act: Act, working: boolean) => void) | null = null;
+  const wallBoard = (x: number, y: number, z: number, w: number, h: number, draw: (c: CanvasRenderingContext2D, cw: number, ch: number) => void) => {
+    const tx = texture(draw, 512, Math.round((512 * h) / w));
+    const mt = new THREE.MeshBasicMaterial({ map: tx, toneMapped: false });
+    track.push(mt);
+    const o = add(g, new THREE.PlaneGeometry(w, h), mt, x, y, z);
+    o.castShadow = false;
+    return o;
+  };
+
+  switch (id) {
+    case "scheduler": {
+      // a clockwork wall: a big board of meshing brass gears with a swinging pendulum
+      add(g, rbox(3.6, 2.5, 0.14, 0.05), toy("#5b3d28", 0.6), 0, 1.65, -2.05);
+      const gearMat = toy("#d99a2b", 0.3);
+      const hubMat = toy("#7a4b1a", 0.4);
+      const gA = makeGear(0.7, 12, gearMat, hubMat);
+      gA.position.set(-0.9, 1.9, -1.93);
+      const gB = makeGear(0.45, 9, toy("#c0c6d4", 0.3), hubMat);
+      gB.position.set(0.15, 2.1, -1.93);
+      const gC = makeGear(0.55, 10, toy("#ef6a5a", 0.4), hubMat);
+      gC.position.set(0.95, 1.45, -1.93);
+      const gD = makeGear(0.32, 8, gearMat, hubMat);
+      gD.position.set(-0.2, 1.1, -1.93);
+      g.add(gA, gB, gC, gD);
+      const pend = new THREE.Group();
+      pend.position.set(1.4, 2.7, -1.9);
+      add(pend, cyl(0.02, 0.02, 1.2, 6), toy("#d99a2b", 0.3), 0, -0.6, 0);
+      add(pend, new THREE.SphereGeometry(0.2, 18, 14), toy("#f2c14e", 0.25), 0, -1.25, 0);
+      g.add(pend);
+      extraTick = (t, dt, act, working) => {
+        const sp = working ? 1.3 : 0.25;
+        gA.rotation.z += dt * sp * 0.6;
+        gB.rotation.z -= dt * sp * 0.9;
+        gC.rotation.z -= dt * sp * 0.6 * (0.7 / 0.55);
+        gD.rotation.z += dt * sp * 1.2;
+        pend.rotation.z = Math.sin(t * (working ? 3.2 : 1.8)) * 0.35;
+      };
+      break;
+    }
+    case "autopilot": {
+      // star chart on the wall and a toy planet model whose rings turn
+      wallBoard(0, 1.7, -2.16, 2.8, 1.5, (c, w, h) => {
+        c.fillStyle = "#0a1030";
+        c.fillRect(0, 0, w, h);
+        let sd = 5;
+        const r = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+        c.fillStyle = "#ffffff";
+        const pts: Array<[number, number]> = [];
+        for (let i = 0; i < 70; i++) {
+          const px = r() * w;
+          const py = r() * h;
+          pts.push([px, py]);
+          c.globalAlpha = 0.4 + r() * 0.6;
+          c.fillRect(px, py, 3, 3);
+        }
+        c.globalAlpha = 0.5;
+        c.strokeStyle = "#7dd3fc";
+        c.lineWidth = 2;
+        for (let i = 0; i < 22; i += 2) {
+          c.beginPath();
+          c.moveTo(pts[i][0], pts[i][1]);
+          c.lineTo(pts[i + 1][0], pts[i + 1][1]);
+          c.stroke();
+        }
+        c.globalAlpha = 1;
+        c.strokeStyle = "#3b82f6";
+        c.lineWidth = 6;
+        c.strokeRect(3, 3, w - 6, h - 6);
+      });
+      const model = holder(-0.3, -1.3);
+      add(model, cyl(0.07, 0.1, 0.8, 10), toy("#475569", 0.4), 0, 0.4, 0);
+      add(model, cyl(0.28, 0.32, 0.1, 20), toy("#475569", 0.4), 0, 0.06, 0);
+      const planet = new THREE.Group();
+      planet.position.y = 1.15;
+      model.add(planet);
+      add(planet, new THREE.SphereGeometry(0.34, 24, 18), toy("#38bdf8", 0.35));
+      const orbitRing = add(planet, new THREE.TorusGeometry(0.58, 0.035, 8, 40), toy("#fde68a", 0.3));
+      orbitRing.rotation.x = 1.2;
+      const moon = add(planet, new THREE.SphereGeometry(0.09, 12, 10), toy("#f1f5f9", 0.4), 0.8, 0, 0);
+      const tel = g.children[0]; // the telescope set is built first; make it chunkier
+      tel.scale.setScalar(1.3);
+      extraTick = (t, dt, act, working) => {
+        planet.rotation.y += dt * (working ? 1.2 : 0.4);
+        orbitRing.rotation.z += dt * 0.3;
+        moon.position.set(Math.cos(t * 1.5) * 0.8, Math.sin(t * 1.5) * 0.15, Math.sin(t * 1.5) * 0.8);
+      };
+      break;
+    }
+    case "web": {
+      // a proper control desk: three screens, keyboard, mug, and a wall of live data
+      const m2 = monitor(g, 0.95, 0.82, 0.1, -0.45, 0.85);
+      const m3 = monitor(g, 2.05, 0.82, 0.55, -1.05, 0.85);
+      add(g, rbox(0.55, 0.035, 0.2, 0.015), toy("#14b8a6"), 1.35, 0.85, 0.7).rotation.y = -0.4;
+      add(g, cyl(0.07, 0.06, 0.13, 14), toy("#ef4444"), 1.95, 0.9, 0.1);
+      wallBoard(0, 1.9, -2.16, 3.4, 1.4, (c, w, h) => {
+        c.fillStyle = "#08122a";
+        c.fillRect(0, 0, w, h);
+        const cols = ["#38bdf8", "#34d399", "#f472b6", "#fbbf24"];
+        for (let i = 0; i < 4; i++) {
+          c.fillStyle = "rgba(255,255,255,0.08)";
+          c.fillRect(14 + i * ((w - 28) / 4), 14, (w - 28) / 4 - 10, h - 28);
+          c.fillStyle = cols[i];
+          for (let k = 0; k < 11; k++) c.fillRect(24 + i * ((w - 28) / 4), 30 + k * 22, 30 + ((k * 53 + i * 31) % 90), 8);
+        }
+      });
+      extraTick = (t, dt, act) => {
+        m2.tick(t + 1.3, act === "type" || act === "look");
+        m3.tick(t + 2.6, act === "type" || act === "look");
+      };
+      break;
+    }
+    case "dream": {
+      // cosy bedroom: headboard, blanket, plush toy, moon and stars
+      const bed = holder(-1.45, 0.3, 0.15);
+      add(bed, rbox(1.1, 0.9, 0.14, 0.06), toy("#7c5cc4"), 0, 0.75, -0.98);
+      add(bed, rbox(0.9, 0.12, 0.95, 0.06), toy("#f472b6", 0.7), 0, 0.57, 0.38);
+      const tb = new THREE.Group();
+      tb.position.set(-0.28, 0.72, -0.55);
+      bed.add(tb);
+      add(tb, new THREE.SphereGeometry(0.16, 14, 12), toy("#c08457", 0.8), 0, 0, 0);
+      add(tb, new THREE.SphereGeometry(0.11, 14, 12), toy("#c08457", 0.8), 0, 0.2, 0);
+      for (const sx of [-1, 1]) add(tb, new THREE.SphereGeometry(0.04, 8, 6), toy("#c08457", 0.8), sx * 0.08, 0.3, 0);
+      wallBoard(0, 2.1, -2.16, 3.0, 1.5, (c, w, h) => {
+        c.fillStyle = "#1c1744";
+        c.fillRect(0, 0, w, h);
+        c.fillStyle = "#fde68a";
+        c.beginPath();
+        c.arc(w * 0.3, h * 0.5, 80, 0, Math.PI * 2);
+        c.fill();
+        c.fillStyle = "#1c1744";
+        c.beginPath();
+        c.arc(w * 0.3 + 40, h * 0.5 - 14, 74, 0, Math.PI * 2);
+        c.fill();
+        c.fillStyle = "#fff7c2";
+        for (let i = 0; i < 26; i++) c.fillRect(((i * 97) % (w - 20)) + 10, ((i * 61) % (h - 20)) + 10, 3 + (i % 3), 3 + (i % 3));
+        c.strokeStyle = "#8b5cf6";
+        c.lineWidth = 6;
+        c.strokeRect(3, 3, w - 6, h - 6);
+      });
+      break;
+    }
+    case "brief": {
+      // study: bookshelf wall, book stacks, mug, desk lamp glow
+      const sh = holder(0, -2.05);
+      add(sh, rbox(3.2, 0.06, 0.34, 0.02), toy("#7a4a2a", 0.6), 0, 0.5, 0);
+      add(sh, rbox(3.2, 0.06, 0.34, 0.02), toy("#7a4a2a", 0.6), 0, 1.2, 0);
+      add(sh, rbox(3.2, 0.06, 0.34, 0.02), toy("#7a4a2a", 0.6), 0, 1.9, 0);
+      for (const sx of [-1.6, 1.6]) add(sh, rbox(0.06, 1.95, 0.34, 0.02), toy("#7a4a2a", 0.6), sx, 0.98, 0);
+      const cols = ["#ef4444", "#3b82f6", "#f59e0b", "#10b981", "#a855f7", "#ec4899", "#14b8a6"];
+      bookRow(sh, -1.45, 0.53, 0, 14, cols);
+      bookRow(sh, -1.2, 1.23, 0, 12, [...cols].reverse());
+      bookRow(sh, -1.35, 1.93, 0, 13, cols.slice(2));
+      // book stack and mug on the desk
+      add(g, rbox(0.5, 0.07, 0.36, 0.02), toy("#ef4444"), 1.9, 0.86, 0.7);
+      add(g, rbox(0.46, 0.07, 0.34, 0.02), toy("#3b82f6"), 1.9, 0.93, 0.7).rotation.y = 0.2;
+      add(g, rbox(0.42, 0.07, 0.3, 0.02), toy("#facc15"), 1.9, 1.0, 0.7).rotation.y = -0.15;
+      add(g, cyl(0.07, 0.06, 0.13, 14), toy("#f8fafc"), 1.15, 0.9, 0.7);
+      break;
+    }
+    case "reminders": {
+      // a big toy alarm clock that jangles when a reminder rings, plus a mail pile
+      const ac = new THREE.Group();
+      ac.position.set(0.9, 0.55, -1.35);
+      g.add(ac);
+      add(ac, new THREE.SphereGeometry(0.62, 28, 20), toy("#ef4444", 0.35)).scale.set(1, 1, 0.55);
+      add(ac, cyl(0.46, 0.46, 0.05, 36), toy("#fff8e8", 0.6), 0, 0, 0.34).rotation.x = PI2;
+      for (let i = 0; i < 12; i++) {
+        const an = (i / 12) * Math.PI * 2;
+        add(ac, new THREE.BoxGeometry(0.03, i % 3 === 0 ? 0.1 : 0.05, 0.02), toy("#1f2937"), Math.sin(an) * 0.38, Math.cos(an) * 0.38, 0.37).rotation.z = -an;
+      }
+      const hand = new THREE.Group();
+      hand.position.z = 0.39;
+      ac.add(hand);
+      add(hand, new THREE.BoxGeometry(0.04, 0.36, 0.02), toy("#1f2937"), 0, 0.17, 0);
+      for (const sx of [-1, 1]) {
+        const bellMini = add(ac, new THREE.SphereGeometry(0.2, 14, 10), toy("#facc15", 0.3), sx * 0.38, 0.55, 0);
+        bellMini.scale.set(1, 0.7, 1);
+        add(ac, cyl(0.03, 0.03, 0.25, 8), toy("#1f2937"), sx * 0.34, -0.55, 0.05).rotation.z = sx * 0.4;
+      }
+      for (let i = 0; i < 4; i++) add(g, rbox(0.5, 0.04, 0.34, 0.01), toy(["#fde68a", "#bae6fd", "#fbcfe8", "#bbf7d0"][i]), 2.0, 0.84 + i * 0.045, 0.4 + (i % 2) * 0.05).rotation.y = i * 0.5;
+      extraTick = (t, dt, act) => {
+        ac.rotation.z = act === "ring" ? Math.sin(t * 30) * 0.08 : 0;
+        hand.rotation.z = -t * (act === "ring" ? 2 : 0.3);
+      };
+      break;
+    }
+    case "apps": {
+      // a workshop: pegboard of tools, a red toolbox, a swivelling robot-arm lamp, small glowing parts
+      wallBoard(0, 1.85, -2.16, 3.4, 1.7, (c, w, h) => {
+        c.fillStyle = "#cbb68a";
+        c.fillRect(0, 0, w, h);
+        c.fillStyle = "#8a7a56";
+        for (let y = 20; y < h; y += 28) for (let x = 20; x < w; x += 28) c.fillRect(x, y, 4, 4);
+        const tools: Array<[number, number, string]> = [[80, 70, "#ef4444"], [200, 90, "#3b82f6"], [320, 70, "#22c55e"], [420, 100, "#f59e0b"]];
+        for (const [tx, ty, col] of tools) {
+          c.fillStyle = col;
+          c.beginPath();
+          c.roundRect(tx - 18, ty - 18, 36, 130, 14);
+          c.fill();
+          c.fillStyle = "#e5e7eb";
+          c.beginPath();
+          c.arc(tx, ty - 18, 34, 0, Math.PI * 2);
+          c.fill();
+        }
+      });
+      const tb = holder(0.2, -1.4);
+      add(tb, rbox(0.9, 0.42, 0.45, 0.07), toy("#dc2626", 0.35), 0, 0.21, 0);
+      add(tb, rbox(0.9, 0.1, 0.5, 0.04), toy("#fca5a5", 0.35), 0, 0.46, 0);
+      add(tb, new THREE.TorusGeometry(0.17, 0.03, 8, 16, Math.PI), toy("#1f2937"), 0, 0.51, 0);
+      const arm = holder(-0.9, -1.3);
+      add(arm, cyl(0.25, 0.3, 0.1, 18), toy("#475569", 0.4), 0, 0.05, 0);
+      const lower = new THREE.Group();
+      lower.position.y = 0.1;
+      arm.add(lower);
+      add(lower, rbox(0.1, 0.8, 0.1, 0.04), toy("#facc15", 0.35), 0, 0.4, 0);
+      const upper = new THREE.Group();
+      upper.position.y = 0.8;
+      lower.add(upper);
+      add(upper, rbox(0.09, 0.7, 0.09, 0.04), toy("#facc15", 0.35), 0.28, 0.25, 0).rotation.z = -0.9;
+      const bulbHead = add(upper, new THREE.SphereGeometry(0.15, 14, 10), glow, 0.55, 0.48, 0);
+      bulbHead.castShadow = false;
+      extraTick = (t, dt, act, working) => {
+        lower.rotation.z = Math.sin(t * (working ? 1.4 : 0.5)) * 0.25;
+        upper.rotation.y = Math.sin(t * 0.8) * 0.5;
+      };
+      break;
+    }
+  }
+  if (extraTick) {
+    const baseTick = tick;
+    const more = extraTick;
+    tick = (t, dt, act, working) => {
+      baseTick(t, dt, act, working);
+      more(t, dt, act, working);
+    };
+  }
+
+  // The booths are roomy now: besides its job spots, each robot has its own places to wander to, so nobody stands in the
+  // middle of the floor and no two booths look alike (a stretch at the front edge, a look at the crates, the plant, the lamp...).
+  const P2 = Math.PI * 0.75;
+  const spots: Record<StationId, Stop[]> = {
+    scheduler: [
+      { x: -1.7, z: 1.3, face: P2, act: "look", dwell: 5 },
+      { x: 1.5, z: 1.5, face: -P2, act: "look", dwell: 4 },
+    ],
+    autopilot: [
+      { x: 1.9, z: 0.6, face: -PI2, act: "look", dwell: 5 },
+      { x: -1.2, z: 1.7, face: 0.3, act: "look", dwell: 4 },
+    ],
+    web: [
+      { x: -1.9, z: 0.9, face: PI2, act: "look", dwell: 5 },
+      { x: 1.1, z: 1.8, face: -0.3, act: "look", dwell: 4 },
+    ],
+    dream: [
+      { x: 1.8, z: 1.4, face: -P2, act: "look", dwell: 5 },
+      { x: 1.0, z: 0.1, face: -PI2, act: "look", dwell: 4 },
+    ],
+    brief: [
+      { x: 1.8, z: 1.0, face: -PI2, act: "look", dwell: 5 },
+      { x: -1.6, z: 1.6, face: P2, act: "look", dwell: 4 },
+    ],
+    reminders: [
+      { x: -1.8, z: 1.2, face: PI2, act: "look", dwell: 5 },
+      { x: 1.6, z: 1.7, face: -P2, act: "look", dwell: 4 },
+    ],
+    apps: [
+      { x: 1.7, z: 1.5, face: -P2, act: "look", dwell: 5 },
+      { x: -1.9, z: 0.5, face: PI2, act: "look", dwell: 4 },
+    ],
+  };
+  idle = [...idle.filter((s0) => s0 !== HOME && !(s0.x === HOME.x && s0.z === HOME.z)), ...spots[id]];
+  work = work.map((s0) => (s0.x === HOME.x && s0.z === HOME.z ? { ...spots[id][0], dwell: 3 } : s0));
+
   return { group: g, work, idle, sleep, tool, update: tick };
 }
