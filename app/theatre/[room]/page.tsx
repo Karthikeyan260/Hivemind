@@ -49,7 +49,8 @@ function Room() {
   const { room } = useParams<{ room: string }>();
   const q = useSearchParams();
   const isHost = q.get("host") === "1";
-  const first = movieById(q.get("m")) ?? MOVIES[0];
+  const picked = movieById(q.get("m"));
+  const first = picked ?? MOVIES[0];
 
   const [stage, setStage] = useState<"join" | "connecting" | "live" | "error">("join");
   const [error, setError] = useState("");
@@ -142,7 +143,7 @@ function Room() {
     } catch {}
     setStage("connecting");
     setError("");
-    const n = new TheatreNet(room, isHost, nm, {
+    const n = new TheatreNet(room, nm, {
       people: setPeople,
       line: (who, t, system) => say(who, t, system),
       react: pop,
@@ -190,13 +191,22 @@ function Room() {
       if (heardTimer.current) clearTimeout(heardTimer.current);
     };
   }, []);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Closing the tab or going back must tell the room right away (otherwise friends only notice when the connection times out).
+    const bye = () => net.current?.destroy();
+    // A page restored from the back/forward cache has lost its connections: start over.
+    const back = (e: PageTransitionEvent) => {
+      if (e.persisted) window.location.reload();
+    };
+    window.addEventListener("pagehide", bye);
+    window.addEventListener("pageshow", back);
+    return () => {
+      window.removeEventListener("pagehide", bye);
+      window.removeEventListener("pageshow", back);
       net.current?.destroy();
       if (countTimer.current) clearInterval(countTimer.current);
-    },
-    [],
-  );
+    };
+  }, []);
   useEffect(() => {
     try {
       const n = localStorage.getItem("hm-theatre-name");
@@ -457,10 +467,16 @@ function Room() {
           <p className="flex items-center gap-2 font-mono text-[11px] tracking-[0.3em] text-rose-300/90 uppercase">
             <Clapperboard size={14} /> Friends Theatre
           </p>
-          <h1 className="mt-3 font-serif text-4xl leading-tight">{isHost ? "Your screening" : "You're invited"}</h1>
+          <h1 className="mt-3 font-serif text-4xl leading-tight">{isHost ? "Your room" : "You're invited"}</h1>
           <p className="mt-2 text-white/70">
-            {first.title}
-            {first.year ? ` (${first.year})` : ""} · {runtime(first.minutes)} · Tamil
+            {picked ? (
+              <>
+                {picked.title}
+                {picked.year ? ` (${picked.year})` : ""} · {runtime(picked.minutes)} · Tamil
+              </>
+            ) : (
+              "Watch together. Pick a film once you are in."
+            )}
           </p>
           <label className="mt-7 block text-sm text-white/70" htmlFor="nm">
             Your name

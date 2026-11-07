@@ -137,3 +137,19 @@ export class RateLimiter {
     for (const k of this.seen.keys()) if (k.startsWith(`${sender}|`)) this.seen.delete(k);
   }
 }
+
+/**
+ * A new random room code: 16 letters and digits (about 95 bits), from the browser's / server's secure random source.
+ * Bytes that would make some characters likelier than others are thrown away, so every character is equally likely.
+ */
+export function newRoomCode(len = 16): string {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const limit = 256 - (256 % chars.length);
+  let out = "";
+  while (out.length < len) {
+    const buf = new Uint8Array(len * 2);
+    globalThis.crypto.getRandomValues(buf);
+    for (const b of buf) if (b < limit && out.length < len) out += chars[b % chars.length];
+  }
+  return out;
+}

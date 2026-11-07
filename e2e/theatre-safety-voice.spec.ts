@@ -24,8 +24,12 @@ async function unlock(page: Page) {
 }
 
 async function brokerUp(page: Page) {
-  const r = await page.request.get("https://0.peerjs.com/", { timeout: 8000 }).catch(() => null);
-  return !!r && r.ok();
+  // A slow answer once is not "down": try three times before skipping the room tests.
+  for (let i = 0; i < 3; i++) {
+    const r = await page.request.get("https://0.peerjs.com/", { timeout: 10_000 }).catch(() => null);
+    if (r?.ok()) return true;
+  }
+  return false;
 }
 
 async function twoInOneRoom(browser: Browser, movieId: string) {
@@ -75,7 +79,12 @@ test.describe("safety", () => {
     await p.goto(`/theatre/${room()}?m=${classic.id}`);
     await expect(p.getByRole("button", { name: /Join the screening/ })).toBeVisible();
     await p.waitForTimeout(5000);
-    expect([...new Set(calls)].filter((c) => c !== "/api/ice")).toEqual([]);
+    // /api/ice (relay logins) and /api/version (the auto-update check, only in a production build) are the app-wide calls every page makes.
+    expect([...new Set(calls)].filter((c) => c !== "/api/ice" && c !== "/api/version")).toEqual([]);
+    // ...and the version check tells a friend nothing: refused without the password, and even then it is only a build id.
+    const v = await p.request.get("/api/version");
+    expect(v.status()).toBe(401);
+    expect(await v.text()).not.toMatch(/build/i);
     await ctx.close();
   });
 
@@ -86,6 +95,17 @@ test.describe("safety", () => {
     }
     const post = await request.post("/api/notes", { data: { title: "x", body: "y" } });
     expect(post.status()).toBe(401);
+  });
+
+  test("the permanent room link can't be read or changed without the password", async ({ request }) => {
+    // Whoever has the link may join the room, but only the owner may see it, or make a new one.
+    const read = await request.get("/api/theatre/room");
+    expect(read.status()).toBe(401);
+    expect(await read.text()).not.toMatch(/[A-Za-z0-9]{16}/);
+    const rotate = await request.post("/api/theatre/room");
+    expect(rotate.status()).toBe(401);
+    const spoof = await request.post("/api/theatre/room", { headers: { Origin: "https://evil.example", Cookie: "hm_session=forged" } });
+    expect(spoof.status()).toBe(401);
   });
 
   test("the shelf stays locked for a friend who only has a room link", async ({ browser }) => {
@@ -130,7 +150,7 @@ test.describe("safety", () => {
     }
   });
 
-  test("a second person can't take over a room that is already open", async ({ browser }) => {
+  test("a second person opening the same link joins the room; they can't take it over", async ({ browser }) => {
     test.setTimeout(120_000);
     await needBroker(browser);
     const code = room();
@@ -138,11 +158,17 @@ test.describe("safety", () => {
     await a.goto(`/theatre/${code}?m=${classic.id}&host=1`);
     await a.getByRole("button", { name: /Open the room/ }).click();
     await expect(a.getByPlaceholder("Say something…")).toBeVisible({ timeout: 40_000 });
+    await expect(a.getByText(/The room is open/)).toBeVisible();
     const b = await (await browser.newContext()).newPage();
     await b.goto(`/theatre/${code}?m=${classic.id}&host=1`);
     await b.getByRole("button", { name: /Open the room/ }).click();
-    await expect(b.getByText(/already open/)).toBeVisible({ timeout: 40_000 });
-    await expect(a.getByPlaceholder("Say something…")).toBeVisible();
+    // b is a friend of the room now: it never says "the room is open" (it isn't the opener) and the first tab still holds the room.
+    await expect(b.getByPlaceholder("Say something…")).toBeVisible({ timeout: 40_000 });
+    await expect(a.getByText(/Host joined/)).toBeVisible({ timeout: 30_000 });
+    await expect(b.getByText(/The room is open/)).toHaveCount(0);
+    await a.getByPlaceholder("Say something…").fill("still here");
+    await a.keyboard.press("Enter");
+    await expect(b.getByText("still here")).toBeVisible({ timeout: 20_000 });
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOVIES } from "@/lib/theatre/catalog";
-import { cleanText, isRoomCode, MAX_CHAT, MAX_NAME, MAX_PEERS, parseMsg, RateLimiter, REACTIONS } from "@/lib/theatre/protocol";
+import { cleanText, isRoomCode, MAX_CHAT, MAX_NAME, MAX_PEERS, newRoomCode, parseMsg, RateLimiter, REACTIONS } from "@/lib/theatre/protocol";
 
 /**
  * Safety of a Friends Theatre room. The room link is public and anyone holding it can open a connection and send
@@ -154,5 +154,33 @@ describe("flooding", () => {
     let dropped = 0;
     for (let t = 0; t < 4 * 3600 * 1000; t += 4000) if (!r.allow("host", "hb", t)) dropped++;
     expect(dropped).toBe(0);
+  });
+});
+
+describe("new room codes", () => {
+  it("makes plain, long codes that pass the room-code check", () => {
+    for (let i = 0; i < 200; i++) {
+      const c = newRoomCode();
+      expect(c).toHaveLength(16);
+      expect(isRoomCode(c), c).toBe(true);
+    }
+    expect(isRoomCode(newRoomCode(40))).toBe(true);
+  });
+  it("never repeats, so a link can't be guessed or collide", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 5000; i++) seen.add(newRoomCode());
+    expect(seen.size).toBe(5000);
+  });
+  it("uses every kind of character about equally (no skew a guesser could use)", () => {
+    const count: Record<string, number> = {};
+    const total = 62 * 800;
+    let made = "";
+    while (made.length < total) made += newRoomCode(16);
+    for (const ch of made.slice(0, total)) count[ch] = (count[ch] ?? 0) + 1;
+    expect(Object.keys(count)).toHaveLength(62);
+    for (const [ch, n] of Object.entries(count)) {
+      expect(n, ch).toBeGreaterThan(800 * 0.7);
+      expect(n, ch).toBeLessThan(800 * 1.3);
+    }
   });
 });

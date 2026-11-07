@@ -25,8 +25,12 @@ async function unlock(page: Page) {
 }
 
 async function brokerUp(page: Page) {
-  const r = await page.request.get("https://0.peerjs.com/", { timeout: 8000 }).catch(() => null);
-  return !!r && r.ok();
+  // A slow answer once is not "down": try three times before skipping the room tests.
+  for (let i = 0; i < 3; i++) {
+    const r = await page.request.get("https://0.peerjs.com/", { timeout: 10_000 }).catch(() => null);
+    if (r?.ok()) return true;
+  }
+  return false;
 }
 
 /** The opener's page and a friend's page (a separate browser context, so no shared login), both inside one room. */

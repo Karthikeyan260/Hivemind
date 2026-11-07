@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ChevronLeft, ChevronRight, Clapperboard, ExternalLink, HelpCircle, Info, Play, Radio, Search, Users, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Clapperboard, Copy, ExternalLink, HelpCircle, Info, Link2, Play, Radio, RefreshCw, Search, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -60,6 +60,38 @@ export default function TheatrePage() {
   const voiceRun = useRef<(text: string) => void>(() => {});
   const heardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The owner's one permanent room: the same link every day, on every device.
+  const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [roomOpen, setRoomOpen] = useState(false);
+  const [roomNote, setRoomNote] = useState("");
+  useEffect(() => {
+    fetch("/api/theatre/room")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { code?: string } | null) => d?.code && setRoomCode(d.code))
+      .catch(() => {});
+  }, []);
+  const roomLink = roomCode && typeof window !== "undefined" ? `${window.location.origin}/theatre/${roomCode}` : "";
+  async function copyRoomLink() {
+    if (!roomLink) return;
+    try {
+      await navigator.clipboard.writeText(roomLink);
+      setRoomNote("Link copied");
+    } catch {
+      setRoomNote("Couldn't copy: select the link and copy it");
+    }
+    setTimeout(() => setRoomNote(""), 2200);
+  }
+  async function newRoomLink() {
+    if (!window.confirm("Make a new room link? The old link stops being your room, so send the new one to your friends.")) return;
+    const r = await fetch("/api/theatre/room", { method: "POST" }).catch(() => null);
+    const d = r?.ok ? ((await r.json()) as { code?: string }) : null;
+    if (d?.code) {
+      setRoomCode(d.code);
+      setRoomNote("New link ready");
+    } else setRoomNote("Couldn't make a new link");
+    setTimeout(() => setRoomNote(""), 2200);
+  }
+
   // A different featured film each day.
   const featured = useMemo(() => {
     // one of the newest few films; the public-domain classics when there is nothing newer
@@ -69,8 +101,12 @@ export default function TheatrePage() {
   }, []);
 
   function screening(m: Movie) {
-    const room = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+    // Always the permanent room (a random one only while its code hasn't loaded yet).
+    const room = roomCode ?? crypto.randomUUID().replace(/-/g, "").slice(0, 16);
     router.push(`/theatre/${room}?m=${m.id}&host=1`);
+  }
+  function openMyRoom() {
+    if (roomCode) router.push(`/theatre/${roomCode}?host=1`);
   }
 
   /** Hands-free control of the shelf (see lib/theatre/voice-commands.ts). */
@@ -159,7 +195,40 @@ export default function TheatrePage() {
             Friends <span className="text-rose-400">Theatre</span>
           </span>
         </span>
-        <button onClick={toggleListen} aria-pressed={listen === "listening"} title="Search and choose by voice (English or Tamil)" className={`ml-auto flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs ${listen === "listening" ? "border-rose-300/60 bg-rose-400/15 text-rose-200" : "border-white/20 text-white/80 hover:bg-white/10"}`}>
+        <div className="relative ml-auto">
+          <button onClick={() => setRoomOpen((o) => !o)} aria-expanded={roomOpen} title="Your permanent room link" className="flex h-9 items-center gap-1.5 rounded-full border border-white/20 px-3 text-xs text-white/80 hover:bg-white/10">
+            <Link2 size={14} />
+            <span className="hidden sm:inline">My room</span>
+          </button>
+          {roomOpen && (
+            <div role="dialog" aria-label="My room" className="absolute top-11 right-0 z-30 w-[min(22rem,88vw)] rounded-xl border border-white/15 bg-[#12121a] p-4 text-sm shadow-2xl">
+              <p className="font-medium">Your permanent room</p>
+              <p className="mt-1 text-xs leading-relaxed text-white/55">One link that never changes. Send it once; anyone with it can join whenever you or a friend has it open. Leave and come back any time.</p>
+              {roomLink ? (
+                <>
+                  <input readOnly value={roomLink} onFocus={(e) => e.currentTarget.select()} aria-label="Room link" className="mt-3 h-9 w-full rounded-lg border border-white/15 bg-white/6 px-2.5 text-xs outline-none" />
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    <button onClick={() => void copyRoomLink()} className="flex h-9 items-center gap-1.5 rounded-lg bg-white px-3 text-xs font-medium text-black hover:bg-white/85">
+                      {roomNote === "Link copied" ? <Check size={14} /> : <Copy size={14} />} Copy link
+                    </button>
+                    <button onClick={openMyRoom} className="flex h-9 items-center gap-1.5 rounded-lg bg-rose-500 px-3 text-xs font-medium hover:bg-rose-400">
+                      <Play size={13} fill="currentColor" /> Open my room
+                    </button>
+                    <button onClick={() => void newRoomLink()} className="flex h-9 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-xs text-white/75 hover:bg-white/10" title="Use this if the link was shared with someone it shouldn't be">
+                      <RefreshCw size={13} /> New link
+                    </button>
+                  </div>
+                  <p aria-live="polite" className="mt-2 h-4 text-xs text-emerald-300">
+                    {roomNote}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-3 text-xs text-white/55">Loading your link…</p>
+              )}
+            </div>
+          )}
+        </div>
+        <button onClick={toggleListen} aria-pressed={listen === "listening"} title="Search and choose by voice (English or Tamil)" className={`flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs ${listen === "listening" ? "border-rose-300/60 bg-rose-400/15 text-rose-200" : "border-white/20 text-white/80 hover:bg-white/10"}`}>
           <Radio size={14} className={listen === "listening" ? "animate-pulse" : ""} />
           <span className="hidden sm:inline">{listen === "listening" ? "Listening" : "Voice"}</span>
         </button>
