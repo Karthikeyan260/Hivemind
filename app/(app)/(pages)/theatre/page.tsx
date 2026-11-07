@@ -25,7 +25,7 @@ const ROWS: RowDef[] = [
   { title: "From other Indian languages", blurb: "Malayalam and more, from the official channels", group: "indian", pick: () => true },
   { title: "World cinema, in Tamil", blurb: "Chinese, Japanese and more, dubbed", group: "world", pick: () => true },
   { title: "Anime series, in Tamil", blurb: "Episodes from Muse India's official Tamil dubs", group: "anime", pick: () => true },
-  { title: "Cartoons for kids, in Tamil", blurb: "Official Tamil episodes: Bluey, Chhota Bheem, Little Singham, Motu Patlu, Paw Patrol, Peppa Pig and more", group: "kids", pick: () => true },
+  { title: "Cartoons for kids, in Tamil", blurb: "Official Tamil episodes: Chhota Bheem, Little Singham, Motu Patlu, Mickey Mouse Clubhouse, The Lion Guard, Ben 10, Bluey, Paw Patrol and more", group: "kids", pick: () => true },
   { title: "Public-domain classics · 1960 and earlier", blurb: "Free for good, streamed from Wikimedia Commons", group: "tamil", pick: (m) => !m.yt },
 ];
 
@@ -134,18 +134,21 @@ export default function TheatrePage() {
               const items = collapse(MOVIES.filter((m) => m.group === r.group && r.pick(m)));
               return items.length ? <Row key={r.title} title={r.title} blurb={r.blurb} items={items} onOpen={setOpen} /> : null;
             })}
-            {(group === "all" || group === "korean" || group === "anime") && (
+            {(group === "all" || group === "korean") && (
               <section className="px-4 sm:px-8">
-                <h2 className="text-lg font-medium sm:text-xl">Korean series, in Tamil</h2>
+                <h2 className="text-lg font-medium sm:text-xl">Free in other apps</h2>
                 <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/55">
-                  The studios don&apos;t put Tamil-dubbed Korean series on YouTube, so they can&apos;t play here. Amazon MX Player streams 18 CJ ENM dramas free in Tamil, Hindi and Telugu. Open it in its own app and use the theatre&apos;s chat on the side, but the pictures won&apos;t stay in step by themselves.
+                  Some free Tamil content can&apos;t play inside the theatre because the apps don&apos;t allow it. Tamil-dubbed Korean series are the main example: Amazon MX Player streams 18 CJ ENM dramas free in Tamil, Hindi and Telugu, and its free library (with the old Amazon miniTV, 200+ Tamil and Telugu dubs) has Tamil films and shows too. Open them in their own app and use a room here for chat and voice; the pictures won&apos;t stay in step by themselves.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <a href="https://www.mxplayer.in" target="_blank" rel="noreferrer" className="flex h-10 items-center gap-2 rounded-lg bg-white/10 px-4 text-sm hover:bg-white/20">
                     <ExternalLink size={15} /> Amazon MX Player
                   </a>
                   <a href="https://www.aboutamazon.in/news/entertainment/amazon-mx-player-cj-enm-korean-drama-free" target="_blank" rel="noreferrer" className="flex h-10 items-center gap-2 rounded-lg border border-white/15 px-4 text-sm text-white/75 hover:bg-white/10">
-                    <Info size={15} /> Which dramas are free
+                    <Info size={15} /> Which Korean dramas are free
+                  </a>
+                  <a href="https://prasarbharati.gov.in/waves/" target="_blank" rel="noreferrer" className="flex h-10 items-center gap-2 rounded-lg border border-white/15 px-4 text-sm text-white/75 hover:bg-white/10">
+                    <ExternalLink size={15} /> Waves (government, free)
                   </a>
                 </div>
               </section>

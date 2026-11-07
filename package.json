@@ -11,7 +11,8 @@
     "test:db": "vitest run tests/db.integration.test.ts",
     "test:e2e": "playwright test",
     "test:sweep": "playwright test e2e/sweep.spec.ts",
-    "restore": "node scripts/restore-backup.mjs"
+    "restore": "node scripts/restore-backup.mjs",
+    "theatre:links": "node scripts/check-theatre-links.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",
