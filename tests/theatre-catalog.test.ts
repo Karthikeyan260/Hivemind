@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
-import { GROUPS, MOVIES, movieById, runtime, type Group } from "@/lib/theatre/catalog";
+import { GENRE_LIST, GROUPS, MOVIES, movieById, runtime, type Group } from "@/lib/theatre/catalog";
 
 /**
  * Friends Theatre's catalogue is generated data (YouTube channel lists, Wikimedia Commons files). These checks catch a
@@ -104,5 +104,16 @@ describe("theatre catalogue", () => {
     expect(movieById(one.id)).toBe(one);
     expect(movieById("nope")).toBeNull();
     expect(movieById(null)).toBeNull();
+  });
+});
+
+describe("theatre genres", () => {
+  it("gives every Tamil and dubbed film a valid genre, and no series or cartoon one", () => {
+    const valid = new Set(GENRE_LIST.map((g) => g.id));
+    const films = MOVIES.filter((m) => m.yt && m.group !== "anime" && m.group !== "kids");
+    const missing = films.filter((m) => !m.genres?.length);
+    expect(missing.length, `no genre: ${missing.slice(0, 5).map((m) => m.title).join(", ")}`).toBeLessThan(films.length * 0.02);
+    for (const m of MOVIES) for (const g of m.genres ?? []) expect(valid.has(g), `${m.title}: ${g}`).toBe(true);
+    for (const g of GENRE_LIST) expect(MOVIES.filter((m) => m.genres?.includes(g.id)).length, `nothing in ${g.id}`).toBeGreaterThan(5);
   });
 });

@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Clapperboard, ExternalLink, HelpC
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { GROUPS, MOVIES, runtime, type Group, type Movie } from "@/lib/theatre/catalog";
+import { GENRE_LIST, GROUPS, MOVIES, runtime, type Genre, type Group, type Movie } from "@/lib/theatre/catalog";
 import { SpeechListener, type SpeechLang, type SpeechState } from "@/lib/theatre/speech";
 import { findTitle, parseShelfCommand } from "@/lib/theatre/voice-commands";
 
@@ -51,6 +51,7 @@ export default function TheatrePage() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Movie | null>(null);
   const [group, setGroup] = useState<Group | "all">("all");
+  const [genre, setGenre] = useState<Genre | "all">("all");
   const [listen, setListen] = useState<SpeechState>("off");
   const [lang, setLang] = useState<SpeechLang>("en-IN");
   const [heard, setHeard] = useState<{ text: string; note: string } | null>(null);
@@ -175,6 +176,14 @@ export default function TheatrePage() {
           </button>
         ))}
       </nav>
+      <nav aria-label="Genres" className="sticky top-[5.25rem] z-10 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:px-8 [&::-webkit-scrollbar]:hidden">
+        <span className="flex h-8 shrink-0 items-center text-[11px] tracking-widest text-white/40 uppercase">Genre</span>
+        {[{ id: "all" as const, label: "Any" }, ...GENRE_LIST].map((g) => (
+          <button key={g.id} onClick={() => setGenre(g.id)} aria-pressed={genre === g.id} className={`h-8 shrink-0 rounded-full border px-3.5 text-xs ${genre === g.id ? "border-rose-300 bg-rose-400 text-black" : "border-white/20 bg-black/40 text-white/80 backdrop-blur hover:bg-white/10"}`}>
+            {g.label}
+          </button>
+        ))}
+      </nav>
 
       {listen !== "off" && (
         <div className="px-4 pb-2 text-xs sm:px-8">
@@ -200,9 +209,9 @@ export default function TheatrePage() {
 
       {found ? (
         <section className="px-4 pt-4 pb-20 sm:px-8">
-          <h2 className="mb-3 text-lg font-medium">{found.length ? `Results for “${query.trim()}”` : `Nothing matches “${query.trim()}”`}</h2>
+          <h2 className="mb-3 text-lg font-medium">{found.length ? `Results for “${query.trim()}”${found.length > 150 ? ` · first 150 of ${found.length}, type more to narrow` : ""}` : `Nothing matches “${query.trim()}”`}</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {found.map((m) => (
+            {found.slice(0, 150).map((m) => (
               <Card key={m.id} m={m} onOpen={setOpen} wide />
             ))}
           </div>
@@ -237,10 +246,28 @@ export default function TheatrePage() {
           </section>
 
           <div className="relative z-10 -mt-10 space-y-8 pb-24 sm:-mt-14">
-            {ROWS.filter((r) => group === "all" || r.group === group).map((r) => {
-              const items = collapse(MOVIES.filter((m) => m.group === r.group && r.pick(m)));
-              return items.length ? <Row key={r.title} title={r.title} blurb={r.blurb} items={items} onOpen={setOpen} /> : null;
-            })}
+            {genre !== "all" &&
+              (() => {
+                const label = GENRE_LIST.find((g) => g.id === genre)?.label ?? "";
+                const inGenre = (m: Movie) => !!m.genres?.includes(genre);
+                const main = MOVIES.filter((m) => m.group === "tamil" && m.yt && inGenre(m) && (group === "all" || group === "tamil"));
+                const dubbed = MOVIES.filter((m) => m.group !== "tamil" && m.group !== "anime" && m.group !== "kids" && inGenre(m) && (group === "all" || m.group === group));
+                const lead = main.filter((m) => m.genres?.[0] === genre);
+                const also = main.filter((m) => m.genres?.[0] !== genre);
+                return (
+                  <>
+                    {lead.length > 0 && <Row title={`${label} · Tamil films`} blurb={`${lead.length} films, newest first`} items={lead} onOpen={setOpen} />}
+                    {also.length > 0 && <Row title={`Also has ${label.toLowerCase()}`} blurb="Films that mix this genre with another" items={also} onOpen={setOpen} />}
+                    {dubbed.length > 0 && <Row title={`${label} · dubbed in Tamil`} blurb="Hollywood, Korean, other Indian languages and world cinema" items={dubbed} onOpen={setOpen} />}
+                    {lead.length + also.length + dubbed.length === 0 && <p className="px-4 text-sm text-white/55 sm:px-8">Nothing in this genre for the chosen category yet.</p>}
+                  </>
+                );
+              })()}
+            {genre === "all" &&
+              ROWS.filter((r) => group === "all" || r.group === group).map((r) => {
+                const items = collapse(MOVIES.filter((m) => m.group === r.group && r.pick(m)));
+                return items.length ? <Row key={r.title} title={r.title} blurb={r.blurb} items={items} onOpen={setOpen} /> : null;
+              })}
             {(group === "all" || group === "korean") && (
               <section className="px-4 sm:px-8">
                 <h2 className="text-lg font-medium sm:text-xl">Free in other apps</h2>
@@ -333,13 +360,17 @@ export default function TheatrePage() {
 
 function Row({ title, blurb, items, onOpen }: { title: string; blurb: string; items: Movie[]; onOpen: (m: Movie) => void }) {
   const scroller = useRef<HTMLDivElement>(null);
+  const [limit, setLimit] = useState(30);
   const by = (d: number) => scroller.current?.scrollBy({ left: d * scroller.current.clientWidth * 0.85, behavior: "smooth" });
   return (
     <section>
       <div className="mb-2 flex items-end justify-between px-4 sm:px-8">
         <div>
           <h2 className="text-lg font-medium sm:text-xl">{title}</h2>
-          <p className="text-xs text-white/45">{blurb}</p>
+          <p className="text-xs text-white/45">
+            {blurb}
+            {items.length > 30 ? ` · ${items.length} films` : ""}
+          </p>
         </div>
         <div className="hidden gap-1.5 sm:flex">
           <button onClick={() => by(-1)} aria-label="Scroll left" className="grid size-8 place-items-center rounded-full bg-white/10 hover:bg-white/20">
@@ -351,9 +382,15 @@ function Row({ title, blurb, items, onOpen }: { title: string; blurb: string; it
         </div>
       </div>
       <div ref={scroller} className="flex snap-x gap-3 overflow-x-auto px-4 pb-3 [scrollbar-width:none] sm:px-8 [&::-webkit-scrollbar]:hidden">
-        {items.map((m) => (
+        {items.slice(0, limit).map((m) => (
           <Card key={m.id} m={m} onOpen={onOpen} />
         ))}
+        {items.length > limit && (
+          <button onClick={() => setLimit((l) => l + 60)} className="grid aspect-video w-[62vw] shrink-0 snap-start place-items-center rounded-lg border border-dashed border-white/25 text-sm text-white/70 hover:bg-white/10 sm:w-64">
+            Show {Math.min(60, items.length - limit)} more
+            <span className="block text-xs text-white/40">{items.length - limit} left</span>
+          </button>
+        )}
       </div>
     </section>
   );
