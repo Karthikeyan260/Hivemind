@@ -9,8 +9,8 @@ const OPEN_PATHS = ["/unlock", "/api/unlock", "/manifest.webmanifest", "/sw.js",
 export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   // Call pages are joined by the person you invited; they only see the call screen, never your data.
-  // Draw & Guess invites (/play/…) are the same: a friend sees only the game.
-  if (OPEN_PATHS.some((p) => path === p) || path.startsWith("/call/") || path.startsWith("/play/")) return NextResponse.next();
+  // Draw & Guess invites (/play/…) are the same: a friend sees only the game. So are Friends Theatre rooms (/theatre/…): only the film, chat and voice.
+  if (OPEN_PATHS.some((p) => path === p) || path.startsWith("/call/") || path.startsWith("/play/") || path.startsWith("/theatre/")) return NextResponse.next();
 
   if (misconfigured()) {
     return new NextResponse("APP_PASSWORD is not set. Add it in Vercel → Settings → Environment Variables.", {
@@ -27,8 +27,8 @@ export async function proxy(request: NextRequest) {
 }
 
 // Only build assets and the few files that must load without a session (app icons for install and
-// notifications, the chess piece pictures and the pet's drawings a friend's game needs) skip the gate. Never exclude by file extension: "/api/x/anything.png" would then
+// notifications, the chess piece pictures, the pet's drawings a friend's game needs, and the theatre's posters of public films) skip the gate. Never exclude by file extension: "/api/x/anything.png" would then
 // bypass the password, and personal images in public/ would be readable by anyone.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|icons/|chess/|mascots/nova-|api/cron/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|icons/|chess/|mascots/nova-|theatre/|api/cron/).*)"],
 };

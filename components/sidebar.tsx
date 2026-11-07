@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Blocks, ChefHat, Images, PartyPopper, Sprout, Gamepad2, Laugh, Moon, Newspaper, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
+import { Activity, Blocks, Clapperboard, ChefHat, Images, PartyPopper, Sprout, Gamepad2, Laugh, Moon, Newspaper, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cx } from "@/components/ui";
@@ -13,6 +13,7 @@ export const NAV = [
   { label: "Autopilot", href: "/autopilot", icon: Compass },
   { label: "Web tasks", href: "/web", icon: Globe },
   { label: "Mission control", href: "/mission", icon: Activity },
+  { label: "Friends theatre", href: "/theatre", icon: Clapperboard },
   { label: "Map", href: "/map", icon: MapIcon },
   { label: "Apps", href: "/apps", icon: Blocks },
   { label: "Routines", href: "/routines", icon: Zap },

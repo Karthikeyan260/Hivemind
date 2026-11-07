@@ -1154,3 +1154,7 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
 .roam-bob { animation: roam-bob 0.45s ease-in-out infinite; }
 .roam-hop { animation: roam-hop 0.55s ease-out; }
 @media (prefers-reduced-motion: reduce) { .roam-bob, .roam-hop { animation: none; } }
+
+@keyframes theatre-float { 0% { transform: translateY(0) scale(0.6); opacity: 0; } 12% { opacity: 1; transform: translateY(-20px) scale(1.1); } 100% { transform: translateY(-260px) scale(1); opacity: 0; } }
+.theatre-float { animation: theatre-float 2.4s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) { .theatre-float { animation-duration: 0.01s; } }

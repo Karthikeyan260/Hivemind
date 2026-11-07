@@ -18,6 +18,7 @@ export const VOICE_PAGES = [
   { path: "/autopilot", what: "Autopilot: what HIVEMIND noticed on its own, run it now, its schedule" },
   { path: "/web", what: "Web tasks: HIVEMIND driving a cloud browser, approvals, live view" },
   { path: "/mission", what: "Mission control: a live 3D room where a robot for each background agent (scheduler, autopilot, web agent, dream, brief, reminders, app builder) shows what it is doing" },
+  { path: "/theatre", what: "Friends theatre: a streaming-style shelf of free Tamil classics; start a screening, share the link, and watch together with chat and voice" },
   { path: "/map", what: "Map: where you are, your devices, places nearby, routes" },
   { path: "/apps", what: "Apps HIVEMIND built for the owner (create, change, delete)" },
   { path: "/routines", what: "Routines: one phrase that does several things (good morning, gym mode)" },
