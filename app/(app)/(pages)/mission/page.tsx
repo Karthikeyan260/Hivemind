@@ -116,7 +116,7 @@ export default function MissionPage() {
           <ArrowLeft size={17} />
         </Link>
         <div className="min-w-0 pr-36 sm:pr-56">
-          <h1 className="font-sans text-3xl leading-[1.05] font-bold tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.7)] sm:text-5xl">
+          <h1 className="font-sans text-2xl leading-[1.05] font-bold tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.7)] sm:text-5xl">
             An AI Army
             <br />
             Working for <span className="bg-gradient-to-r from-violet-400 to-indigo-300 bg-clip-text text-transparent">You</span>
@@ -180,9 +180,9 @@ export default function MissionPage() {
 
       {crew.length > 0 && (
         <div className="absolute inset-x-0 bottom-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6">
-          <ul className="mx-auto flex max-w-3xl flex-wrap justify-center gap-2" aria-label="Agents">
+          <ul className="mx-auto flex max-w-3xl snap-x gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:flex-wrap sm:justify-center sm:overflow-visible [&::-webkit-scrollbar]:hidden" aria-label="Agents">
             {crew.map((c) => (
-              <li key={c.id}>
+              <li key={c.id} className="shrink-0 snap-start">
                 <button
                   onClick={() => userPick(open === c.id ? null : c.id)}
                   aria-pressed={open === c.id}

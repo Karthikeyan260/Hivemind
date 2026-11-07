@@ -90,20 +90,20 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
       {more && (
         <div ref={sheet} className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" aria-label="More pages">
           <button type="button" aria-label="Close" onClick={() => setMore(false)} className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
-          <div className="sheet-up absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-line bg-sunken px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-            <div className="mb-3 flex items-center justify-between">
+          <div className="sheet-up absolute inset-x-0 bottom-0 flex max-h-[86dvh] flex-col rounded-t-2xl border-t border-line bg-sunken px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+            <div className="mb-2 flex shrink-0 items-center justify-between">
               <span className="font-mono text-[11px] tracking-[0.25em] text-faint">MORE</span>
               <button type="button" onClick={() => setMore(false)} aria-label="Close" className="-mr-2 p-2 text-soft">
                 <X size={18} />
               </button>
             </div>
-            <nav className="grid grid-cols-3 gap-2" aria-label="More pages">
+            <nav className="grid min-h-0 flex-1 grid-cols-3 content-start gap-2 overflow-y-auto overscroll-contain pb-1" aria-label="More pages">
               {MORE.map(({ label, href, icon: Icon }) => (
                 <Link
                   key={href}
                   href={href}
                   className={cx(
-                    "flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3.5 text-[12.5px]",
+                    "flex min-h-[4.25rem] flex-col items-center justify-center gap-1.5 rounded-xl border px-1.5 py-2.5 text-center text-[12px] leading-tight",
                     active(href) ? "border-core/50 bg-core/10 text-fg" : "border-line text-soft active:bg-raised",
                   )}
                 >
@@ -115,7 +115,7 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
                 <Link
                   key={a.id}
                   href={`/apps/${a.id}`}
-                  className={cx("flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3.5 text-[12.5px]", active(`/apps/${a.id}`) ? "border-core/50 bg-core/10 text-fg" : "border-line text-soft active:bg-raised")}
+                  className={cx("flex min-h-[4.25rem] flex-col items-center justify-center gap-1.5 rounded-xl border px-1.5 py-2.5 text-center text-[12px] leading-tight", active(`/apps/${a.id}`) ? "border-core/50 bg-core/10 text-fg" : "border-line text-soft active:bg-raised")}
                 >
                   <span className="text-xl leading-none">{a.emoji}</span>
                   <span className="max-w-full truncate">{a.name}</span>
@@ -123,7 +123,7 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
               ))}
             </nav>
             {canLock && (
-              <button type="button" onClick={lock} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-line py-3 text-sm text-soft active:bg-raised">
+              <button type="button" onClick={lock} className="mt-2 flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-line py-2.5 text-sm text-soft active:bg-raised">
                 <Lock size={16} /> Lock
               </button>
             )}

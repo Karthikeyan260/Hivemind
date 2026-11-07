@@ -1476,7 +1476,7 @@ export class MissionScene {
       const pm = p.panel.material as THREE.MeshBasicMaterial;
       pm.opacity += ((this.selected && !isSel ? 0.1 : 1) - pm.opacity) * (1 - Math.pow(0.01, dt));
       const d = cam.distanceTo(p.group.position);
-      p.panel.scale.setScalar(THREE.MathUtils.clamp(d / 22, 0.5, 1.1) * (1 + 0.12 * p.hv) * (this.portrait ? 0.72 : 1));
+      p.panel.scale.setScalar(THREE.MathUtils.clamp(d / 22, 0.5, 1.1) * (1 + 0.12 * p.hv) * (this.portrait ? 1.15 : 1));
     }
 
     if (this.sky) this.sky.rotation.y += dt * 0.004;
