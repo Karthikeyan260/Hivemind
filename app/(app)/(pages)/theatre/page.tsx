@@ -169,21 +169,23 @@ export default function TheatrePage() {
         </label>
       </header>
 
-      <nav aria-label="Categories" className="sticky top-14 z-10 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:px-8 [&::-webkit-scrollbar]:hidden">
-        {GROUPS.map((g) => (
-          <button key={g.id} onClick={() => setGroup(g.id)} aria-pressed={group === g.id} className={`h-8 shrink-0 rounded-full border px-3.5 text-xs ${group === g.id ? "border-white bg-white text-black" : "border-white/20 bg-black/40 text-white/80 backdrop-blur hover:bg-white/10"}`}>
-            {g.label}
-          </button>
-        ))}
-      </nav>
-      <nav aria-label="Genres" className="sticky top-[5.25rem] z-10 flex gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:px-8 [&::-webkit-scrollbar]:hidden">
-        <span className="flex h-8 shrink-0 items-center text-[11px] tracking-widest text-white/40 uppercase">Genre</span>
-        {[{ id: "all" as const, label: "Any" }, ...GENRE_LIST].map((g) => (
-          <button key={g.id} onClick={() => setGenre(g.id)} aria-pressed={genre === g.id} className={`h-8 shrink-0 rounded-full border px-3.5 text-xs ${genre === g.id ? "border-rose-300 bg-rose-400 text-black" : "border-white/20 bg-black/40 text-white/80 backdrop-blur hover:bg-white/10"}`}>
-            {g.label}
-          </button>
-        ))}
-      </nav>
+      <div className="sticky top-14 z-10 space-y-2 bg-gradient-to-b from-[#07070b] via-[#07070b]/90 to-transparent pb-4">
+        <nav aria-label="Categories" className="flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:px-8 [&::-webkit-scrollbar]:hidden">
+          {GROUPS.map((g) => (
+            <button key={g.id} onClick={() => setGroup(g.id)} aria-pressed={group === g.id} className={`h-8 shrink-0 rounded-full border px-3.5 text-xs ${group === g.id ? "border-white bg-white text-black" : "border-white/20 bg-black/40 text-white/80 backdrop-blur hover:bg-white/10"}`}>
+              {g.label}
+            </button>
+          ))}
+        </nav>
+        <nav aria-label="Genres" className="flex items-center gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:px-8 [&::-webkit-scrollbar]:hidden">
+          <span className="mr-1 shrink-0 text-[11px] font-medium tracking-[0.18em] text-white/55 uppercase">Genre</span>
+          {[{ id: "all" as const, label: "Any" }, ...GENRE_LIST].map((g) => (
+            <button key={g.id} onClick={() => setGenre(g.id)} aria-pressed={genre === g.id} className={`h-7 shrink-0 rounded-md border px-3 text-xs transition-colors ${genre === g.id ? "border-rose-300/70 bg-rose-400/20 font-medium text-rose-100" : "border-transparent bg-white/8 text-white/75 hover:bg-white/15 hover:text-white"}`}>
+              {g.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
       {listen !== "off" && (
         <div className="px-4 pb-2 text-xs sm:px-8">
