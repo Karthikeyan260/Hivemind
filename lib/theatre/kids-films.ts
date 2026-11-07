@@ -18216,7 +18216,7 @@ export const KIDS_EPISODES: Movie[] = [
  },
  {
   "id": "yt-rmsZEfCbwOo",
-  "title": "ஸ்டைல் ​​பாய் கா ஜாக்கெட் - Style Bhai Ka Jacket",
+  "title": "ஸ்டைல் பாய் கா ஜாக்கெட் - Style Bhai Ka Jacket",
   "year": null,
   "minutes": 11,
   "mb": 0,

@@ -42390,7 +42390,7 @@ export const YOUTUBE_FILMS: Movie[] = [
  },
  {
   "id": "yt-4LvV_i1HZG8",
-  "title": "Sabarimalai Sri Ayyappan God ​",
+  "title": "Sabarimalai Sri Ayyappan God",
   "year": null,
   "minutes": 164,
   "mb": 0,

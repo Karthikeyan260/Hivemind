@@ -24,6 +24,10 @@ export const REACTIONS = ["😂", "👏", "❤️", "😮", "😢", "🔥"];
 export const MAX_NAME = 24;
 export const MAX_CHAT = 400;
 export const MAX_PEERS = 8;
+/** Most people connected to one browser at once. A joiner holding the link can open many connections; past this they are closed. */
+export const MAX_CONNS = 12;
+/** Longest id we even look at: a hostile peer's megabyte "id" is dropped without being scanned. */
+const MAX_ID_LEN = 80;
 /** A film is at most a day long: a time past that (or negative, NaN, Infinity) is garbage. */
 export const MAX_TIME = 86_400;
 
@@ -33,7 +37,9 @@ const INVISIBLE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f​-‏�
 /** Plain, single-spaced text of at most `max` characters, with control and look-alike characters removed. */
 export function cleanText(v: unknown, max: number): string {
   if (typeof v !== "string") return "";
-  return v.replace(INVISIBLE, "").replace(/\s+/g, " ").trim().slice(0, max);
+  // Cap first: a hostile peer can send a huge string, and cleaning all of it would freeze the page.
+  const s = v.length > max * 8 ? v.slice(0, max * 8) : v;
+  return s.replace(INVISIBLE, "").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 /** A room code: letters and digits only, long enough not to be guessed. The code is part of a public broker id, so keep it plain. */
@@ -70,7 +76,8 @@ function parseUnsafe(raw: unknown, knownMovie: (id: string) => boolean): Msg | n
     }
     case "peers": {
       if (!Array.isArray(m.list)) return null;
-      const list = m.list.filter((x): x is string => typeof x === "string" && PEER_ID.test(x)).slice(0, MAX_PEERS);
+      // Look at only the first few entries: a list of millions must not cost millions of checks.
+      const list = m.list.slice(0, MAX_PEERS * 4).filter((x): x is string => typeof x === "string" && x.length <= MAX_ID_LEN && PEER_ID.test(x)).slice(0, MAX_PEERS);
       return { t: "peers", list };
     }
     case "state":

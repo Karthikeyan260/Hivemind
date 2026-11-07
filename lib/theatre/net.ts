@@ -1,6 +1,6 @@
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { PEER_OPTIONS } from "@/lib/ice";
-import { parseMsg, RateLimiter, MAX_PEERS, type Msg } from "./protocol";
+import { parseMsg, RateLimiter, MAX_CONNS, MAX_PEERS, type Msg } from "./protocol";
 
 /**
  * The wires of a Friends Theatre room. Browser to browser (WebRTC): PeerJS's free broker introduces people,
@@ -41,6 +41,14 @@ const BEAT_MS = 4000;
 const GRACE_MS = 6000;
 /** A friend that has not reached an opener for this many knocks tries to become the opener itself. */
 const KNOCKS_BEFORE_CLAIM = 2;
+/** A connection that has been "disconnected" this long is dropped (it may heal in a blip, so not at once). */
+const DOWN_GRACE_MS = 6000;
+/** A takeover attempt the broker never answers is abandoned after this long, so the next knock can try again. */
+const CLAIM_TIMEOUT_MS = 12_000;
+/** The most one connection may send us in RAW_WINDOW_MS (before anything is parsed): far above any honest room, far below a flood. */
+const RAW_WINDOW_MS = 10_000;
+const MAX_RAW_MESSAGES = 1500;
+const MAX_RAW_BYTES = 4 * 1024 * 1024;
 
 export class TheatreNet {
   private peer: Peer | null = null;
@@ -59,6 +67,8 @@ export class TheatreNet {
   private claiming = false;
   private knocks = 0;
   private dialing: { dc: DataConnection; at: number } | null = null;
+  /** When we last asked the room where the film is: an answer from a friend (not the opener) only counts shortly after. */
+  private askedAt = 0;
   talking = false;
 
   constructor(
@@ -71,8 +81,12 @@ export class TheatreNet {
   private limiter = new RateLimiter();
 
   /** Switch on with `window.__theatreDebug = true` (the end-to-end tests do) to see every connection and message in the console. */
+  private get debugOn() {
+    return !!(globalThis as { __theatreDebug?: boolean }).__theatreDebug;
+  }
+  /** Callers check `debugOn` first, so nothing (not even building the arguments) happens when it is off. */
   private dbg(...a: unknown[]) {
-    if ((globalThis as { __theatreDebug?: boolean }).__theatreDebug) console.debug("[theatre]", this.peer?.id ?? "-", ...a);
+    console.debug("[theatre]", this.peer?.id ?? "-", ...a);
   }
 
   private get hostId() {
@@ -197,7 +211,15 @@ export class TheatreNet {
       return;
     }
     const c = new this.Ctor(this.hostId, PEER_OPTIONS);
+    // A broker that never answers must not block every later attempt: give up on this one after a while.
+    const giveUp = setTimeout(() => {
+      if (!this.claiming) return;
+      this.claiming = false;
+      c.destroy();
+    }, CLAIM_TIMEOUT_MS);
+    this.timers.push(giveUp);
     c.on("open", () => {
+      clearTimeout(giveUp);
       this.claiming = false;
       if (this.dead || this.opener) return c.destroy();
       const old = this.peer;
@@ -207,10 +229,11 @@ export class TheatreNet {
       // Our old id goes: the friends we were connected to see that, then knock on the room id (which is us now).
       this.dialing = null;
       old?.destroy();
-      this.dbg("took the room over");
+      if (this.debugOn) this.dbg("took the room over");
       this.becomeOpener(false);
     });
     c.on("error", (e) => {
+      clearTimeout(giveUp);
       if (e.type === "unavailable-id") {
         this.claiming = false; // someone else is the opener already: the next knock finds them
         c.destroy();
@@ -222,25 +245,98 @@ export class TheatreNet {
   }
 
   send(m: Msg, to?: DataConnection) {
+    if (m.t === "ask") this.askedAt = Date.now();
     if (to) {
       if (to.open) to.send(m);
       return;
     }
-    this.dbg("send", m.t, "to", [...this.conns.values()].filter((c) => c.open).map((c) => c.peer));
+    if (this.debugOn)
+      this.dbg(
+        "send",
+        m.t,
+        "to",
+        [...this.conns.values()].filter((c) => c.open).map((c) => c.peer),
+      );
     for (const c of this.conns.values()) if (c.open) c.send(m);
+  }
+
+  /**
+   * A friend who closes the tab says goodbye; one whose network dies (a closed laptop, a killed app, a lost signal) says
+   * nothing, and the connection looks open for a long time. Watch the WebRTC connection itself and drop it once it has
+   * been down for a few seconds, so the room notices, and a friend can take the room over, in about ten seconds.
+   */
+  private watch(dc: DataConnection) {
+    const pc = (dc as unknown as { peerConnection?: RTCPeerConnection }).peerConnection;
+    if (!pc || typeof pc.addEventListener !== "function") return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const dead = () => ["failed", "closed", "disconnected"].includes(pc.iceConnectionState) || ["failed", "closed"].includes(pc.connectionState);
+    const check = () => {
+      const state = pc.iceConnectionState;
+      if (state === "failed" || state === "closed" || pc.connectionState === "failed") {
+        dc.close();
+      } else if (state === "disconnected") {
+        // "disconnected" can heal by itself (a blip): give it a few seconds before giving up.
+        timer ??= setTimeout(() => {
+          timer = null;
+          if (dead()) dc.close();
+        }, DOWN_GRACE_MS);
+        this.timers.push(timer);
+      } else if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+    pc.addEventListener("iceconnectionstatechange", check);
+    pc.addEventListener("connectionstatechange", check);
+  }
+
+  /**
+   * Counts everything that arrives on a connection, before any of it is understood. Our own limits (see RateLimiter) only
+   * apply to messages that parse; a peer can also send junk that PeerJS itself chokes on, or a flood of tiny messages.
+   * Honest traffic is a few messages every few seconds, so a connection that sends thousands, or megabytes, is dropped.
+   */
+  private guard(dc: DataConnection) {
+    const ch = (dc as unknown as { dataChannel?: RTCDataChannel }).dataChannel;
+    if (!ch || typeof ch.addEventListener !== "function") return;
+    let count = 0;
+    let bytes = 0;
+    let since = Date.now();
+    ch.addEventListener("message", (e: MessageEvent) => {
+      const now = Date.now();
+      if (now - since > RAW_WINDOW_MS) {
+        count = 0;
+        bytes = 0;
+        since = now;
+      }
+      const d = e.data as { byteLength?: number; size?: number; length?: number } | string | null;
+      count++;
+      bytes += d === null || d === undefined ? 0 : typeof d === "string" ? d.length : (d.byteLength ?? d.size ?? d.length ?? 0);
+      if (count > MAX_RAW_MESSAGES || bytes > MAX_RAW_BYTES) {
+        if (this.debugOn) this.dbg("flood, dropping", dc.peer, count, bytes);
+        dc.close();
+      }
+    });
   }
 
   private wire(dc: DataConnection) {
     dc.on("open", () => {
+      // The link is public: nobody may fill the room with connections. Past the limit, newcomers are turned away.
+      if (!this.conns.has(dc.peer) && this.conns.size >= MAX_CONNS) {
+        if (this.debugOn) this.dbg("room full, refusing", dc.peer);
+        dc.close();
+        return;
+      }
       this.conns.set(dc.peer, dc);
-      this.dbg("open", dc.peer);
+      this.watch(dc);
+      this.guard(dc);
+      if (this.debugOn) this.dbg("open", dc.peer);
       this.knocks = 0;
       dc.send({ t: "hello", name: this.name } satisfies Msg);
       this.hooks.live();
     });
     dc.on("data", (d) => this.handle(dc, d));
     const gone = () => {
-      this.dbg("close", dc.peer, this.conns.get(dc.peer) === dc ? "(current)" : "(stale)");
+      if (this.debugOn) this.dbg("close", dc.peer, this.conns.get(dc.peer) === dc ? "(current)" : "(stale)");
       if (this.conns.get(dc.peer) !== dc) return;
       this.conns.delete(dc.peer);
       this.limiter.forget(dc.peer);
@@ -267,18 +363,32 @@ export class TheatreNet {
     // Everything from the wire is untrusted: only well-formed messages within their allowance get through.
     const m = parseMsg(raw, this.knownMovie);
     if (!m || !this.limiter.allow(dc.peer, m.t, Date.now())) {
-      this.dbg("dropped", (raw as { t?: unknown } | null)?.t, "from", dc.peer, m ? "(too many)" : "(malformed)");
+      if (this.debugOn) {
+        let kind: unknown;
+        try {
+          kind = (raw as { t?: unknown } | null)?.t; // a hostile object may have a property that throws
+        } catch {
+          kind = "?";
+        }
+        this.dbg("dropped", kind, "from", dc.peer, m ? "(too many)" : "(malformed)");
+      }
       return;
     }
     const id = dc.peer;
     const h = this.hooks;
-    this.dbg("got", m.t, "from", id);
+    if (this.debugOn) this.dbg("got", m.t, "from", id);
     switch (m.t) {
       case "hello": {
         const nm = m.name;
+        const first = !this.names[id];
         this.names[id] = nm;
         h.people({ ...this.names });
-        h.line("", `${nm} joined`, true);
+        if (first) {
+          h.line("", `${nm} joined`, true);
+          // The first time we hear from someone, answer with our own name once more: if our greeting on connecting got lost
+          // they would otherwise never know who we are (they answer only when they don't know us yet, so this can't loop).
+          if (dc.open) dc.send({ t: "hello", name: this.name } satisfies Msg);
+        }
         if (this.opener) {
           this.send({ t: "peers", list: [...this.conns.keys()].filter((k) => k !== id) }, dc);
           // A fresh opener doesn't know the film's place yet: ask the newcomer (who may have been watching for an hour).
@@ -299,6 +409,8 @@ export class TheatreNet {
         break;
       }
       case "peers": {
+        // Only the opener introduces people. From anyone else this could send us off to connect to ids of its choosing.
+        if (id !== this.hostId || this.opener) break;
         const p = this.peer;
         if (!p) break;
         for (const other of m.list.slice(0, MAX_PEERS)) if (other !== p.id && !this.conns.has(other)) this.wire(p.connect(other, { reliable: true }));
@@ -306,6 +418,8 @@ export class TheatreNet {
       }
       case "state":
       case "hb": {
+        // The heartbeat is the opener's alone. A "state" is the answer to "where is the film": from the opener, or from a friend we just asked.
+        if (m.t === "hb" ? id !== this.hostId : id !== this.hostId && Date.now() - this.askedAt > 10_000) break;
         const real = m.playing || m.time > 2;
         // Until we know where the film is, only a place somebody really got to counts: a friend who just arrived is at 0:00.
         if (this.opener && !this.authoritative) {
