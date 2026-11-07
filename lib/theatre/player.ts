@@ -8,6 +8,11 @@ export interface Player {
   seek(t: number): void;
   time(): number;
   paused(): boolean;
+  /** 0 to 1. */
+  volume(): number;
+  setVolume(v: number): void;
+  muted(): boolean;
+  setMuted(on: boolean): void;
 }
 
 export const filePlayer = (v: HTMLVideoElement): Player => ({
@@ -18,6 +23,15 @@ export const filePlayer = (v: HTMLVideoElement): Player => ({
   },
   time: () => v.currentTime,
   paused: () => v.paused,
+  volume: () => v.volume,
+  setVolume: (x) => {
+    v.volume = Math.min(1, Math.max(0, x));
+    if (x > 0) v.muted = false;
+  },
+  muted: () => v.muted,
+  setMuted: (on) => {
+    v.muted = on;
+  },
 });
 
 type YTPlayer = {
@@ -26,6 +40,11 @@ type YTPlayer = {
   seekTo(t: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
   getPlayerState(): number;
+  getVolume(): number;
+  setVolume(v: number): void;
+  isMuted(): boolean;
+  mute(): void;
+  unMute(): void;
   destroy(): void;
 };
 type YTNamespace = { Player: new (el: HTMLElement, opts: unknown) => YTPlayer };
@@ -136,6 +155,20 @@ export class YtPlayer implements Player {
   }
   paused() {
     return this.p ? this.p.getPlayerState() !== 1 : true;
+  }
+  volume() {
+    return (this.p?.getVolume?.() ?? 100) / 100;
+  }
+  setVolume(v: number) {
+    this.p?.setVolume(Math.round(Math.min(1, Math.max(0, v)) * 100));
+    if (v > 0) this.p?.unMute();
+  }
+  muted() {
+    return this.p?.isMuted?.() ?? false;
+  }
+  setMuted(on: boolean) {
+    if (on) this.p?.mute();
+    else this.p?.unMute();
   }
   destroy() {
     this.dead = true;

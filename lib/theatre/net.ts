@@ -1,5 +1,6 @@
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { PEER_OPTIONS } from "@/lib/ice";
+import { parseMsg, RateLimiter, MAX_PEERS, type Msg } from "./protocol";
 
 /**
  * The wires of a Friends Theatre room. Browser to browser (WebRTC): PeerJS's free broker introduces people,
@@ -8,19 +9,7 @@ import { PEER_OPTIONS } from "@/lib/ice";
  * where the film is up to. Messages are tiny: play / pause / seek, a heartbeat for drift, chat and reactions.
  * Voice is a call to each friend. The film itself never travels here; each person streams it from Wikimedia Commons.
  */
-export type Msg =
-  | { t: "hello"; name: string }
-  | { t: "peers"; list: string[] }
-  | { t: "state"; movie: string; time: number; playing: boolean }
-  | { t: "ask" }
-  | { t: "play"; time: number }
-  | { t: "pause"; time: number }
-  | { t: "seek"; time: number }
-  | { t: "movie"; id: string }
-  | { t: "hb"; movie: string; time: number; playing: boolean }
-  | { t: "chat"; text: string }
-  | { t: "react"; e: string }
-  | { t: "count" };
+export type { Msg } from "./protocol";
 
 export type Playback = { movie: string; time: number; playing: boolean };
 
@@ -48,7 +37,7 @@ export class TheatreNet {
   private conns = new Map<string, DataConnection>();
   private calls = new Map<string, MediaConnection>();
   private audios = new Map<string, HTMLAudioElement>();
-  private names: Record<string, string> = {};
+  private names: Record<string, string> = Object.create(null);
   private mic: MediaStream | null = null;
   private timers: Array<ReturnType<typeof setInterval>> = [];
   private dead = false;
@@ -59,7 +48,10 @@ export class TheatreNet {
     private isHost: boolean,
     private name: string,
     private hooks: NetHooks,
+    private knownMovie: (id: string) => boolean = () => true,
   ) {}
+
+  private limiter = new RateLimiter();
 
   private get hostId() {
     return `hm-theatre-${this.room}`;
@@ -120,6 +112,7 @@ export class TheatreNet {
     const gone = () => {
       if (this.conns.get(dc.peer) !== dc) return;
       this.conns.delete(dc.peer);
+      this.limiter.forget(dc.peer);
       this.calls.get(dc.peer)?.close();
       const nm = this.names[dc.peer];
       delete this.names[dc.peer];
@@ -135,13 +128,14 @@ export class TheatreNet {
   }
 
   private handle(dc: DataConnection, raw: unknown) {
-    const m = raw as Msg;
-    if (!m || typeof m !== "object") return;
+    // Everything from the wire is untrusted: only well-formed messages within their allowance get through.
+    const m = parseMsg(raw, this.knownMovie);
+    if (!m || !this.limiter.allow(dc.peer, m.t, Date.now())) return;
     const id = dc.peer;
     const h = this.hooks;
     switch (m.t) {
       case "hello": {
-        const nm = String(m.name || "Friend").slice(0, 24);
+        const nm = m.name;
         this.names[id] = nm;
         h.people({ ...this.names });
         h.line("", `${nm} joined`, true);
@@ -155,34 +149,34 @@ export class TheatreNet {
       case "peers": {
         const p = this.peer;
         if (!p) break;
-        for (const other of m.list.slice(0, 8)) if (other !== p.id && !this.conns.has(other)) this.wire(p.connect(other, { reliable: true }));
+        for (const other of m.list.slice(0, MAX_PEERS)) if (other !== p.id && !this.conns.has(other)) this.wire(p.connect(other, { reliable: true }));
         break;
       }
       case "state":
       case "hb":
-        h.playback({ movie: String(m.movie), time: Number(m.time) || 0, playing: !!m.playing });
+        h.playback({ movie: m.movie, time: m.time, playing: m.playing });
         break;
       case "ask":
         this.send({ t: "state", ...h.here() }, dc);
         break;
       case "play":
-        h.play(Number(m.time) || 0);
+        h.play(m.time);
         break;
       case "pause":
-        h.pause(Number(m.time) || 0);
+        h.pause(m.time);
         break;
       case "seek":
-        h.seek(Number(m.time) || 0);
+        h.seek(m.time);
         break;
       case "movie":
-        h.movie(String(m.id));
+        h.movie(m.id);
         h.line("", `${this.who(id)} picked another film`, true);
         break;
       case "chat":
-        h.line(this.who(id), String(m.text).slice(0, 400), false);
+        h.line(this.who(id), m.text, false);
         break;
       case "react":
-        h.react(String(m.e).slice(0, 4));
+        h.react(m.e);
         break;
       case "count":
         h.count(this.who(id));

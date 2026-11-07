@@ -1,12 +1,15 @@
 "use client";
 
-import { ChevronLeft, Clapperboard, Copy, Film, Mic, MicOff, RefreshCw, Search, Send, Users, X } from "lucide-react";
+import { ChevronLeft, Clapperboard, Copy, Film, HelpCircle, Mic, MicOff, Radio, RefreshCw, Search, Send, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { MOVIES, movieById, runtime, type Movie } from "@/lib/theatre/catalog";
 import { TheatreNet, type Playback } from "@/lib/theatre/net";
+import { cleanText, isRoomCode, MAX_CHAT, MAX_NAME, REACTIONS } from "@/lib/theatre/protocol";
 import { filePlayer, YtPlayer, type Player } from "@/lib/theatre/player";
+import { SpeechListener, type SpeechLang, type SpeechState } from "@/lib/theatre/speech";
+import { findTitle, parseRoomCommand } from "@/lib/theatre/voice-commands";
 
 /**
  * Friends Theatre: one film, played in step for everyone who has the link, with chat, reactions and voice.
@@ -16,6 +19,18 @@ import { filePlayer, YtPlayer, type Player } from "@/lib/theatre/player";
  * between friends.
  */
 export default function TheatreRoomPage() {
+  const { room } = useParams<{ room: string }>();
+  // The code is part of a public broker id: only plain, long-enough codes are accepted (a made-up link shows nothing).
+  if (!isRoomCode(room)) {
+    return (
+      <div className="fixed inset-0 z-50 grid place-items-center bg-[#07070b] px-6 text-center text-white">
+        <div>
+          <p className="font-serif text-2xl">This link doesn&apos;t look right</p>
+          <p className="mt-2 text-sm text-white/60">Ask your friend to send the invite again.</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <Suspense>
       <Room />
@@ -29,7 +44,6 @@ type Float = { id: number; e: string; x: number };
 /** Wall clock for the "ignore the player for a moment" guard (kept out of the render path). */
 const clock = () => performance.now();
 
-const REACTIONS = ["😂", "👏", "❤️", "😮", "😢", "🔥"];
 
 function Room() {
   const { room } = useParams<{ room: string }>();
@@ -53,6 +67,10 @@ function Room() {
   const [playError, setPlayError] = useState(false);
   const [ytBlocked, setYtBlocked] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [listen, setListen] = useState<SpeechState>("off");
+  const [speechLang, setSpeechLang] = useState<SpeechLang>("en-IN");
+  const [heard, setHeard] = useState<{ text: string; note: string } | null>(null);
+  const [help, setHelp] = useState(false);
   const countTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const movie = movieById(movieId) ?? first;
@@ -66,6 +84,10 @@ function Room() {
   const movieRef = useRef(first.id);
   const seq = useRef(1);
   const chatEnd = useRef<HTMLDivElement | null>(null);
+  const stageEl = useRef<HTMLDivElement | null>(null);
+  const speech = useRef<SpeechListener | null>(null);
+  const voiceRun = useRef<(text: string) => void>(() => {});
+  const heardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const say = (who: string, t: string, system = false, me = false) => setLines((l) => [...l.slice(-199), { id: seq.current++, who, text: t, sys: system, me }]);
 
@@ -114,7 +136,7 @@ function Room() {
 
   // Start: join the room (needs a tap, so the browser lets the film play with sound).
   async function enter() {
-    const nm = (name.trim() || (isHost ? "Host" : "Friend")).slice(0, 24);
+    const nm = cleanText(name, MAX_NAME) || (isHost ? "Host" : "Friend");
     try {
       localStorage.setItem("hm-theatre-name", nm);
     } catch {}
@@ -155,11 +177,19 @@ function Room() {
         setError(message);
         setStage("error");
       },
-    });
+    }, (id) => !!movieById(id));
     net.current = n;
     await n.start();
   }
 
+  useEffect(() => {
+    const l = new SpeechListener((t) => voiceRun.current(t), setListen);
+    speech.current = l;
+    return () => {
+      l.destroy();
+      if (heardTimer.current) clearTimeout(heardTimer.current);
+    };
+  }, []);
   useEffect(
     () => () => {
       net.current?.destroy();
@@ -241,7 +271,7 @@ function Room() {
   }
   function chat(e: React.FormEvent) {
     e.preventDefault();
-    const t = text.trim();
+    const t = cleanText(text, MAX_CHAT);
     if (!t) return;
     setText("");
     say("You", t, false, true);
@@ -257,6 +287,140 @@ function Room() {
     setTalking(on);
     say("", on ? "Voice is on. Use headphones so your friends don't hear the film twice." : was ? "Voice is off." : "Microphone permission is needed to talk.", true);
   }
+  /** Hands-free control: what was said becomes a command (see lib/theatre/voice-commands.ts). */
+  function runVoice(text: string) {
+    const c = parseRoomCommand(text);
+    let note = "I didn't catch a command";
+    const p = player.current;
+    const go = (n: string) => (note = n);
+    if (c) {
+      switch (c.t) {
+        case "play":
+          if (p) {
+            p.play();
+            go("Playing");
+          } else go("Nothing to play yet");
+          break;
+        case "pause":
+          p?.pause();
+          go("Paused");
+          break;
+        case "seek":
+          if (p) {
+            const to = Math.max(0, p.time() + c.by);
+            p.seek(to);
+            net.current?.send({ t: "seek", time: to }); // tell friends now, not when the new bit has finished loading
+            go(`${c.by > 0 ? "Forward" : "Back"} ${Math.abs(c.by)} s`);
+          }
+          break;
+        case "seekTo":
+          if (p) {
+            p.seek(c.to);
+            net.current?.send({ t: "seek", time: c.to });
+            go(`Jumped to ${Math.floor(c.to / 60)} min`);
+          }
+          break;
+        case "volume":
+          if (p) {
+            p.setVolume(p.volume() + c.by / 100);
+            go(`Volume ${Math.round(p.volume() * 100)}%`);
+          }
+          break;
+        case "volumeSet":
+          if (p) {
+            p.setVolume(c.to / 100);
+            go(`Volume ${c.to}%`);
+          }
+          break;
+        case "mute":
+          p?.setMuted(c.on);
+          go(c.on ? "Muted" : "Sound on");
+          break;
+        case "fullscreen":
+          if (c.on) void stageEl.current?.requestFullscreen?.().catch(() => {});
+          else if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+          go(c.on ? "Full screen" : "Left full screen");
+          break;
+        case "next":
+        case "prev": {
+          const eps = movie.series ? MOVIES.filter((x) => x.series === movie.series).sort((a, b) => (a.ep ?? 0) - (b.ep ?? 0)) : [];
+          const sib = eps[eps.findIndex((x) => x.id === movie.id) + (c.t === "next" ? 1 : -1)];
+          if (sib) {
+            pickMovie(sib);
+            go(`${c.t === "next" ? "Next" : "Previous"}: ${sib.title}`);
+          } else go(c.t === "next" ? "No next episode" : "No previous episode");
+          break;
+        }
+        case "catchUp":
+          net.current?.send({ t: "ask" });
+          go("Catching up with your friends");
+          break;
+        case "invite":
+          void copyLink();
+          go("Invite link copied");
+          break;
+        case "mic":
+          if (c.on !== (net.current?.talking ?? false)) void toggleVoice();
+          go(c.on ? "Talking to friends: on" : "Talking to friends: off");
+          break;
+        case "chat": {
+          const t = cleanText(c.text, MAX_CHAT);
+          if (t) {
+            say("You", t, false, true);
+            net.current?.send({ t: "chat", text: t });
+            go("Sent to the chat");
+          }
+          break;
+        }
+        case "react":
+          react(c.e);
+          go(`Reacted ${c.e}`);
+          break;
+        case "pick": {
+          const m = findTitle(c.query, MOVIES);
+          if (m) {
+            pickMovie(m);
+            go(`Switching to ${m.title}`);
+          } else go(`No film called “${c.query}”`);
+          break;
+        }
+        case "quality": {
+          const q = movie.qualities.find((x) => x.label === c.label);
+          if (!movie.yt && q) {
+            changeQuality(q.label);
+            go(`Quality ${q.label}`);
+          } else go("That quality isn't available here");
+          break;
+        }
+        case "leave":
+          go("Leaving");
+          window.location.assign(isHost ? "/theatre" : "/");
+          break;
+        case "help":
+          setHelp(true);
+          go("Here are some things to say");
+          break;
+      }
+    }
+    setHeard({ text, note });
+    if (heardTimer.current) clearTimeout(heardTimer.current);
+    heardTimer.current = setTimeout(() => setHeard(null), 4000);
+  }
+
+  function toggleListen() {
+    if (listen === "listening") speech.current?.stop();
+    else speech.current?.start(speechLang);
+  }
+  function switchLang() {
+    const next: SpeechLang = speechLang === "en-IN" ? "ta-IN" : "en-IN";
+    setSpeechLang(next);
+    if (listen === "listening") speech.current?.start(next);
+  }
+
+  useEffect(() => {
+    voiceRun.current = runVoice;
+  });
+
   async function copyLink() {
     const url = `${location.origin}/theatre/${room}?m=${movieRef.current}`;
     try {
@@ -335,6 +499,10 @@ function Room() {
             <Users size={11} className="shrink-0" /> {names.length ? `You, ${names.join(", ")}` : "Just you so far"}
           </p>
         </div>
+        <button onClick={toggleListen} aria-pressed={listen === "listening"} title="Control the film with your voice (English or Tamil)" className={`flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs ${listen === "listening" ? "border-rose-300/60 bg-rose-400/15 text-rose-200" : "border-white/15 text-white/80 hover:bg-white/10"}`}>
+          <Radio size={14} className={listen === "listening" ? "animate-pulse" : ""} />
+          <span className="hidden sm:inline">{listen === "listening" ? "Listening" : "Commands"}</span>
+        </button>
         <button onClick={() => void toggleVoice()} aria-pressed={talking} className={`flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs ${talking ? "border-emerald-300/60 bg-emerald-400/15 text-emerald-200" : "border-white/15 text-white/80 hover:bg-white/10"}`}>
           {talking ? <Mic size={14} /> : <MicOff size={14} />}
           {talking ? "Voice on" : "Voice"}
@@ -346,7 +514,7 @@ function Room() {
 
       <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_340px] lg:grid-rows-1">
         <div className="relative min-h-0 overflow-y-auto p-3 sm:p-5">
-          <div className="relative overflow-hidden rounded-xl bg-black shadow-2xl ring-1 ring-white/10">
+          <div ref={stageEl} className="relative overflow-hidden rounded-xl bg-black shadow-2xl ring-1 ring-white/10">
             {movie.yt && !movie.embed ? (
               <div className="relative grid aspect-video w-full place-items-center overflow-hidden bg-black">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -402,6 +570,12 @@ function Room() {
                 className="aspect-video w-full bg-black"
               />
             )}
+            {heard && (
+              <div role="status" className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-[80%] rounded-lg bg-black/75 px-3 py-2 text-xs backdrop-blur">
+                <span className="text-white/55">Heard: “{heard.text}”</span>
+                <span className="mt-0.5 block font-medium text-white">{heard.note}</span>
+              </div>
+            )}
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
               {floats.map((f) => (
                 <span key={f.id} className="theatre-float absolute bottom-10 text-4xl" style={{ left: `${f.x}%` }}>
@@ -410,6 +584,18 @@ function Room() {
               ))}
             </div>
           </div>
+          {listen === "denied" && <p className="mt-2 text-sm text-amber-300">The browser blocked the microphone. Allow it in the address bar to use voice commands.</p>}
+          {listen === "unsupported" && <p className="mt-2 text-sm text-amber-300">This browser can&apos;t listen for voice commands. Try Chrome, Edge or Safari.</p>}
+          {help && (
+            <div className="mt-2 rounded-xl border border-white/10 bg-white/5 p-3 text-xs leading-relaxed text-white/75">
+              <p className="mb-1 font-medium text-white">Say, in English or தமிழ்:</p>
+              <p>“play” · “pause” (நிறுத்து) · “forward” · “back 30 seconds” · “go to 45 minutes” · “restart”</p>
+              <p>“volume up” · “volume down” · “volume 40” · “mute” · “unmute” · “full screen”</p>
+              <p>“next episode” · “previous” · “play Mayabazar” · “catch up” · “invite”</p>
+              <p>“say that was great” (sends it to the chat) · “laugh” · “clap” · “heart” · “wow”</p>
+              <p>“mic on” / “mic off” (talk to your friends)</p>
+            </div>
+          )}
           {playError && !movie.yt && <p className="mt-2 text-sm text-amber-300">The film didn&apos;t start. Press play on the player. If it still won&apos;t play, try Chrome or lower the quality below.</p>}
           {ytBlocked && (
             <p className="mt-2 text-sm text-amber-300">
@@ -425,6 +611,16 @@ function Room() {
             <button onClick={() => setPicker(true)} className="flex h-9 items-center gap-1.5 rounded-full border border-white/15 px-3.5 hover:bg-white/10">
               <Film size={14} /> Change film
             </button>
+            {listen !== "off" && (
+              <>
+                <button onClick={switchLang} className="flex h-9 items-center gap-1.5 rounded-full border border-rose-300/40 px-3.5 text-rose-200 hover:bg-white/10" title="Switch the language you speak">
+                  {speechLang === "en-IN" ? "English" : "தமிழ்"}
+                </button>
+                <button onClick={() => setHelp((h) => !h)} className="flex h-9 items-center gap-1.5 rounded-full border border-white/15 px-3 hover:bg-white/10">
+                  <HelpCircle size={14} /> What can I say?
+                </button>
+              </>
+            )}
             <button onClick={() => net.current?.send({ t: "ask" })} className="flex h-9 items-center gap-1.5 rounded-full border border-white/15 px-3.5 hover:bg-white/10" title="Jump to where your friends are">
               <RefreshCw size={13} /> Catch up
             </button>

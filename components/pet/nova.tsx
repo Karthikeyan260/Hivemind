@@ -225,6 +225,7 @@ export function Nova() {
 
   // Its state from the server: on load, every few minutes, and when the owner comes back to the tab.
   useEffect(() => {
+    if (isPublicPage(location.pathname)) return; // a friend's page: Nova is the owner's, and there is no session to ask with
     let alive = true;
     const load = async () => {
       const r = await fetch("/api/pet").catch(() => null);

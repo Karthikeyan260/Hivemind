@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useVoiceActions } from "@/components/voice/provider";
 import { FX_EVENT } from "@/lib/client-api";
 import { getFix } from "@/lib/location";
+import { isPublicPage } from "@/lib/public-paths";
 import { PREVIEW_WIND, type Sky, SKY_EVENT, skyFor, skyFromWords, THUNDER_EVENT } from "@/lib/sky";
 
 /**
@@ -54,6 +55,8 @@ export function LivingSky() {
 
   // The weather outside (the server keeps it 10 minutes), and the saved on/off choice.
   useEffect(() => {
+    // A friend's page has no owner session, and the sky must not ask a friend for their location.
+    if (isPublicPage(location.pathname)) return;
     let alive = true;
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- the saved choice, read once on mount

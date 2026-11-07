@@ -1,10 +1,12 @@
 "use client";
 
-import { ArrowLeft, ChevronLeft, ChevronRight, Clapperboard, ExternalLink, Info, Play, Search, Users, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Clapperboard, ExternalLink, HelpCircle, Info, Play, Radio, Search, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GROUPS, MOVIES, runtime, type Group, type Movie } from "@/lib/theatre/catalog";
+import { SpeechListener, type SpeechLang, type SpeechState } from "@/lib/theatre/speech";
+import { findTitle, parseShelfCommand } from "@/lib/theatre/voice-commands";
 
 /**
  * Friends Theatre: a streaming-site style shelf of free Tamil classics (public domain, streamed from Wikimedia
@@ -49,6 +51,13 @@ export default function TheatrePage() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Movie | null>(null);
   const [group, setGroup] = useState<Group | "all">("all");
+  const [listen, setListen] = useState<SpeechState>("off");
+  const [lang, setLang] = useState<SpeechLang>("en-IN");
+  const [heard, setHeard] = useState<{ text: string; note: string } | null>(null);
+  const [help, setHelp] = useState(false);
+  const speech = useRef<SpeechListener | null>(null);
+  const voiceRun = useRef<(text: string) => void>(() => {});
+  const heardTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // A different featured film each day.
   const featured = useMemo(() => {
@@ -62,6 +71,78 @@ export default function TheatrePage() {
     const room = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
     router.push(`/theatre/${room}?m=${m.id}&host=1`);
   }
+
+  /** Hands-free control of the shelf (see lib/theatre/voice-commands.ts). */
+  function runVoice(text: string) {
+    const c = parseShelfCommand(text);
+    let note = "I didn't catch a command";
+    if (c) {
+      switch (c.t) {
+        case "search":
+          setQuery(c.q);
+          setOpen(null);
+          note = `Searching for “${c.q}”`;
+          break;
+        case "clearSearch":
+          setQuery("");
+          setGroup("all");
+          note = "Cleared";
+          break;
+        case "group":
+          setQuery("");
+          setOpen(null);
+          setGroup(c.g);
+          note = `Showing ${GROUPS.find((g) => g.id === c.g)?.label ?? "everything"}`;
+          break;
+        case "open": {
+          const m = findTitle(c.q, MOVIES);
+          if (m) {
+            setOpen(m);
+            note = `${m.series ?? m.title}: say “start” to watch together`;
+          } else note = `No film called “${c.q}”`;
+          break;
+        }
+        case "start":
+          if (open) {
+            screening(open);
+            note = "Starting your screening";
+          } else note = "Pick a film first: say “play” and its name";
+          break;
+        case "close":
+          setOpen(null);
+          note = "Closed";
+          break;
+        case "back":
+          router.push("/");
+          note = "Going back";
+          break;
+        case "help":
+          setHelp(true);
+          note = "Here are some things to say";
+          break;
+      }
+    }
+    setHeard({ text, note });
+    if (heardTimer.current) clearTimeout(heardTimer.current);
+    heardTimer.current = setTimeout(() => setHeard(null), 4500);
+  }
+  useEffect(() => {
+    voiceRun.current = runVoice;
+  });
+  useEffect(() => {
+    const l = new SpeechListener((t) => voiceRun.current(t), setListen);
+    speech.current = l;
+    return () => {
+      l.destroy();
+      if (heardTimer.current) clearTimeout(heardTimer.current);
+    };
+  }, []);
+  const toggleListen = () => (listen === "listening" ? speech.current?.stop() : speech.current?.start(lang));
+  const switchLang = () => {
+    const next: SpeechLang = lang === "en-IN" ? "ta-IN" : "en-IN";
+    setLang(next);
+    if (listen === "listening") speech.current?.start(next);
+  };
 
   const found = query.trim() ? collapse(MOVIES.filter((m) => `${m.title} ${m.series ?? ""} ${m.year ?? ""}`.toLowerCase().includes(query.trim().toLowerCase()))) : null;
 
@@ -77,7 +158,11 @@ export default function TheatrePage() {
             Friends <span className="text-rose-400">Theatre</span>
           </span>
         </span>
-        <label className="relative ml-auto w-40 sm:w-64">
+        <button onClick={toggleListen} aria-pressed={listen === "listening"} title="Search and choose by voice (English or Tamil)" className={`ml-auto flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs ${listen === "listening" ? "border-rose-300/60 bg-rose-400/15 text-rose-200" : "border-white/20 text-white/80 hover:bg-white/10"}`}>
+          <Radio size={14} className={listen === "listening" ? "animate-pulse" : ""} />
+          <span className="hidden sm:inline">{listen === "listening" ? "Listening" : "Voice"}</span>
+        </button>
+        <label className="relative w-36 sm:w-64">
           <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-white/45" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search films" className="h-9 w-full rounded-full border border-white/15 bg-white/8 pr-3 pl-9 text-sm outline-none placeholder:text-white/40 focus:border-rose-300/70" />
         </label>
@@ -90,6 +175,28 @@ export default function TheatrePage() {
           </button>
         ))}
       </nav>
+
+      {listen !== "off" && (
+        <div className="px-4 pb-2 text-xs sm:px-8">
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={switchLang} className="h-8 rounded-full border border-rose-300/40 px-3 text-rose-200 hover:bg-white/10">
+              {lang === "en-IN" ? "English" : "தமிழ்"}
+            </button>
+            <button onClick={() => setHelp((h) => !h)} className="flex h-8 items-center gap-1.5 rounded-full border border-white/20 px-3 text-white/80 hover:bg-white/10">
+              <HelpCircle size={13} /> What can I say?
+            </button>
+            {listen === "denied" && <span className="text-amber-300">The browser blocked the microphone. Allow it in the address bar.</span>}
+            {listen === "unsupported" && <span className="text-amber-300">This browser can&apos;t listen. Try Chrome, Edge or Safari.</span>}
+          </div>
+          {help && (
+            <div className="mt-2 max-w-2xl rounded-xl border border-white/10 bg-white/5 p-3 leading-relaxed text-white/75">
+              <p className="mb-1 font-medium text-white">Say, in English or தமிழ்:</p>
+              <p>“search Mayabazar” (தேடு) · “show kids cartoons” · “show anime” · “show Hollywood” · “show Korean” · “show all”</p>
+              <p>“play Ben 10” (opens it) · “start” (starts the screening) · “close” · “clear” · “back”</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {found ? (
         <section className="px-4 pt-4 pb-20 sm:px-8">
@@ -158,6 +265,13 @@ export default function TheatrePage() {
             </p>
           </div>
         </>
+      )}
+
+      {heard && (
+        <div role="status" className="pointer-events-none fixed bottom-5 left-1/2 z-40 max-w-[90vw] -translate-x-1/2 rounded-xl bg-black/80 px-4 py-2.5 text-center text-sm backdrop-blur">
+          <span className="block text-xs text-white/55">Heard: “{heard.text}”</span>
+          <span className="font-medium">{heard.note}</span>
+        </div>
       )}
 
       {open && (

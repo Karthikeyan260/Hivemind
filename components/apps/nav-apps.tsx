@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { BRAIN_CHANGED } from "@/lib/client-api";
+import { isPublicPage } from "@/lib/public-paths";
 
 export type NavApp = { id: string; name: string; emoji: string };
 
@@ -11,6 +12,8 @@ let inflight: Promise<NavApp[]> | null = null;
 const listeners = new Set<(a: NavApp[]) => void>();
 
 function refresh() {
+  // A friend's page (a call, a game, a theatre room) has no owner session: nothing to ask for.
+  if (typeof location !== "undefined" && isPublicPage(location.pathname)) return Promise.resolve(cache);
   inflight ??= fetch("/api/apps")
     .then((r) => (r.ok ? r.json() : { apps: [] }))
     .then((d: { apps: (NavApp & { status: string })[] }) => (cache = d.apps.filter((a) => a.status !== "failed" && a.name !== "New app").slice(0, 8)))
