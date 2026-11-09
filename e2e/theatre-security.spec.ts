@@ -55,7 +55,8 @@ test.describe("a room page, from outside", () => {
     }
   });
 
-  test("calls no other site until a person has chosen to join (no broker, no tracker, nothing)", async ({ browser }) => {
+  test("calls no other site until a person has chosen to join (no broker, no tracker, nothing)", async ({ browser, baseURL }) => {
+    const ownHost = new URL(baseURL ?? "http://localhost").hostname; // the site itself (localhost here, the real address when run against the live site)
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     const room = code();
@@ -63,7 +64,7 @@ test.describe("a room page, from outside", () => {
     const referers: string[] = [];
     page.on("request", async (r) => {
       const u = new URL(r.url());
-      if (u.hostname === "localhost" || u.protocol === "data:" || u.protocol === "blob:") return;
+      if (u.hostname === ownHost || u.protocol === "data:" || u.protocol === "blob:") return;
       others.add(u.hostname);
       referers.push((await r.allHeaders()).referer ?? "");
     });

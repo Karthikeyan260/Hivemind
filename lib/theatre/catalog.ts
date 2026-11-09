@@ -57,4 +57,4 @@ export const MOVIES: Movie[] = [...YOUTUBE_FILMS, ...DUBBED_FILMS, ...ANIME_EPIS
 
 export const movieById = (id: string | null | undefined) => MOVIES.find((m) => m.id === id) ?? null;
 
-export const runtime = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, "0")}m` : `${min}m`);
+export { runtime } from "./format";

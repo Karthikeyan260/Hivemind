@@ -68,13 +68,14 @@ async function needBroker(browser: Browser) {
 }
 
 test.describe("safety", () => {
-  test("a friend's page asks the server for nothing private", async ({ browser }) => {
+  test("a friend's page asks the server for nothing private", async ({ browser, baseURL }) => {
+    const ownHost = new URL(baseURL ?? "http://localhost").hostname;
     const ctx = await browser.newContext();
     const p = await ctx.newPage();
     const calls: string[] = [];
     p.on("request", (r) => {
       const u = new URL(r.url());
-      if (u.pathname.startsWith("/api/") && u.hostname === "localhost") calls.push(u.pathname);
+      if (u.pathname.startsWith("/api/") && u.hostname === ownHost) calls.push(u.pathname);
     });
     await p.goto(`/theatre/${room()}?m=${classic.id}`);
     await expect(p.getByRole("button", { name: /Join the screening/ })).toBeVisible();
