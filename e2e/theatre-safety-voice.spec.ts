@@ -120,8 +120,11 @@ test.describe("safety", () => {
 
   test("a made-up room link shows nothing, and nothing runs", async ({ page }) => {
     for (const bad of ["short", "has%20space%20in%20it", "%3Cscript%3Ealert(1)%3C%2Fscript%3E", "..%2F..%2Fetc%2Fpasswd", "a1b2c3d4e5f6%21%21"]) {
-      await page.goto(`/theatre/${bad}`);
-      await expect(page.getByText("This link doesn't look right")).toBeVisible();
+      const res = await page.goto(`/theatre/${bad}`);
+      // Either the page says the link is wrong, or the host refuses the request outright (the live site's edge does that for
+      // path tricks like ..%2F). Either way nothing opens and there is no way to join.
+      if (res && res.status() >= 400) expect(res.status(), bad).toBeLessThan(500);
+      else await expect(page.getByText("This link doesn't look right")).toBeVisible();
       await expect(page.getByRole("button", { name: /Join the screening|Open the room/ })).toHaveCount(0);
     }
   });
@@ -235,6 +238,8 @@ test.describe("voice control", () => {
     await p.goto(`/theatre/${room()}?m=${eps[0].id}&host=1`);
     await p.getByRole("button", { name: /Open the room/ }).click();
     await expect(p.getByPlaceholder("Say something…")).toBeVisible({ timeout: 40_000 });
+    // The film list loads in the background and the room opens only once it has: wait for that before asking for episodes.
+    await expect(p.locator("aside").getByText(/The room is open|You are running the room now/)).toBeVisible({ timeout: 60_000 });
     await say(p, "next episode");
     await expect(p.getByText(`Next: ${eps[1].title}`)).toBeVisible();
     await say(p, "previous episode");
