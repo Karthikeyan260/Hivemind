@@ -55,15 +55,18 @@ function Room({ initial, fallback }: { initial: Movie | null; fallback: Movie })
 
   // The whole film catalogue is big (thousands of films), and a friend opening an invite only needs the one film named in
   // the link to see the join screen. The server hands that film over; the rest loads in the background while they type
-  // their name, and joining waits for it (so the room can check every film a friend picks).
+  // their name. Joining does not wait for it (see enter()); until it arrives the room knows only that one film.
   const [cat, setCat] = useState<Catalog | null>(null);
   const catRef = useRef<Catalog | null>(null);
-  const catReady = useRef<Promise<unknown> | null>(null);
   useEffect(() => {
-    catReady.current = import("@/lib/theatre/catalog").then((c) => {
-      catRef.current = c;
-      setCat(c);
-    });
+    import("@/lib/theatre/catalog")
+      .then((c) => {
+        catRef.current = c;
+        setCat(c);
+      })
+      .catch(() => {
+        /* offline: the room still works for the film in the link */
+      });
   }, []);
   const base = initial ?? fallback;
   const MOVIES: Movie[] = useMemo(() => (cat ? cat.MOVIES : [base]), [cat, base]);
@@ -163,14 +166,9 @@ function Room({ initial, fallback }: { initial: Movie | null; fallback: Movie })
     } catch {}
     setStage("connecting");
     setError("");
-    // The room checks every film a friend picks against the catalogue, so wait until it has loaded (usually already has).
-    try {
-      await catReady.current;
-    } catch {
-      setError("Couldn't load the film list. Check your connection and try again.");
-      setStage("error");
-      return;
-    }
+    // No waiting for the film list: joining must be quick even on a slow phone. Until it arrives the room only knows the
+    // film named in the link; a message about another film is ignored, and the opener repeats where the film is every few
+    // seconds, so the room catches up by itself as soon as the list has loaded.
     const n = new TheatreNet(room, nm, {
       people: setPeople,
       line: (who, t, system) => say(who, t, system),
