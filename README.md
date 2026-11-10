@@ -12,6 +12,8 @@ garden grows from everything you keep up with.
   right project, and a new project is created when something clearly is one. Every automatic action appears in the
   activity feed with undo.
 - **Console**: streaming answers with cited sources, sessions, and project scoping.
+- **Friends Theatre**: watch Tamil films, Tamil-dubbed films, anime and cartoons together with friends from one permanent
+  room link, in step, with chat and voice (browser to browser; films stay on YouTube). See [`docs/friends-theatre.md`](docs/friends-theatre.md).
 
 ```
 Browser → Next.js (Vercel)  ← APP_PASSWORD gate on Vercel, none locally
