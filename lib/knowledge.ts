@@ -189,8 +189,10 @@ export async function deleteMemory(supabase: SupabaseClient, id: string) {
   const { data: row, error } = await supabase.from("memories").select("*").eq("id", id).maybeSingle();
   dbError(error);
   if (!row) throw new HttpError(404, "That memory no longer exists.");
+  // The version history is deleted with the memory (cascade), so keep it in the log too.
+  const { data: versions } = await supabase.from("memory_versions").select("*").eq("memory_id", id);
   const { error: delErr } = await supabase.from("memories").delete().eq("id", id);
   dbError(delErr);
-  await logActivity(supabase, "memory_deleted", `Deleted memory “${row.title}”`, { type: "memory_deleted", memory: row });
+  await logActivity(supabase, "memory_deleted", `Deleted memory “${row.title}”`, { type: "memory_deleted", memory: row, versions: versions ?? [] });
   return { id, title: row.title as string };
 }

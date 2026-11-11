@@ -636,7 +636,7 @@ that matter most:
    cron-job.org job you set up by hand. Without VAPID keys the jobs still run but no push is sent.
 2. **The "answer" pattern for approving a web task is very loose** (the words "yes", "no", "ok" unlock it).
 3. **Config drift:** `schema.sql` alone is stale (run all four SQL files); the `graft/` index is empty.
-4. **Data safety:** undoing a memory deletion loses its version history; deleting
+4. **Data safety:** deleting
    notes, documents, photos and projects cannot be undone; there is no automatic backup.
 5. **Voice:** the voiceprint is a speed bump, not a lock; locking does not clear the wake word or speaker model from the device.
 6. **UX gaps:** reminders have no form (chat, voice or API only); chat history cannot be browsed; no light theme; some accessibility gaps

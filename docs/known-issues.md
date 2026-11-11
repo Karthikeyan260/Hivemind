@@ -20,6 +20,7 @@ password, a leaked link or a malicious web page is the way in; the owner passwor
 - **D1**: the 40-step budget counts from the last Continue or Retry (`stepsSinceResume`), so Continue really gives another 40 steps.
 - **D2**: "remember that ..." / "note: ..." now routes to the Memory agent before the scheduler rules.
 - **B1**: portfolio sync inserts the new memories first and deletes the old ones after (matched by `synced_at`), so a failed insert leaves the previous import intact. The delete filter was checked read-only against the real database. Edits made to imported memories are still replaced by a re-sync.
+- **B2**: deleting a memory now keeps its version history in the activity log, and Undo puts it back with the memory (covered by `tests/undo-memory-versions.test.ts`). Memories deleted before this change were logged without versions and still restore without history.
 - **C5 (partly)**: `web_task` and `create_app` are now in the owner-intent guard (a turn with no request such as "hi" cannot start them; wide wording, Tamil script always passes; routines may still start them). `run_autopilot` is left unguarded on purpose, it only reads. The loose `web_task_answer` pattern is unchanged.
 - **E3**: `.env.example` rewritten: garbled line fixed, all variables the code reads are listed.
 

@@ -6,7 +6,7 @@ export type ActivityPayload =
   | { type: "project_created"; project_id: string }
   | { type: "linked"; table: "notes" | "memories" | "documents"; id: string; prev_project_id: string | null }
   /** The full row (embedding included), so undo restores it exactly. */
-  | { type: "memory_deleted"; memory: Record<string, unknown> }
+  | { type: "memory_deleted"; memory: Record<string, unknown>; /** its version history (deleted with it by cascade), put back on undo */ versions?: Record<string, unknown>[] }
   /** An automatic edit (Dream mode): undo puts the previous words back. */
   | { type: "memory_updated"; id: string; prev: { title: string; content: string } }
   /** An automatic new memory (Dream mode): undo removes it. */
@@ -36,6 +36,11 @@ export async function undoActivity(supabase: SupabaseClient, id: string) {
   } else if (p.type === "memory_deleted") {
     const { error: e } = await supabase.from("memories").insert(p.memory);
     dbError(e);
+    // The version history went with the memory (cascade); bring it back too. A failure here must not undo the restore.
+    if (p.versions?.length) {
+      const { error: vErr } = await supabase.from("memory_versions").insert(p.versions);
+      if (vErr) console.warn("restoring memory versions failed:", vErr.message);
+    }
   } else if (p.type === "memory_updated") {
     const { updateMemory } = await import("@/lib/knowledge");
     await updateMemory(supabase, p.id, { title: p.prev.title, content: p.prev.content, change_reason: "undo" });
