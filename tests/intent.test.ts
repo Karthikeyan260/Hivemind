@@ -31,6 +31,21 @@ describe("intentCheck", () => {
     expect(intentCheck("create_routine", "make a night routine")).toBeNull();
   });
 
+  it("web_task and create_app need the owner to ask for something, but in any wording", () => {
+    expect(intentCheck("web_task", "hi")).not.toBeNull();
+    expect(intentCheck("web_task", "what's the weather")).not.toBeNull();
+    expect(intentCheck("web_task", "go to irctc and book a ticket")).toBeNull();
+    expect(intentCheck("web_task", "check the price on amazon.in")).toBeNull();
+    expect(intentCheck("web_task", "அந்த site-ல பாரு")).toBeNull();
+    expect(intentCheck("create_app", "hello there")).not.toBeNull();
+    expect(intentCheck("create_app", "make me an app to track petrol")).toBeNull();
+    expect(intentCheck("create_app", "ஒரு app பண்ணு")).toBeNull();
+  });
+
+  it("run_autopilot stays unguarded (Autopilot only reads)", () => {
+    expect(isGuarded("run_autopilot")).toBe(false);
+  });
+
   it("unguarded tools are always allowed", () => {
     expect(intentCheck("search_brain", "anything")).toBeNull();
   });
@@ -47,6 +62,9 @@ describe("isGuarded", () => {
 describe("unlocksAction", () => {
   it("a harmless request unlocks nothing", () => {
     expect(unlocksAction("Check today's weather")).toBe(false);
+  });
+  it("the wide start-a-thing guards don't make every one-tap request look dangerous", () => {
+    expect(unlocksAction("Check the price of petrol and open the site")).toBe(false);
   });
   it("a request that drops/cancels things does", () => {
     expect(unlocksAction("drop my gym habit and cancel the dentist reminder")).toBe(true);

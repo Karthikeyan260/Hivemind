@@ -634,10 +634,9 @@ that matter most:
 
 1. **The scheduler is outside the repo.** Everything periodic (reminders, briefs, Dream mode, Autopilot, web-task resume) depends on a
    cron-job.org job you set up by hand. Without VAPID keys the jobs still run but no push is sent.
-2. **The "answer" pattern for approving a web task is very loose** (the words "yes", "no", "ok" unlock it), and `web_task`,
-   `create_app` and `run_autopilot` are not in the owner-intent guard.
+2. **The "answer" pattern for approving a web task is very loose** (the words "yes", "no", "ok" unlock it).
 3. **Config drift:** `schema.sql` alone is stale (run all four SQL files); the `graft/` index is empty.
-4. **Data safety:** portfolio sync is delete-then-insert (not atomic); undoing a memory deletion loses its version history; deleting
+4. **Data safety:** undoing a memory deletion loses its version history; deleting
    notes, documents, photos and projects cannot be undone; there is no automatic backup.
 5. **Voice:** the voiceprint is a speed bump, not a lock; locking does not clear the wake word or speaker model from the device.
 6. **UX gaps:** reminders have no form (chat, voice or API only); chat history cannot be browsed; no light theme; some accessibility gaps

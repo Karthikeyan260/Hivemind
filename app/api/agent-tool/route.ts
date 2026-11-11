@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { guestCheck } from "@/lib/agents/guest";
-import { intentCheck, isGuarded } from "@/lib/agents/intent";
+import { intentCheck, isGuarded, ROUTINE_MAY_START } from "@/lib/agents/intent";
 import { TOOLS } from "@/lib/agents/tools";
 import type { Action, RunContext, Source } from "@/lib/agents/types";
 import { handle, HttpError, parseBody } from "@/lib/api";
@@ -49,7 +49,7 @@ export const POST = handle(async (req: Request) => {
   // The same owner-intent guard as chat, on the server: deleting, sending, calling, approving or
   // changing only when the owner's own words this turn asked for it (the browser checks too).
   if (isGuarded(name)) {
-    const refused = routine ? "Routines can't delete, send, call or change things. Ask the owner to ask for it directly." : intentCheck(name, said);
+    const refused = routine && !ROUTINE_MAY_START.has(name) ? "Routines can't delete, send, call or change things. Ask the owner to ask for it directly." : intentCheck(name, said);
     if (refused) return NextResponse.json({ result: { error: refused }, sources: [], actions: [], changed: false, jobs: null });
   }
   const sources: Source[] = [];

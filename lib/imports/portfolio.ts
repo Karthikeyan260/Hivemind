@@ -141,9 +141,8 @@ export async function importPortfolio(supabase: SupabaseClient) {
   const embeddings = await embedMany(items.map((it) => `${it.title}\n\n${it.content}`));
   const now = new Date().toISOString();
 
-  // Replace the previous import so re-syncs mirror the portfolio exactly.
-  const { error: delErr } = await supabase.from("memories").delete().eq("metadata->>source", PORTFOLIO_SOURCE);
-  dbError(delErr);
+  // Replace the previous import so re-syncs mirror the portfolio exactly. New rows go in FIRST and the old ones are
+  // removed after, so a failed insert leaves the previous import intact instead of an empty portfolio.
   const { error: insErr } = await supabase.from("memories").insert(
     items.map((it, i) => ({
       title: it.title,
@@ -159,6 +158,13 @@ export async function importPortfolio(supabase: SupabaseClient) {
     })),
   );
   dbError(insErr);
+  // Old import = same source, but not stamped with this sync's time (or not stamped at all).
+  const { error: delErr } = await supabase
+    .from("memories")
+    .delete()
+    .eq("metadata->>source", PORTFOLIO_SOURCE)
+    .or(`metadata->>synced_at.is.null,metadata->>synced_at.neq."${now}"`);
+  dbError(delErr);
 
   const resume = await storeDocument(
     supabase,
