@@ -1158,3 +1158,15 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
 @keyframes theatre-float { 0% { transform: translateY(0) scale(0.6); opacity: 0; } 12% { opacity: 1; transform: translateY(-20px) scale(1.1); } 100% { transform: translateY(-260px) scale(1); opacity: 0; } }
 .theatre-float { animation: theatre-float 2.4s ease-out forwards; }
 @media (prefers-reduced-motion: reduce) { .theatre-float { animation-duration: 0.01s; } }
+
+/* Karaoke: the line being sung fills with the music lights' colour from left to right (--p is set per frame). */
+.karaoke-lines::-webkit-scrollbar {
+  display: none;
+}
+.karaoke-line.is-live {
+  background: linear-gradient(90deg, rgb(var(--beat-rgb, 245 185 80)) var(--p, 0%), var(--fg) var(--p, 0%));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 16px rgb(var(--beat-rgb, 245 185 80) / 0.35));
+}

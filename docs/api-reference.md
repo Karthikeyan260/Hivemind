@@ -1,6 +1,6 @@
 # API reference
 
-All 98 API routes of HIVEMIND, one row each. Checked 2026-11-11 against `app/api/**/route.ts`. Back to [HIVEMIND.md](HIVEMIND.md).
+All 99 API routes of HIVEMIND, one row each. Checked 2026-11-11 against `app/api/**/route.ts`. Back to [HIVEMIND.md](HIVEMIND.md).
 
 **Access types**
 
@@ -76,6 +76,7 @@ All 98 API routes of HIVEMIND, one row each. Checked 2026-11-11 against `app/api
 | `GET` | `/api/memories/explore` | owner | Memory Explorer list: ?q= (meaning + words) &type= &category= &project= &source= &sort= &system=1 | [02-brain-and-ai](02-brain-and-ai.md) |
 | `GET,POST` | `/api/memories` | owner | A create sent from the offline outbox carries an id of its own: if the first try did reach us and only the reply was lost, the retry gets the same memory back instead of  | [02-brain-and-ai](02-brain-and-ai.md) |
 | `GET` | `/api/mission` | owner | What every background agent is doing right now, for Mission Control. | [05-daily-life-habits-reminders-career](05-daily-life-habits-reminders-career.md) |
+| `GET` | `/api/music/lyrics` | owner | Lyrics for the karaoke view: ?title=&artists=&duration=. Time-synced lines when a recording of the same length is found (LRCLIB), otherwise plain words, otherwise empty. | [06-nova-garden-games-and-stories](06-nova-garden-games-and-stories.md) |
 | `GET` | `/api/music/search` | owner | Songs for the music player: ?q=what to play. A song or artist name is searched as is; a mood or theme ("amma sentiment", "gana") is understood first. &raw=1 skips that (p | [05-daily-life-habits-reminders-career](05-daily-life-habits-reminders-career.md) |
 | `POST` | `/api/music/stream` | owner | A fresh, playable link for one song (links expire, so the player asks right before playing). | [05-daily-life-habits-reminders-career](05-daily-life-habits-reminders-career.md) |
 | `GET,PUT,DELETE` | `/api/notes/:id` | owner |  | [02-brain-and-ai](02-brain-and-ai.md) |

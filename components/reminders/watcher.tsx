@@ -17,6 +17,7 @@ type Toast = { key: string; kind: "alert"; reminder: Reminder } | { key: string;
 
 const POLL_MS = 60_000;
 const BRIEF_KEY = "hivemind-brief-date";
+const BRIEF_STAYS_MS = 20_000;
 
 function chime() {
   sfx.done();
@@ -41,6 +42,18 @@ export function ReminderWatcher() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
   const dismiss = (key: string) => setToasts((t) => t.filter((x) => x.key !== key));
+
+  // "Your day" sits over the top-right of the page (where pages keep their main button, e.g. New note).
+  // Left alone, it steps aside by itself; once the owner points at it or taps it, it stays until closed.
+  // (The same card is always on the Morning brief page.)
+  const held = useRef(false);
+  const hasBrief = toasts.some((t) => t.kind === "brief");
+  useEffect(() => {
+    if (!hasBrief) return;
+    held.current = false;
+    const id = setTimeout(() => !held.current && setToasts((t) => t.filter((x) => x.key !== "brief")), BRIEF_STAYS_MS);
+    return () => clearTimeout(id);
+  }, [hasBrief]);
 
   const poll = useCallback(async () => {
     if (busy.current) return;
@@ -125,6 +138,8 @@ export function ReminderWatcher() {
         <div
           key={t.key}
           role="alert"
+          onPointerEnter={t.kind === "brief" ? () => void (held.current = true) : undefined}
+          onPointerDown={t.kind === "brief" ? () => void (held.current = true) : undefined}
           className={cx(
             "rise-in pointer-events-auto max-h-[calc(100dvh-var(--tabbar-h)-2rem)] overflow-y-auto overscroll-contain border bg-[#0b1016]/95 p-3.5 shadow-[0_0_40px_-10px_rgba(240,180,90,0.5)] backdrop-blur-md",
             t.kind === "alert" ? "border-core/60" : "border-data/40",

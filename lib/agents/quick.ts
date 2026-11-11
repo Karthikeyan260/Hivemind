@@ -59,6 +59,7 @@ const PAGE_WORDS: [RegExp, string, string][] = [
   [/^(my )?(photos?|pictures|gallery)$/, "/photos", "🖼️ Photos"],
   [/^(my )?wrapped$/, "/wrapped", "🎁 My Wrapped"],
   [/^(the )?games?$/, "/games", "🎮 Games"],
+  [/^(the |tamil )?karaoke$/, "/karaoke", "🎤 Karaoke"],
   [/^(a |the )?(game night|party( games?)?|games? with (my )?friends)$/, "/games/party", "🎮 Game night"],
   [/^(a |the )?(game of )?chess$/, "/games/chess", "♟️ Chess"],
   [/^ludo$/, "/games/ludo", "🎲 Ludo"],

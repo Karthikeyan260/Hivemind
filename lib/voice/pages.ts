@@ -34,6 +34,7 @@ export const VOICE_PAGES = [
   { path: "/garden?fest=today", what: "Nova's garden as it is today (no festival preview)" },
   { path: "/garden?goodnight=1", what: "Nova's bedtime: night falls, a calm song, Nova says tomorrow's plan and sleeps" },
   { path: "/games", what: "Games: all the games" },
+  { path: "/karaoke", what: "Karaoke: Tamil songs with lyrics that light up to sing along (page action karaoke_find searches a song)" },
   { path: "/games/party", what: "Game night: one link for friends, a lobby, the owner picks the game for everyone (Colour Clash, Ludo, Draw & Guess, Dots, Chess, Snakes & Ladders, Business or Bingo)" },
   { path: "/games/paattu", what: "Paattu Quiz: guess the Tamil song's film" },
   { path: "/games/draw", what: "Draw & Guess" },

@@ -1,6 +1,6 @@
 "use client";
 
-import { ListMusic, Loader2, Music2, Pause, Play, SkipBack, SkipForward, Volume1, Volume2, VolumeX, X } from "lucide-react";
+import { ListMusic, Loader2, MicVocal, Music2, Pause, Play, SkipBack, SkipForward, Volume1, Volume2, VolumeX, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
@@ -9,6 +9,7 @@ import { MEDIA_START_EVENT, MUSIC_EVENT, MUSIC_STATE_EVENT } from "@/lib/client-
 import * as beat from "@/lib/beat";
 import { BeatColorPicker } from "@/components/fx/beat-color-picker";
 import { isPublicPage } from "@/lib/public-paths";
+import { canKaraoke, Karaoke, KARAOKE_EVENT } from "@/components/music/karaoke";
 
 /**
  * HIVEMIND's own music player: full songs (JioSaavn, no ads) playing in the owner's browser, with a
@@ -20,6 +21,8 @@ export type Song = { id: string; title: string; artists: string; album: string; 
 export type MusicCommand = {
   action: "play" | "add" | "pause" | "resume" | "next" | "previous" | "stop" | "volume_up" | "volume_down" | "set_volume" | "now_playing" | "queue" | "jump";
   query?: string;
+  /** With "play": exactly this song (the Karaoke page picks one from its list), no search. */
+  song?: Song;
   volume?: number;
   position?: number;
 };
@@ -50,6 +53,13 @@ export function MusicPlayer() {
   const [volume, setVolume] = useState(0.8);
   const [time, setTime] = useState({ at: 0, of: 0 });
   const [showQueue, setShowQueue] = useState(false);
+  const [karaoke, setKaraoke] = useState(false);
+  // The Karaoke page (or anything else) can open the lyrics view.
+  useEffect(() => {
+    const open = () => setKaraoke(true);
+    window.addEventListener(KARAOKE_EVENT, open);
+    return () => window.removeEventListener(KARAOKE_EVENT, open);
+  }, []);
   // Latest values for the command handler (it outlives renders).
   const st = useRef({ queue, index, volume, playing });
   useEffect(() => {
@@ -152,6 +162,11 @@ export function MusicPlayer() {
       switch (c.action) {
         case "play":
         case "add": {
+          if (c.action === "play" && c.song) {
+            queued.current.clear();
+            const ok = await playAt([c.song], 0);
+            return { playing: about(c.song), ...(ok ? {} : { note: "The browser needs one tap: tap Play on the music bar." }) };
+          }
           const q = (c.query ?? "").trim();
           if (!q) {
             if (c.action === "play" && now && el) {
@@ -368,6 +383,11 @@ export function MusicPlayer() {
               <VolIcon size={16} />
               <input type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => setVolume(Number(e.target.value))} className="w-20" aria-label="Volume" />
             </label>
+            {canKaraoke(song) && (
+              <button type="button" onClick={() => setKaraoke(true)} aria-label="Karaoke: sing along with the lyrics" title="Karaoke" className="p-1.5 text-soft hover:text-core">
+                <MicVocal size={18} />
+              </button>
+            )}
             <BeatColorPicker />
             <button type="button" onClick={() => setShowQueue(!showQueue)} aria-label="Queue" className={cx("p-1.5 hover:text-fg", showQueue ? "text-core" : "text-soft")}>
               <ListMusic size={18} />
@@ -406,6 +426,9 @@ export function MusicPlayer() {
             </ol>
           )}
         </section>
+      )}
+      {visible && song && karaoke && canKaraoke(song) && (
+        <Karaoke key={song.id} song={song} audio={audio} playing={playing} onToggle={toggle} onSeek={(t) => { if (audio.current) audio.current.currentTime = t; }} onNext={() => void next()} onPrevious={() => void previous()} onClose={() => setKaraoke(false)} />
       )}
     </>
   );

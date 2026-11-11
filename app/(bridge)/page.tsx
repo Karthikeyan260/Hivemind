@@ -77,6 +77,7 @@ const NAV_MORE = [
   { href: "/share", label: "Share" },
   { href: "/comic", label: "Day comic" },
   { href: "/games", label: "Games" },
+  { href: "/karaoke", label: "Karaoke" },
   { href: "/focus", label: "Kitchen mode" },
   { href: "/habits", label: "Habits" },
   { href: "/journey", label: "Journey" },
