@@ -33,6 +33,21 @@ describe("safeDecode", () => {
   });
 });
 
+describe("step budget after Continue", () => {
+  const s = (did: string) => ({ at: "", thought: "", did, ok: true });
+  it("counts every step before the owner resumes", async () => {
+    const { stepsSinceResume } = await import("@/lib/web-agent/runner");
+    expect(stepsSinceResume([])).toBe(0);
+    expect(stepsSinceResume([s("a"), s("b"), s("c")])).toBe(3);
+  });
+  it("starts again from zero after continue or retry, so a paused task can really carry on", async () => {
+    const { stepsSinceResume } = await import("@/lib/web-agent/runner");
+    const forty = Array.from({ length: 40 }, () => s("click"));
+    expect(stepsSinceResume([...forty, s("you took over in the live view, then said continue")])).toBe(0);
+    expect(stepsSinceResume([...forty, s("restarted by you"), s("click"), s("click")])).toBe(2);
+  });
+});
+
 describe("giving up after repeated failures", () => {
   const step = (ok: boolean) => ({ at: "", thought: "", did: "x", ok });
   it("needs three failures in a row: one or two hiccups don't end the task", async () => {

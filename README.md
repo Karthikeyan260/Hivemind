@@ -632,18 +632,19 @@ docs/                 the detailed documentation
 The full list (about 55 items, each marked "Confirmed" or "Reported") is in [docs/known-issues.md](docs/known-issues.md). The ones
 that matter most:
 
-1. **Missing VAPID keys silently stop all background work.** `/api/cron/notify` returns 503 before doing anything, so reminders,
-   briefs, Dream mode, Autopilot and web-task resume all stop, and the scheduler looks silent.
-2. **The scheduler is outside the repo.** Everything periodic depends on a cron-job.org job you set up by hand.
-3. **Web tasks pause at 40 steps** and Continue/Retry only re-pause; and the "answer" pattern for approving a web task is very loose
-   (the words "yes", "no", "ok" unlock it).
-4. **Editing a note fails with a 500 when the embedding model is down** (creating a note has a fallback; editing does not).
-5. **Config drift:** `.env.example` has a garbled line and omits several variables; `schema.sql` alone is stale; the `graft/` index is empty.
-6. **Data safety:** portfolio sync is delete-then-insert (not atomic); undoing a memory deletion loses its version history; deleting
+1. **The scheduler is outside the repo.** Everything periodic (reminders, briefs, Dream mode, Autopilot, web-task resume) depends on a
+   cron-job.org job you set up by hand. Without VAPID keys the jobs still run but no push is sent.
+2. **The "answer" pattern for approving a web task is very loose** (the words "yes", "no", "ok" unlock it), and `web_task`,
+   `create_app` and `run_autopilot` are not in the owner-intent guard.
+3. **Config drift:** `schema.sql` alone is stale (run all four SQL files); the `graft/` index is empty.
+4. **Data safety:** portfolio sync is delete-then-insert (not atomic); undoing a memory deletion loses its version history; deleting
    notes, documents, photos and projects cannot be undone; there is no automatic backup.
-7. **Voice:** the voiceprint is a speed bump, not a lock; locking does not clear the wake word or speaker model from the device.
-8. **UX gaps:** reminders have no form (chat, voice or API only); chat history cannot be browsed; no light theme; some accessibility gaps
+5. **Voice:** the voiceprint is a speed bump, not a lock; locking does not clear the wake word or speaker model from the device.
+6. **UX gaps:** reminders have no form (chat, voice or API only); chat history cannot be browsed; no light theme; some accessibility gaps
    (no focus trap in the palette, no skip link); festival decor is hard-coded through 2028.
+
+*Fixed on 2026-11-11:* the 503 when VAPID keys were missing, note edits failing when embeddings are down, web tasks re-pausing at 40
+steps after Continue, "remember that the meeting ..." going to the Scheduler agent, and the garbled `.env.example`.
 
 ---
 

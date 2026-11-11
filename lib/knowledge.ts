@@ -44,7 +44,7 @@ const embedText = (title: string, content: string) => `${title}\n\n${content}`;
  * item is saved anyway and the scheduler adds the vector later (reembedMissing), instead of the
  * owner losing what they were saving.
  */
-async function tryEmbed(text: string) {
+export async function tryEmbed(text: string) {
   try {
     return toVector(await embedOne(text));
   } catch (err) {

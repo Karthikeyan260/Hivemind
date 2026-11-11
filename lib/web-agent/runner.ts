@@ -33,6 +33,17 @@ const BLOCKER =
  * agent looked up from the brain (task.notes), typed into a page or packed into a URL. Returns why.
  */
 /** The last three steps all failed (fewer than three steps is not "three in a row": one hiccup shouldn't end the task). */
+/**
+ * Steps taken since the owner last said "continue" or "retry". The step budget counts from there, so
+ * Continue really gives another MAX_STEPS instead of pausing again at once (the full history is kept).
+ */
+export function stepsSinceResume(steps: Step[]) {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (steps[i].did === "restarted by you" || steps[i].did === "you took over in the live view, then said continue") return steps.length - 1 - i;
+  }
+  return steps.length;
+}
+
 export const threeFailuresInARow = (steps: Step[]) => steps.length >= 3 && steps.slice(-3).every((s) => !s.ok);
 
 export function leaksOwnerData(task: WebTask, a: Action): string | null {
@@ -145,7 +156,7 @@ export async function runTask(supabase: SupabaseClient, id: string, origin: stri
         if (!fresh || fresh.status !== "running" || fresh.runner !== token) return;
         firstLap = false;
       }
-      if (task.steps.length >= MAX_STEPS) {
+      if (stepsSinceResume(task.steps) >= MAX_STEPS) {
         return pause(supabase, task, "needs_you", { question: `I've taken ${MAX_STEPS} steps without finishing. Check the live view, then tell me to continue or cancel.` });
       }
 

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { embedOne } from "@/lib/ai/embeddings";
 import { extractMetadata } from "@/lib/ai/metadata";
-import { dbError, handle, parseBody, toVector, HttpError } from "@/lib/api";
+import { dbError, handle, parseBody, HttpError } from "@/lib/api";
 import { db } from "@/lib/db";
-import { NOTE_COLUMNS, NoteInput } from "@/lib/knowledge";
+import { NOTE_COLUMNS, NoteInput, tryEmbed } from "@/lib/knowledge";
 
 export const maxDuration = 30;
 type Ctx = { params: Promise<{ id: string }> };
@@ -45,7 +44,8 @@ export const PUT = handle(async (req: Request, { params }: Ctx) => {
     update.summary = meta.summary;
     update.category = meta.category;
     if (!input.tags) update.tags = meta.tags;
-    update.embedding = toVector(await embedOne(`${title}\n\n${content}`));
+    // Embedding model down: save the edit anyway with no vector; the scheduler fills it in (search never uses a stale one).
+    update.embedding = await tryEmbed(`${title}\n\n${content}`);
   }
 
   const { data, error } = await supabase.from("notes").update(update).eq("id", id).select(NOTE_COLUMNS).single();

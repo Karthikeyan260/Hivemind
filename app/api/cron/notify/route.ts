@@ -39,7 +39,9 @@ export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   const given = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? new URL(req.url).searchParams.get("key");
   if (!secret || !given || !safeEqual(given, secret)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!pushConfigured()) return NextResponse.json({ error: "VAPID keys missing" }, { status: 503 });
+  // Without VAPID keys no push can be sent (notify() returns 0), but every other job (Dream, diary, Autopilot,
+  // re-embedding, web tasks, app builds) must still run and lastRun must still be stamped.
+  const push = pushConfigured();
   const supabase = db();
 
   // 1. Reminders whose alert time has arrived (each is handed out once, here or to an open tab).
@@ -59,7 +61,7 @@ export async function GET(req: Request) {
   const state = await readJSON<{ brief?: string; lastRun?: string; lastSent?: number; dream?: string; diary?: string; diaryFill?: string; news?: string; rls?: string; checkin?: string; wrapped?: string; newsTry?: { date: string; n: number; at: number } }>(supabase, "notify-state", {});
   let brief = false;
   // Morning window only, so enabling this in the afternoon doesn't send a "good morning".
-  if (hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
+  if (push && hour >= BRIEF_HOUR && hour < 12 && state.brief !== date) {
     // Today's kural is chosen now (from last night's check-in), so it's ready when the app opens.
     const [a, w, bdays, kural] = await Promise.all([
       agenda(supabase, 2),
@@ -86,7 +88,7 @@ export async function GET(req: Request) {
     const [y, mo] = date.split("-").map(Number);
     return mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, "0")}`;
   })();
-  if (date.endsWith("-01") && hour >= 9 && hour < 21 && state.wrapped !== lastMonth) {
+  if (push && date.endsWith("-01") && hour >= 9 && hour < 21 && state.wrapped !== lastMonth) {
     const w = await monthWrapped(supabase, lastMonth).catch(() => null);
     if (w) wrapped = (await notify(supabase, { title: `🎉 Your ${w.label} Wrapped is ready`, body: w.headline, url: `/wrapped?m=${lastMonth}`, tag: "wrapped" }).catch(() => 0)) > 0;
   }
@@ -177,5 +179,5 @@ export async function GET(req: Request) {
   const active = (await listTasks(supabase).catch(() => [])).filter((t) => ACTIVE.includes(t.status));
   const web = active.length ? await resumeStalled(supabase, active, process.env.APP_URL || new URL(req.url).origin).catch(() => 0) : 0;
 
-  return NextResponse.json({ ok: true, reminders: due.length, brief, birthdays, habits, autopilot, web, dreaming, news, apps, reembedded, migrating });
+  return NextResponse.json({ ok: true, push, reminders: due.length, brief, birthdays, habits, autopilot, web, dreaming, news, apps, reembedded, migrating });
 }

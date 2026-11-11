@@ -19,6 +19,10 @@ describe("ruleBasedAgent", () => {
     ["what's the weather in Madurai", "research"],
     ["find react jobs in chennai", "career"],
     ["remember that my bike number is TN01", "memory"],
+    ["remember that the meeting moved to 4", "memory"],
+    ["please save that the deadline is Friday", "memory"],
+    ["note: standup is at 10 tomorrow", "memory"],
+    ["remind me about the meeting at 4", "scheduler"],
     ["I just finished my workout", "scheduler"],
     ["what is the meaning of life", null],
     // Messages that mention a file or don't start with "message".

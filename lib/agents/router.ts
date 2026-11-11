@@ -40,6 +40,8 @@ export function ruleBasedAgent(message: string, previous?: AgentId | null): Agen
   // Call screening: "who called me", "any missed calls", "turn off call screening", "my call link".
   if (/\b(who (called|rang)|missed calls?|call screening|screen(ing)? (my )?calls?|answer(ed)? (my )?calls?|my call link|calls? (you|hivemind) answered)\b/.test(m)) return "comms";
   if (/\bauto ?pilot\b|\b(anything|what) (i should know|needs my attention)\b/.test(m)) return "core";
+  // "remember that the meeting moved to 4" is a memory to save, even though it says "meeting" (checked before the scheduler rules).
+  if (/^(please\s+)?(remember|save|store|note)\s+that\b|^note:/.test(m)) return "memory";
   if (/\b(birthdays?|bday|anniversar(y|ies)|habits?|streaks?)\b|^i (just )?(did|finished|completed) (my |the )?\w+|^done with (my |the )?\w+|\b(track|log)\b.*\b(daily|every|habit)\b/.test(m)) return "scheduler";
   if (/\b(remind(er)?s?|schedule|meeting|appointment|deadline|agenda|calendar|my day|on today|on tomorrow)\b|\bmark\b.*\b(done|complete)\b|\b(cancel|reschedule|postpone|move)\b.*\b(meeting|call|reminder|appointment|it)\b|\b(plans?|free|busy)\b.*\b(today|tomorrow|tonight)\b|\b(today|tomorrow)\b.*\b(at \d|am\b|pm\b)/.test(m)) return "scheduler";
   // Projects, notes, documents and settings by name ("delete the HIVEMIND project", "add milk to my shopping note").

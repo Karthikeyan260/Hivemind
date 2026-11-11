@@ -13,6 +13,16 @@ Each area document has the details in its own **Checked and notes** section. Che
 Nothing in this list is a sign that the app is unsafe to use day to day. The security items matter mostly because a leaked
 password, a leaked link or a malicious web page is the way in; the owner password gate itself was reviewed and is sound.
 
+## Fixed since this list was written (2026-11-11)
+
+- **A2**: `/api/cron/notify` no longer returns 503 without VAPID keys. It skips only the pushes, runs every other job, stamps `lastRun`, and reports `push: false` in its JSON.
+- **B4**: editing a note now saves even when the embedding model is down (`tryEmbed`); the scheduler adds the vector later.
+- **D1**: the 40-step budget counts from the last Continue or Retry (`stepsSinceResume`), so Continue really gives another 40 steps.
+- **D2**: "remember that ..." / "note: ..." now routes to the Memory agent before the scheduler rules.
+- **E3**: `.env.example` rewritten: garbled line fixed, all variables the code reads are listed.
+
+The entries below are left as originally written.
+
 ## Fix these first
 
 1. **A missing VAPID key silently stops all background work** (A2). One setting, large effect.
