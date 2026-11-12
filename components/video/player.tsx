@@ -50,7 +50,8 @@ declare global {
 }
 
 let apiReady: Promise<YTApi> | null = null;
-function loadApi(): Promise<YTApi> {
+/** The YouTube player script, loaded once per page (also used by the karaoke view). */
+export function loadApi(): Promise<YTApi> {
   apiReady ??= new Promise((resolve, reject) => {
     if (window.YT?.Player) return resolve(window.YT);
     const prev = window.onYouTubeIframeAPIReady;

@@ -3,8 +3,8 @@
 import { Loader2, MicVocal, Search } from "lucide-react";
 import { useState } from "react";
 import { canKaraoke, KARAOKE_EVENT } from "@/components/music/karaoke";
-import { musicCommand, type Song } from "@/components/music/player";
-import { Button, cx, Empty, ErrorText, Input, PageHeader } from "@/components/ui";
+import type { Song } from "@/components/music/player";
+import { Button, Empty, ErrorText, Input, PageHeader } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 
 const PICKS = ["Anirudh hits", "A.R. Rahman melodies", "Ilaiyaraaja classics", "Yuvan love songs", "Harris Jayaraj hits", "Kuthu songs", "90s Tamil melodies", "Latest Tamil hits"];
@@ -16,7 +16,6 @@ export default function KaraokePage() {
   const [songs, setSongs] = useState<Song[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [starting, setStarting] = useState<string | null>(null);
 
   async function find(query: string) {
     const text = query.trim();
@@ -37,13 +36,10 @@ export default function KaraokePage() {
     }
   }
 
-  async function sing(song: Song) {
-    setStarting(song.id);
+  /** Opens the karaoke view for this song. It plays the music-only track; the full song is not started. */
+  function sing(song: Song) {
     setError(null);
-    const res = await musicCommand({ action: "play", song }).catch(() => ({ error: "Couldn't start that song." }));
-    setStarting(null);
-    if (res.error) return setError(String(res.error));
-    window.dispatchEvent(new Event(KARAOKE_EVENT));
+    window.dispatchEvent(new CustomEvent(KARAOKE_EVENT, { detail: { song } }));
   }
 
   useVoiceActions({
@@ -60,7 +56,7 @@ export default function KaraokePage() {
 
   return (
     <>
-      <PageHeader eyebrow="Play" title="Karaoke" subtitle="Pick a Tamil song. It plays, and the lyrics light up line by line so you can sing along." />
+      <PageHeader eyebrow="Play" title="Karaoke" subtitle="Pick a Tamil song. Its music plays without the singer, and the lyrics light up line by line so you can sing it yourself." />
       <form
         className="mb-4 flex gap-2"
         onSubmit={(e) => {
@@ -87,7 +83,7 @@ export default function KaraokePage() {
         <ul className="grid gap-2 sm:grid-cols-2">
           {songs.map((s) => (
             <li key={s.id}>
-              <button type="button" onClick={() => void sing(s)} disabled={!!starting} className={cx("group flex w-full items-center gap-3 border border-line bg-raised/40 p-2 text-left hover:border-core", starting === s.id && "border-core")}>
+              <button type="button" onClick={() => void sing(s)} className="group flex w-full items-center gap-3 border border-line bg-raised/40 p-2 text-left hover:border-core">
                 {s.image ? (
                   // eslint-disable-next-line @next/next/no-img-element -- remote cover art
                   <img src={s.image} alt="" className="h-12 w-12 shrink-0 object-cover" />
@@ -104,7 +100,7 @@ export default function KaraokePage() {
                   </span>
                 </span>
                 <span className="font-mono text-[10.5px] text-faint">{fmt(s.duration)}</span>
-                {starting === s.id ? <Loader2 size={16} className="animate-spin text-core" /> : <MicVocal size={16} className="text-faint group-hover:text-core" />}
+                <MicVocal size={16} className="text-faint group-hover:text-core" />
               </button>
             </li>
           ))}

@@ -41,7 +41,7 @@ This README is the complete, single-page documentation. The `docs/` folder holds
 - **Plays with you.** Nova the pet, Nova's 3D garden, nine games plus a song quiz, a day comic, My Wrapped, Journey, and Friends Theatre.
 - **Free tiers only.** Vercel Hobby, Supabase Free, free AI provider tiers.
 
-At a glance: **46 pages**, **99 API routes**, **10 database tables**, an AI provider fallback chain of five providers, and about
+At a glance: **46 pages**, **100 API routes**, **10 database tables**, an AI provider fallback chain of five providers, and about
 **770 automated tests**.
 
 ---
@@ -52,7 +52,7 @@ At a glance: **46 pages**, **99 API routes**, **10 database tables**, an AI prov
 Browser (installable PWA: phone or laptop)
    │  password gate (one owner, no accounts)
    ▼
-Next.js 16 on Vercel (App Router)            ← pages + 99 API routes + a daily cron (keepalive)
+Next.js 16 on Vercel (App Router)            ← pages + 100 API routes + a daily cron (keepalive)
    │                                           an outside scheduler calls /api/cron/notify every ~5 min
    ├─ Supabase (Postgres + pgvector)  notes, memories, documents, projects, photos, embeddings
    │                                   + a private storage bucket for small JSON state
@@ -245,7 +245,7 @@ refresh after a deploy). Test-only: `E2E_PORT`, `E2E_PASSWORD`, `SWEEP`, `DB_TES
   - **Nova's life there**: it strolls the island, naps in its cottage and sleeps there at night; tap anything and Nova walks over.
   - **Scene and sky**: wind-swept grass that parts around Nova, a pond and waterfall, a sea of clouds; sky and weather follow your real time of day and local weather. Devices without WebGL get a flat version.
 - **Games**: Chess, Colour Clash (Uno-style cards), Business, Bingo, Connect Four, Snakes & Ladders, Ludo, Dots & Boxes, Draw & Guess (HIVEMIND guesses as the third player), the **Paattu** Tamil song quiz, and a **game-night lobby** (one link, up to 5 friends). Chess, cards, Ludo, Dots and Draw & Guess can be joined with a link; the others work solo or at game night.
-- **Karaoke** (Tamil songs only): pick a song on the Karaoke page, or tap the mic on the music bar while a Tamil song plays. The song plays full screen and its lyrics light up line by line in time (synced lyrics from LRCLIB, matched to the exact recording). Tap a line to jump to it; nudge the timing with the sync buttons; the mascot sings along. No scoring and no microphone.
+- **Karaoke** (Tamil songs only): pick a song on the Karaoke page, or tap the mic on the music bar while a Tamil song plays. By default it plays the song's **karaoke track** (music only, no singer: a YouTube karaoke video of the same length) so you are the singer, and the lyrics light up line by line in time (synced lyrics from LRCLIB, matched to the exact recording). A switch plays the full song **with the singer** instead, which is also the fallback when a song has no karaoke track. Tap a line to jump to it; nudge the timing with the sync buttons; the mascot sings along. No scoring and no microphone.
 - **Day comic** (four moments of your day; Gemini picks them, the art is the mascot's pre-drawn frames), **My Wrapped** (your month in story cards), **Journey** (your career walked through in 3D), **Galaxy** (your knowledge as stars).
 - **Living sky** (the app background follows your weather) and **Music lights** (the screen pulses to the beat).
 
@@ -321,7 +321,7 @@ system check and export.
 
 ## 7. API reference
 
-All 99 routes. **owner** = behind the password; **open** = reachable without it (guest doors); **cron** = needs the
+All 100 routes. **owner** = behind the password; **open** = reachable without it (guest doors); **cron** = needs the
 `CRON_SECRET` bearer header. Dynamic segments are written `:id`.
 
 **Platform: sign-in, push, health, relay logins, cron** ([docs/01-architecture-and-platform.md](docs/01-architecture-and-platform.md))
@@ -423,6 +423,7 @@ All 99 routes. **owner** = behind the password; **open** = reachable without it 
 | `GET,POST,DELETE` | `/api/location` | owner |
 | `GET` | `/api/mission` | owner |
 | `GET` | `/api/music/search` | owner |
+| `GET` | `/api/music/karaoke` | owner |
 | `GET` | `/api/music/lyrics` | owner |
 | `POST` | `/api/music/stream` | owner |
 | `GET` | `/api/places` | owner |

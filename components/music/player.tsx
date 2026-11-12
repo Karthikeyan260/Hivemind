@@ -53,10 +53,14 @@ export function MusicPlayer() {
   const [volume, setVolume] = useState(0.8);
   const [time, setTime] = useState({ at: 0, of: 0 });
   const [showQueue, setShowQueue] = useState(false);
-  const [karaoke, setKaraoke] = useState(false);
-  // The Karaoke page (or anything else) can open the lyrics view.
+  // The song open in the karaoke view (it needn't be the one in the queue: music-only mode plays its own track).
+  const [karaoke, setKaraoke] = useState<Song | null>(null);
+  // The Karaoke page opens the view with the song it picked (the bar's mic button passes the song playing now).
   useEffect(() => {
-    const open = () => setKaraoke(true);
+    const open = (e: Event) => {
+      const picked = (e as CustomEvent<{ song?: Song }>).detail?.song;
+      if (picked) setKaraoke(picked);
+    };
     window.addEventListener(KARAOKE_EVENT, open);
     return () => window.removeEventListener(KARAOKE_EVENT, open);
   }, []);
@@ -384,7 +388,7 @@ export function MusicPlayer() {
               <input type="range" min={0} max={1} step={0.05} value={volume} onChange={(e) => setVolume(Number(e.target.value))} className="w-20" aria-label="Volume" />
             </label>
             {canKaraoke(song) && (
-              <button type="button" onClick={() => setKaraoke(true)} aria-label="Karaoke: sing along with the lyrics" title="Karaoke" className="p-1.5 text-soft hover:text-core">
+              <button type="button" onClick={() => setKaraoke(song)} aria-label="Karaoke: sing along with the lyrics" title="Karaoke" className="p-1.5 text-soft hover:text-core">
                 <MicVocal size={18} />
               </button>
             )}
@@ -427,8 +431,23 @@ export function MusicPlayer() {
           )}
         </section>
       )}
-      {visible && song && karaoke && canKaraoke(song) && (
-        <Karaoke key={song.id} song={song} audio={audio} playing={playing} onToggle={toggle} onSeek={(t) => { if (audio.current) audio.current.currentTime = t; }} onNext={() => void next()} onPrevious={() => void previous()} onClose={() => setKaraoke(false)} />
+      {karaoke && !isPublicPage(path) && (
+        <Karaoke
+          key={karaoke.id}
+          song={karaoke}
+          audio={audio}
+          songPlaying={playing && song?.id === karaoke.id}
+          // "With singer": the full song, through this player (carrying on if it is already the one loaded).
+          onPlaySong={() => {
+            if (st.current.queue[st.current.index]?.id === karaoke.id) void audio.current?.play().then(() => setBlocked(false)).catch(() => setBlocked(true));
+            else void playAt([karaoke], 0);
+          }}
+          onPauseSong={() => audio.current?.pause()}
+          onSeekSong={(t) => {
+            if (audio.current) audio.current.currentTime = t;
+          }}
+          onClose={() => setKaraoke(null)}
+        />
       )}
     </>
   );
