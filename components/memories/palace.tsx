@@ -16,12 +16,18 @@ type Props = {
   onOpen: (id: string) => void;
   /** Close the open memory (walked away, set off elsewhere, or Esc). */
   onClose: (id?: string) => void;
+  /** 3D couldn't start on this device (no WebGL, or its code isn't here offline): the page shows the list instead. */
+  onUnavailable?: () => void;
 };
 
 const KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight"]);
 
 /** The Memory Palace: a walkable 3D museum of the owner's memories (Memory page "Palace" view). */
-export function Palace({ items, highlight, openId, related, onOpen, onClose }: Props) {
+export function Palace({ items, highlight, openId, related, onOpen, onClose, onUnavailable }: Props) {
+  const unavailableRef = useRef(onUnavailable);
+  useEffect(() => {
+    unavailableRef.current = onUnavailable;
+  }, [onUnavailable]);
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const scene = useRef<PalaceScene | null>(null);
@@ -58,8 +64,9 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose }: P
           onMove: (x, z, yaw, zone) => setMe({ x, z, yaw, zone }),
         });
       } catch (err) {
-        console.error("palace failed", err);
+        console.warn("palace unavailable, showing the list:", err instanceof Error ? err.message : err);
         setFailed(true);
+        unavailableRef.current?.();
         return;
       }
       scene.current = s;

@@ -200,6 +200,8 @@ function Explorer() {
 
   // Palace / List view, remembered on this device.
   const [view, setView] = useState<"palace" | "list">("palace");
+  // The palace couldn't start on this device (no WebGL): the list is shown, with a line saying why.
+  const [no3d, setNo3d] = useState(false);
   useEffect(() => {
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the saved view once
@@ -543,6 +545,7 @@ function Explorer() {
           </button>
         ))}
       </div>
+      {no3d && view === "list" && <p className="-mt-2 mb-4 text-xs text-faint">The 3D palace isn&apos;t available on this device, so here is the list.</p>}
 
       {/* Search + filters */}
       <div className="mb-5 space-y-2">
@@ -621,6 +624,11 @@ function Explorer() {
                 openId={openId}
                 related={relatedIds}
                 onOpen={open}
+                // No 3D here: show the list (this visit only; the saved choice stays), so memories stay readable.
+                onUnavailable={() => {
+                  setNo3d(true);
+                  setView("list");
+                }}
                 // Walking away closes the memory, but never an unsaved edit.
                 onClose={(id) => {
                   // Only close the memory that is actually showing (a stale close for the previous one is ignored).
