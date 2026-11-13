@@ -11,6 +11,11 @@ export class HttpError extends Error {
 export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response>) {
   return async (...args: A) => {
     try {
+      // An id in the address is always letters, digits, "-" or "_" (ids are UUIDs or parts of one). Anything else
+      // (quotes, spaces, slashes, "..") is no record: answer so here, before it reaches the database or the file store.
+      const params = (args[1] as { params?: Promise<Record<string, unknown>> } | undefined)?.params;
+      const id = params ? (await params)?.id : undefined;
+      if (typeof id === "string" && !/^[\w-]{1,80}$/.test(id)) return NextResponse.json({ error: "Not found" }, { status: 404 });
       return await fn(...args);
     } catch (err) {
       if (err instanceof HttpError) {
