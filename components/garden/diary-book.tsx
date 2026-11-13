@@ -226,7 +226,13 @@ export function DiaryBook({ pet, onClose }: { pet: string; onClose: () => void }
       ref={wrap}
       onPointerMove={wake}
       onPointerDown={wake}
-      className="fixed inset-0 z-[300] overflow-hidden bg-[radial-gradient(ellipse_at_center,rgba(20,14,10,0.78),rgba(6,4,3,0.92))]"
+      className="fixed inset-0 z-[300] overflow-hidden"
+      // The garden stays faintly in view behind the book, but the top and bottom are solid: the page title, the
+      // menu and the phone's tab bar must not show through the diary's own header and controls.
+      style={{
+        background:
+          "linear-gradient(to bottom, rgba(6,4,3,0.97) 0%, rgba(6,4,3,0.97) 9%, rgba(6,4,3,0) 24%, rgba(6,4,3,0) 70%, rgba(6,4,3,0.98) 86%, rgba(6,4,3,0.98) 100%), radial-gradient(ellipse at center, rgba(20,14,10,0.9), rgba(6,4,3,0.97))",
+      }}
       role="dialog"
       aria-label={`${pet}'s diary`}
     >

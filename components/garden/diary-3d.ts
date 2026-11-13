@@ -168,6 +168,10 @@ export class DiaryScene {
     this.leftBlock = mkBlock(this.leftEdgeTex);
     this.rightBlock = mkBlock(this.rightEdgeTex);
 
+    // The closed book has its front cover from the first frame. (Without it, while the pages were still loading,
+    // only the back board showed, lining up: a green "cover" that then jumped to the real red one.)
+    this.sheets = [this.makeSheet(0)];
+
     // Specks of light drifting up, like dust in lamplight.
     const n = 70;
     const pos = new Float32Array(n * 3);
@@ -210,14 +214,16 @@ export class DiaryScene {
     for (const s of this.sheets) this.assignKeys(s);
     const target = o.goKey ? this.spreadFor(o.goKey, pages) : (keepSpread ?? this.spreadFor(pages.findLast((p) => p.kind !== "blank")?.key ?? "", pages));
     if (o.open && !this.o.reduced) {
-      this.introT = 0;
+      // The intro (the closed book settling onto the table) has been playing since the book appeared: it is not
+      // started again when the pages arrive, and the cover opens once it has had its moment.
+      const wait = Math.max(150, 900 - this.introT * 1000);
       this.spreadNow = 0;
       for (const s of this.sheets) {
         s.t = 0;
         s.target = 0;
       }
       this.zoom = "spread";
-      setTimeout(() => !this.disposed && this.goTo(target), 900);
+      setTimeout(() => !this.disposed && this.goTo(target), wait);
     } else {
       this.introT = o.open ? 9 : this.introT;
       this.spreadNow = target;
@@ -1084,12 +1090,24 @@ function drawPage(ctx: CanvasRenderingContext2D, page: DiaryPage, side: "left" |
     /* older browsers */
   }
   ctx.fillStyle = INK;
-  ctx.font = `700 58px ${hand}`;
+  // The mood sits at the right end of the date line: the date is written a little smaller when a long one
+  // ("10 November 2026") would otherwise run under it.
+  let moodW = 0;
+  if (page.mood) {
+    ctx.font = "70px serif";
+    moodW = ctx.measureText(page.mood).width + 18;
+  }
+  let dateSize = 58;
+  for (; dateSize > 40; dateSize -= 2) {
+    ctx.font = `700 ${dateSize}px ${hand}`;
+    if (ctx.measureText(rest).width <= right - left - moodW) break;
+  }
+  ctx.font = `700 ${dateSize}px ${hand}`;
   ctx.fillText(rest, left, 196);
   if (page.mood) {
-    ctx.font = "78px serif";
+    ctx.font = "70px serif";
     ctx.textAlign = "right";
-    ctx.fillText(page.mood, right, 200);
+    ctx.fillText(page.mood, right, 198);
     ctx.textAlign = "left";
   }
   ctx.strokeStyle = "rgba(138,53,47,0.5)";
