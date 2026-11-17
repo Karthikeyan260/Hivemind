@@ -126,7 +126,7 @@ function Habits() {
                     🔥 {h.streak} · best {h.best}
                     {h.rate != null ? ` · ${h.rate}%` : ""}
                   </span>
-                  <button type="button" onClick={() => removeHabit(h)} aria-label={`Delete ${h.name}`} className="p-1 text-faint hover:text-alert">
+                  <button type="button" onClick={() => removeHabit(h)} aria-label={`Delete ${h.name}`} className="hit relative p-1 text-faint hover:text-alert">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -180,7 +180,7 @@ function Habits() {
                 <span className={cx("shrink-0 font-mono text-[11px]", b.days === 0 ? "text-core" : b.days <= 7 ? "text-data" : "text-faint")}>
                   {b.days === 0 ? "TODAY" : b.days === 1 ? "TOMORROW" : `${b.days} days`}
                 </span>
-                <button type="button" onClick={() => setWishFor(b.id)} aria-label={`Write a wish for ${b.name}`} className="p-1.5 text-data hover:text-core">
+                <button type="button" onClick={() => setWishFor(b.id)} aria-label={`Write a wish for ${b.name}`} className="hit relative p-1.5 text-data hover:text-core">
                   <Gift size={16} />
                 </button>
                 <button type="button" onClick={() => removeBirthday(b)} aria-label={`Remove ${b.name}`} className="p-1 text-faint hover:text-alert">

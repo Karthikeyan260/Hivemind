@@ -263,7 +263,7 @@ function WebTasks() {
                 onClick={() => remove(t)}
                 title="Delete this task"
                 aria-label={`Delete task: ${t.goal}`}
-                className="absolute right-2 top-2 rounded p-1 text-faint hover:bg-alert/10 hover:text-alert"
+                className="hit absolute right-2 top-2 rounded p-1 text-faint hover:bg-alert/10 hover:text-alert"
               >
                 <Trash2 size={14} />
               </button>

@@ -906,7 +906,7 @@ function Bridge() {
             }}
             title={muted ? "Sound off" : "Sound on"}
             aria-label={muted ? "Turn sound on" : "Turn sound off"}
-            className="p-1 text-soft hover:text-core"
+            className="hit relative p-1 text-soft hover:text-core"
           >
             {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </button>

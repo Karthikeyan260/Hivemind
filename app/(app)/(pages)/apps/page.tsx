@@ -109,7 +109,7 @@ export default function AppsPage() {
                   </span>
                 </span>
               </Link>
-              <button type="button" onClick={() => remove(a)} aria-label={`Delete ${a.name}`} title="Delete this app" className="absolute right-2 top-2 rounded p-1.5 text-faint hover:bg-alert/10 hover:text-alert">
+              <button type="button" onClick={() => remove(a)} aria-label={`Delete ${a.name}`} title="Delete this app" className="hit absolute right-2 top-2 rounded p-1.5 text-faint hover:bg-alert/10 hover:text-alert">
                 <Trash2 size={15} />
               </button>
             </li>

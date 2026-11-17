@@ -1303,3 +1303,13 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
   transform-origin: left center;
   animation: bar-grow 700ms var(--ease-out) 120ms backwards;
 }
+
+/* Small icon buttons: on touch screens the tap area grows to about 40px without changing the look.
+   The element must be positioned (relative or absolute). */
+@media (pointer: coarse) {
+  .hit::after {
+    content: "";
+    position: absolute;
+    inset: -9px;
+  }
+}
