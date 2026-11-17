@@ -25,6 +25,7 @@ export const VOICE_PAGES = [
   { path: "/share", what: "Share: save a link, text, photo or file into the brain (also from Android's Share menu)" },
   { path: "/comic", what: "Your day as a comic: four panels with the owner's mascot; earlier days too" },
   { path: "/photos", what: "Photos: the owner's photos, described and searchable by place and moment" },
+  { path: "/weekly", what: "This week: habits per day, moods, notes and games over the last 7 days" },
   { path: "/wrapped", what: "My Wrapped: the month in story cards (moods, habits, songs, games, photos, places)" },
   { path: "/garden", what: "Nova's garden: the pet's 3D floating island grown from habits, check-ins, walks, wins and songs" },
   { path: "/garden?fest=deepavali", what: "Nova's garden dressed for Deepavali (lamps, rangoli, fireworks)" },

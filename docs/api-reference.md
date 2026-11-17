@@ -118,4 +118,5 @@ All 100 API routes of HIVEMIND, one row each. Checked 2026-11-11 against `app/ap
 | `GET,POST,DELETE` | `/api/web-tasks/:id` | owner | The owner's answer: approve / reject a risky step, continue after taking over, cancel, retry. | [04-autopilot-web-tasks-apps](04-autopilot-web-tasks-apps.md) |
 | `GET` | `/api/web-tasks/:id/shot` | owner | The task's latest screenshot, or ?step=N for the page after step N (the replay). | [04-autopilot-web-tasks-apps](04-autopilot-web-tasks-apps.md) |
 | `GET,POST,DELETE` | `/api/web-tasks` | owner | Web tasks, newest first (the session's live-view link only goes to the owner's own app). | [04-autopilot-web-tasks-apps](04-autopilot-web-tasks-apps.md) |
+| `GET` | `/api/weekly` | owner | The last 7 days: habits per day and per habit, moods, notes, games, and a computed one-line summary. | [05-daily-life-habits-reminders-career](05-daily-life-habits-reminders-career.md) |
 | `GET` | `/api/wrapped` | owner | A month's Wrapped (?m=2026-10; default: this month so far) and the months to pick from. | [06-nova-garden-games-and-stories](06-nova-garden-games-and-stories.md) |

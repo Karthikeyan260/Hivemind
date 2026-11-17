@@ -1313,3 +1313,13 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
     inset: -9px;
   }
 }
+
+/* Column bars rise from the bottom (the Weekly page). */
+@keyframes bar-rise {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.bar-rise {
+  transform-origin: bottom;
+  animation: bar-rise 600ms var(--ease-out) 150ms backwards;
+}

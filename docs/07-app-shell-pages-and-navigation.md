@@ -411,6 +411,7 @@ behind the password. Detail docs: **02** `docs/02-brain-and-ai.md`, **03** `docs
 | `/projects/<id>` | One project and its related knowledge | `/api/projects/<id>` | 02 |
 | `/memories` | Browse, add, edit memories; palace and explore views | `/api/memories`, `/api/memories/explore`, `/api/projects` | 02 |
 | `/photos` | Add photos; HIVEMIND describes them with place and time; search them | `/api/photos` (and `/api/photos/<id>`) | 06 |
+| `/weekly` | "This week": the last 7 days in numbers (habits per day, moods, notes, games); no AI, voice-readable | `/api/weekly` | 05 |
 | `/wrapped` | "My Wrapped": a month as story cards (7 s each, tap right or left); voice-controllable | `/api/wrapped` | 06 |
 | `/garden` | Nova's garden, 3D island (flat fallback); query flags `fest`, `goodnight`, `season`, `mood`, `visitors` | `/api/pet/garden`, `/api/pet/goodnight`, `/api/diary`, `/api/brief/day` (via child components) | 06 |
 | `/career` | "Job match": paste a job description, get a match, tailored resume PDF, cover letter, interview prep | `/api/career`, `/api/career/<id>` | 05 |

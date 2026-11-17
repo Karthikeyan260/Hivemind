@@ -308,6 +308,7 @@ shelf, text and voice search, and rejoin after leaving the room. Full detail: [d
 | `/games` | Menu of 11 games plus your record |
 | `/games/party`, `/games/paattu`, `/games/chess`, `/games/cards`, `/games/business`, `/games/bingo`, `/games/connect4`, `/games/snakes`, `/games/ludo`, `/games/dots`, `/games/draw` | Each game; party is the game-night lobby |
 | `/karaoke` | Karaoke: Tamil songs with lyrics that light up in time |
+| `/weekly` | This week: last 7 days of habits, moods, notes, games |
 | `/comic`, `/wrapped`, `/journey` | Day comic, My Wrapped, Journey |
 | `/theatre` | Friends Theatre shelf and "My room" link |
 
