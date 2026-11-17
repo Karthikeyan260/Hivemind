@@ -1293,3 +1293,13 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
 .list-in > li > a:active {
   transform: scale(0.985);
 }
+
+/* Meter bars grow from the left when they first appear. */
+@keyframes bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.bar-grow {
+  transform-origin: left center;
+  animation: bar-grow 700ms var(--ease-out) 120ms backwards;
+}

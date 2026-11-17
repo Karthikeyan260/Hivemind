@@ -580,7 +580,7 @@ function Bridge() {
       <HabitsPanel />
       {composition.length > 0 && (
         <Holo title="Composition">
-          <div className="space-y-2.5 p-4">
+          <div className="list-in space-y-2.5 p-4">
             {composition.map(([k, v]) => (
               <Meter key={k} label={k} value={v} max={composition[0][1]} />
             ))}
@@ -589,7 +589,7 @@ function Bridge() {
       )}
       {b?.profile?.focus_areas.length ? (
         <Holo title="Focus vectors">
-          <ul className="space-y-1.5 p-4">
+          <ul className="list-in space-y-1.5 p-4">
             {b.profile.focus_areas.map((f, i) => (
               <li key={f} className="flex items-center gap-2 text-[12.5px] text-soft">
                 <span className="font-mono text-[10px] text-core">{String(i + 1).padStart(2, "0")}</span>
@@ -617,7 +617,7 @@ function Bridge() {
         </button>
       }
     >
-      <ol className="space-y-2 p-4 font-mono text-[11px] leading-snug">
+      <ol className="list-in space-y-2 p-4 font-mono text-[11px] leading-snug">
         {(b?.activity ?? []).slice(0, 14).map((a) => (
           <li key={a.id} className="flex gap-2">
             <span className="shrink-0 text-faint">{new Date(a.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}</span>

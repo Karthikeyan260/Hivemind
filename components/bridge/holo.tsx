@@ -96,7 +96,7 @@ export function Meter({ label, value, max }: { label: string; value: number; max
       </div>
       <div className="h-[3px] bg-data/10">
         <div
-          className="h-full bg-data"
+          className="bar-grow h-full bg-data"
           style={{ width: `${max ? (value / max) * 100 : 0}%`, transition: "width 1200ms cubic-bezier(0.22,1,0.36,1)", boxShadow: "0 0 8px var(--data)" }}
         />
       </div>
