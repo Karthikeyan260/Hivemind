@@ -20,7 +20,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl list-in space-y-6">
       <PageHeader eyebrow="You" title="Settings & privacy" subtitle="Voice, notifications, location, devices and the AI behind HIVEMIND." />
 
       <section className="rounded-xl border border-line bg-panel p-4">

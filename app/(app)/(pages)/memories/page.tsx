@@ -290,7 +290,7 @@ function Explorer() {
       ) : !d ? (
         <p className="font-mono text-[11px] text-faint">{detail.error ?? "LOADING MEMORY…"}</p>
       ) : (
-        <div className="space-y-4">
+        <div className="list-in space-y-4">
           <Holo
             title={d.memory.title}
             tone="core"

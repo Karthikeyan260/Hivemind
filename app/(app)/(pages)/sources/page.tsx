@@ -42,7 +42,7 @@ export default function SourcesPage() {
   const imported = (url: string) => status.data?.pages.find((p) => p.source_url === url);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl list-in space-y-6">
       <PageHeader eyebrow="Import" title="Sources" subtitle="Pull your own data into your brain. Re-syncing replaces the previous import — no duplicates." />
       <ErrorText error={error ?? status.error} />
       {message && <p className="rounded-lg bg-accent/10 px-3 py-2 text-sm text-accent">{message}</p>}
@@ -72,7 +72,7 @@ export default function SourcesPage() {
 
       <section className="rounded-xl border border-line bg-panel p-4">
         <h2 className="font-semibold">Web pages</h2>
-        <ul className="mt-3 divide-y divide-line">
+        <ul className="list-in mt-3 divide-y divide-line">
           {MY_PAGES.map((p) => {
             const doc = imported(p.url);
             return (

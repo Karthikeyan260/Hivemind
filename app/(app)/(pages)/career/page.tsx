@@ -193,7 +193,7 @@ function Career() {
             {!history.data?.length ? (
               <p className="text-sm text-soft">No analyses yet.</p>
             ) : (
-              <ul className="space-y-1">
+              <ul className="list-in space-y-1">
                 {history.data.map((h) => (
                   <li key={h.id} className="group flex items-center gap-2">
                     <Link
@@ -232,7 +232,7 @@ function Career() {
             <Empty>Paste a job description to see your fit score, ATS keyword match, tailored summary, resume bullets, cover letter and interview prep.</Empty>
           )
         ) : (
-          <div id="career-result" className="min-w-0 scroll-mt-16 space-y-4">
+          <div id="career-result" className="min-w-0 scroll-mt-16 list-in space-y-4">
             <Holo title={`${a.role}${a.company ? ` @ ${a.company}` : ""}`} right={<CopyButton text={toMarkdown(a)} label="Copy all" />} tone="core">
               <div className="flex flex-wrap items-center gap-6 p-5">
                 <div className="flex gap-4">
