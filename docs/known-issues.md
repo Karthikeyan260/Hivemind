@@ -156,3 +156,14 @@ password change, logout, log out all), the sign-in route (wrong and odd password
 window, the trusted-browser exemption, cookie flags) and peer proofs. `tests/proxy-gate.test.ts` (8 tests) pins the open-path list and the matcher.
 They found one bug, now fixed: a JSON body of `null` made `/api/unlock` crash with a 500 instead of answering 401 (nothing was granted).
 This closes the "no tests for `lib/session.ts` lockout and revocation, or the open paths in `proxy.ts`" gap in section F above.
+
+## Added 2026-11-17: scheduler, export and restore tests
+
+- `tests/cron-notify.test.ts` (15 tests): who may call `/api/cron/notify` (bearer, bare header, `?key=`; never a wrong, empty or missing secret), that a run stamps `lastRun`,
+  that it keeps running every job and sends nothing when the push keys are missing (the old 503 is pinned by a test that fails if it comes back), reminders handed back when no
+  device took them, the morning brief (once a day, morning only, marked done only when a device received it), Dream mode's night window, the 9 pm check-in and stalled web tasks.
+- `tests/export-route.test.ts` (5 tests): the export reads past the 1000-row page limit, leaves out embeddings and every key-like private file, and fails loudly instead of giving a partial backup.
+- `tests/restore-backup.test.ts` (10 tests): runs the real `scripts/restore-backup.mjs` against a fake database server: dry run writes nothing, `--apply` adds only what is missing, `--overwrite` replaces,
+  secrets and empty files are skipped, parents restore before children, a failed batch exits with code 2, and bad input is refused. This closes the "no tests for the backup export and restore" gap (B11).
+- Found and fixed: the restore script crashed Node on Windows at exit (`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`, exit code 3221226505) even when the restore had succeeded;
+  a wrong file name or a damaged backup now gives a clear message instead of a stack trace.

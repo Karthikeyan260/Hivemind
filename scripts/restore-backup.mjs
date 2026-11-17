@@ -40,7 +40,13 @@ if (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY) {
 const { createClient } = await import("@supabase/supabase-js");
 const sb = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY);
 
-const backup = JSON.parse(readFileSync(file, "utf8"));
+let backup;
+try {
+  backup = JSON.parse(readFileSync(file, "utf8"));
+} catch (e) {
+  console.error(`Can't read ${file}: ${e instanceof SyntaxError ? "it is not valid JSON (damaged or cut short?)" : e.code === "ENOENT" ? "no such file" : e.message}`);
+  process.exit(1);
+}
 if (!backup || typeof backup !== "object" || !("exported_at" in backup)) {
   console.error("That doesn't look like an export file (no exported_at).");
   process.exit(1);
@@ -105,4 +111,6 @@ for (const [key, value] of Object.entries(priv)) {
 }
 console.log(`\nprivate files    in backup ${String(Object.keys(priv).length).padStart(5)} | missing ${String(missingFiles).padStart(5)} | skipped (secrets or empty) ${skipped}${APPLY ? ` | written ${wroteFiles}` : ""}`);
 console.log(APPLY ? (problems ? `\nDone with ${problems} problem(s): see above.` : "\nDone.") : "\nNothing was written. Add --apply to put back what is missing.");
-process.exit(problems ? 2 : 0);
+// Not process.exit(): after network requests, calling it makes Node on Windows abort with "Assertion failed:
+// !(handle->flags & UV_HANDLE_CLOSING)" and a bogus exit code, even when the restore went fine. Let it end by itself.
+process.exitCode = problems ? 2 : 0;
