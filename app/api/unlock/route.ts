@@ -24,7 +24,8 @@ function locked(mins: number) {
 }
 
 export async function POST(req: Request) {
-  const { password } = (await req.json().catch(() => ({}))) as { password?: unknown };
+  // A body of `null` (valid JSON) must not crash the destructuring: treat anything unusable as "no password".
+  const { password } = ((await req.json().catch(() => null)) ?? {}) as { password?: unknown };
   if (!passwordRequired()) return NextResponse.json({ ok: true });
 
   const supabase = db();

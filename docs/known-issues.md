@@ -148,3 +148,11 @@ Friends Theatre is the exception: it has its own large unit and browser test set
 - The **apps sandbox** (no `allow-same-origin`, no-network CSP).
 - **Dream mode** logs the full deleted row before deleting and skips long memories.
 - `/api/agent-tool` sits behind the password gate; guest and routine modes can only restrict.
+
+## Added 2026-11-17: sign-in and gate tests
+
+`tests/session-lockout.test.ts` (17 tests, in-memory store, never touches real data) now covers the session cookie (forged, unsigned, other secret, expired,
+password change, logout, log out all), the sign-in route (wrong and odd passwords, the 8-per-address and 60-overall limits, parallel guesses, the 15-minute
+window, the trusted-browser exemption, cookie flags) and peer proofs. `tests/proxy-gate.test.ts` (8 tests) pins the open-path list and the matcher.
+They found one bug, now fixed: a JSON body of `null` made `/api/unlock` crash with a 500 instead of answering 401 (nothing was granted).
+This closes the "no tests for `lib/session.ts` lockout and revocation, or the open paths in `proxy.ts`" gap in section F above.

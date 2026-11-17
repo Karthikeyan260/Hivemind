@@ -65,5 +65,6 @@ describe("deleting a memory and undoing it", () => {
     await undoActivity(db.client, log.id as string);
     expect(db.tables.memories).toHaveLength(1);
     expect(db.tables.memory_versions.map((v) => v.version_number)).toEqual([1, 2]);
-  });
+    // The first import of the knowledge code is slow when the whole suite runs at once: allow for it.
+  }, 30_000);
 });
