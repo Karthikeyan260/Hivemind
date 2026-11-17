@@ -16,7 +16,7 @@ export function Button({
     <button
       {...props}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-[background-color,border-color,color,opacity] duration-150 disabled:cursor-not-allowed disabled:opacity-40",
+        "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-[background-color,border-color,color,opacity,transform] duration-150 ease-out active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100",
         // Taller on touch screens (44 px target for normal buttons).
         size === "sm" ? "h-7 px-2.5 text-xs pointer-coarse:h-9" : "h-9 px-3.5 text-sm pointer-coarse:h-11",
         variant === "primary" && "bg-core text-core-ink hover:bg-core/85",
@@ -87,12 +87,12 @@ export const Badge = ({ children, tone = "neutral" }: { children: ReactNode; ton
 export function PageHeader({ eyebrow, title, subtitle, actions }: { eyebrow?: string; title: string; subtitle?: string; actions?: ReactNode }) {
   return (
     <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-      <div>
+      <div className="head-in">
         {eyebrow && <div className="hud-label mb-2">{eyebrow}</div>}
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="mt-1.5 max-w-[65ch] text-sm text-soft">{subtitle}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="head-in-actions flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
@@ -101,14 +101,14 @@ export const ErrorText = ({ error }: { error: string | null }) =>
   error ? <p className="rounded-md border border-alert/40 bg-alert/10 px-3 py-2 text-sm text-alert">{error}</p> : null;
 
 export const Empty = ({ children }: { children: ReactNode }) => (
-  <div className="hud-frame px-6 py-10 text-center text-sm text-soft">{children}</div>
+  <div className="hud-frame rise-in px-6 py-10 text-center text-sm text-soft">{children}</div>
 );
 
 export function Skeleton({ lines = 3 }: { lines?: number }) {
   return (
     <div className="space-y-2" aria-hidden>
       {Array.from({ length: lines }, (_, i) => (
-        <div key={i} className="h-3 animate-pulse rounded-sm bg-raised" style={{ width: `${90 - i * 15}%` }} />
+        <div key={i} className="shimmer h-3 rounded-sm" style={{ width: `${90 - i * 15}%`, animationDelay: `${i * 120}ms` }} />
       ))}
     </div>
   );

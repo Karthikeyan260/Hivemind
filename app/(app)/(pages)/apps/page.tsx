@@ -88,7 +88,7 @@ export default function AppsPage() {
       {!apps.length && !list.loading ? (
         <Empty>No apps yet. Describe one above.</Empty>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <ul className="list-in grid gap-3 sm:grid-cols-2">
           {apps.map((a) => (
             <li key={a.id} className="group relative">
               <Link href={`/apps/${a.id}`} className={cx("flex h-full gap-3 rounded-xl border bg-panel p-4 pr-10 hover:border-line-strong", a.status === "failed" ? "border-alert/40" : "border-line")}>

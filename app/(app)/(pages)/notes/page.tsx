@@ -97,7 +97,7 @@ function Notes() {
           ) : visible.length === 0 ? (
             <Empty>No notes yet.</Empty>
           ) : (
-            <ul className="space-y-2">
+            <ul className="list-in space-y-2">
               {visible.map((n) => (
                 <li key={n.id}>
                   <button

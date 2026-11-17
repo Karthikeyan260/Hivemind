@@ -117,7 +117,7 @@ export default function CallsPage() {
       ) : !d?.items.length ? (
         <Empty>No answered calls yet. Share your call link, and HIVEMIND picks up when you can&apos;t.</Empty>
       ) : (
-        <ul className="space-y-3">
+        <ul className="list-in space-y-3">
           {d.items.map((c) => (
             <li key={c.id} className={cx("rounded-xl border bg-panel p-4", c.urgent ? "border-alert/50" : "border-line")}>
               <div className="flex items-start gap-3">

@@ -26,6 +26,8 @@ function Habits() {
   const router = useRouter();
   const [wishFor, setWishFor] = useState<string | null>(params.get("wish"));
   const [error, setError] = useState<string | null>(null);
+  // The habit ticked a moment ago: its check pops (not every done habit when the page loads).
+  const [justTicked, setJustTicked] = useState<string | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- opened from a birthday notification
@@ -33,6 +35,7 @@ function Habits() {
   }, [params]);
 
   async function tick(h: HabitView) {
+    setJustTicked(h.doneToday ? null : h.id);
     habits.setData((all) => (all ?? []).map((x) => (x.id === h.id ? { ...x, doneToday: !x.doneToday } : x)));
     await toggleHabit(h).catch((e) => setError(e instanceof Error ? e.message : String(e)));
     habits.reload();
@@ -85,15 +88,15 @@ function Habits() {
         ) : !today.length ? (
           <Empty>{habits.data.length ? "Nothing scheduled today. Rest day! 🌿" : "No habits yet. Add one below, or say “track exercise every day at 7 am”."}</Empty>
         ) : (
-          <ul className="space-y-2">
+          <ul className="list-in space-y-2">
             {today.map((h) => (
               <li key={h.id}>
                 <button
                   type="button"
                   onClick={() => tick(h)}
-                  className={cx("flex w-full items-center gap-3 rounded-xl border p-3.5 text-left transition-colors", h.doneToday ? "border-ok/40 bg-ok/10" : "border-line hover:border-core/60")}
+                  className={cx("press flex w-full items-center gap-3 rounded-xl border p-3.5 text-left transition-[transform,background-color,border-color]", h.doneToday ? "border-ok/40 bg-ok/10" : "border-line hover:border-core/60")}
                 >
-                  <span className={cx("flex size-7 shrink-0 items-center justify-center rounded-full border-2 transition-colors", h.doneToday ? "border-ok bg-ok text-black" : "border-line-strong")}>
+                  <span className={cx("flex size-7 shrink-0 items-center justify-center rounded-full border-2 transition-colors", h.doneToday ? "border-ok bg-ok text-black" : "border-line-strong", h.doneToday && justTicked === h.id && "tick-pop")}>
                     {h.doneToday && <Check size={16} strokeWidth={3} />}
                   </span>
                   <span className="text-xl">{h.emoji}</span>
@@ -113,7 +116,7 @@ function Habits() {
       {habits.data && habits.data.length > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.2em] text-data">Streaks · last 30 days</h2>
-          <ul className="space-y-3">
+          <ul className="list-in space-y-3">
             {habits.data.map((h) => (
               <li key={h.id} className="rounded-xl border border-line p-3.5">
                 <div className="flex items-center gap-2">

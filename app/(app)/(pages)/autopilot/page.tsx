@@ -181,7 +181,7 @@ export default function AutopilotPage() {
       ) : items.length === 0 ? (
         <Empty>{f?.items.length ? "All caught up. Nothing new needs you." : "Autopilot hasn't found anything yet. Tap Run now to see it work."}</Empty>
       ) : (
-        <ul className="space-y-3">
+        <ul className="list-in space-y-3">
           {items.map((i) => {
             const Icon = ICONS[i.kind] ?? Sparkles;
             const p = PRIORITY[i.priority];

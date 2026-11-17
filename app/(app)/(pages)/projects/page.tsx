@@ -192,7 +192,7 @@ export default function ProjectsPage() {
           )}
         </Empty>
       ) : (
-        <ul className="divide-y divide-line border-y border-line">
+        <ul className="list-in divide-y divide-line border-y border-line">
           {projects.map((p) => (
             <li key={p.id}>
               <Link href={`/projects/${p.id}`} className="group grid grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1 px-2 py-4 hover:bg-raised/50 sm:grid-cols-[auto_1fr_auto_auto]">

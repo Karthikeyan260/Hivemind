@@ -80,7 +80,7 @@ export default function KaraokePage() {
 
       {songs && !songs.length && !busy && <Empty>No Tamil songs found for that. Try a film or singer name.</Empty>}
       {songs && songs.length > 0 && (
-        <ul className="grid gap-2 sm:grid-cols-2">
+        <ul className="list-in grid gap-2 sm:grid-cols-2">
           {songs.map((s) => (
             <li key={s.id}>
               <button type="button" onClick={() => void sing(s)} className="group flex w-full items-center gap-3 border border-line bg-raised/40 p-2 text-left hover:border-core">

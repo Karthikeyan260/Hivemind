@@ -120,7 +120,7 @@ export default function DreamPage() {
             </div>
           </div>
           {d.dream.note && <p className="mb-2 text-sm text-soft">{d.dream.note}</p>}
-          <ul className="space-y-2">
+          <ul className="list-in space-y-2">
             {d.dream.changes.map((c, i) => {
               const Icon = ICON[c.kind];
               return (

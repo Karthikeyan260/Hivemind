@@ -59,7 +59,7 @@ export default function SearchPage() {
           ))}
         </div>
       )}
-      <ul className="space-y-2">
+      <ul className="list-in space-y-2">
         {results?.map((r) => (
           <li key={r.source_type + r.source_id}>
             <Link href={hrefFor(r)} className="block rounded-lg border border-line bg-panel p-4 hover:border-accent">

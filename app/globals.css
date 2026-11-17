@@ -1170,3 +1170,126 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
   color: transparent;
   filter: drop-shadow(0 0 16px rgb(var(--beat-rgb, 245 185 80) / 0.35));
 }
+
+/* ───── Motion for the inner pages ─────
+   Short (under 300 ms), transform and opacity only, ease-out so it answers at once. Things seen once per visit
+   (a page arriving, a list filling) get an entrance; things done all day (typing, the command palette) get none.
+   The global prefers-reduced-motion rule above switches all of it off. */
+
+/* A page arriving: a fade only (a transform here would re-anchor the fixed bars inside the page for a moment). */
+@keyframes page-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.page-fade {
+  animation: page-fade 220ms var(--ease-out) backwards;
+}
+
+/* A page's title block: eyebrow, title, subtitle, one after another. */
+@keyframes rise-sm {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.head-in > * {
+  animation: rise-sm 300ms var(--ease-out) backwards;
+}
+.head-in > *:nth-child(2) { animation-delay: 45ms; }
+.head-in > *:nth-child(3) { animation-delay: 90ms; }
+.head-in-actions {
+  animation: rise-sm 300ms var(--ease-out) 110ms backwards;
+}
+
+/* A list filling in: each row rises 35 ms after the one before (the first dozen; the rest arrive together,
+   so a long list never keeps you waiting). Rows already on screen never replay it. */
+.list-in > * {
+  animation: rise-sm 280ms var(--ease-out) backwards;
+}
+.list-in > *:nth-child(1) { animation-delay: 20ms; }
+.list-in > *:nth-child(2) { animation-delay: 55ms; }
+.list-in > *:nth-child(3) { animation-delay: 90ms; }
+.list-in > *:nth-child(4) { animation-delay: 125ms; }
+.list-in > *:nth-child(5) { animation-delay: 160ms; }
+.list-in > *:nth-child(6) { animation-delay: 195ms; }
+.list-in > *:nth-child(7) { animation-delay: 230ms; }
+.list-in > *:nth-child(8) { animation-delay: 265ms; }
+.list-in > *:nth-child(9) { animation-delay: 300ms; }
+.list-in > *:nth-child(10) { animation-delay: 335ms; }
+.list-in > *:nth-child(11) { animation-delay: 370ms; }
+.list-in > *:nth-child(n + 12) { animation-delay: 400ms; }
+
+/* Anything pressable answers the press. */
+.press {
+  transition: transform 140ms var(--ease-out);
+}
+.press:active {
+  transform: scale(0.97);
+}
+/* A card that lifts under the pointer (mouse only: on touch, hover sticks after a tap). */
+.lift {
+  transition: transform 180ms var(--ease-out), border-color 180ms ease, box-shadow 180ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px -14px rgb(0 0 0 / 0.7);
+  }
+}
+.lift:active {
+  transform: scale(0.985);
+}
+
+/* Loading placeholders: a band of light sweeping across (reads as "working", not "frozen"). */
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--bg-raised) 25%, color-mix(in oklab, var(--bg-raised) 82%, var(--fg) 18%) 50%, var(--bg-raised) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.15s linear infinite;
+}
+
+/* Ticking a habit: the check pops, and a ring of light leaves it. */
+@keyframes tick-pop {
+  0% { transform: scale(0.82); }
+  55% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+@keyframes tick-ring {
+  from { opacity: 0.55; transform: scale(0.9); }
+  to { opacity: 0; transform: scale(2.1); }
+}
+.tick-pop {
+  position: relative;
+  animation: tick-pop 320ms var(--ease-out) backwards;
+}
+.tick-pop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid var(--ok);
+  pointer-events: none;
+  animation: tick-ring 480ms var(--ease-out) backwards;
+}
+
+/* A panel or result appearing in place (a saved note's AI summary, a result card). */
+.pop-in {
+  animation: pop-in 220ms var(--ease-out) backwards;
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Rows of an animated list that are a button or a link answer the press too. */
+.list-in > li > button,
+.list-in > li > a {
+  transition-property: transform, background-color, border-color, color, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-out);
+}
+.list-in > li > button:active,
+.list-in > li > a:active {
+  transform: scale(0.985);
+}

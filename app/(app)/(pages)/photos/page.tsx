@@ -242,7 +242,7 @@ function Photos() {
       ) : !photos.length ? (
         <Empty>{q ? "Nothing matches. Try other words, a place or a month." : "No photos yet. Tap Add photos, or share photos from your gallery to HIVEMIND."}</Empty>
       ) : (
-        <ul className="grid grid-cols-3 gap-1 sm:grid-cols-4 lg:grid-cols-6">
+        <ul className="list-in grid grid-cols-3 gap-1 sm:grid-cols-4 lg:grid-cols-6">
           {photos.map((p, i) => (
             <li key={p.id}>
               <button type="button" onClick={() => setOpen(i)} className="group relative block aspect-square w-full overflow-hidden rounded-md bg-raised" title={p.title}>

@@ -236,7 +236,7 @@ function WebTasks() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-        <ul className="space-y-2">
+        <ul className="list-in space-y-2">
           {tasks.length === 0 && !list.loading && <Empty>No web tasks yet.</Empty>}
           {finishedCount > 0 && (
             <li className="flex justify-end">

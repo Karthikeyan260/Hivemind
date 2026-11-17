@@ -5,6 +5,7 @@ import { ExternalLink, Film, GitBranch, List } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { Holo } from "@/components/bridge/holo";
+import { CountUp } from "@/components/count-up";
 import {
   type Commit,
   GitGraph,
@@ -190,7 +191,7 @@ export default function JourneyPage() {
         </Empty>
       ) : (
         <>
-          <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="list-in mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {stats.map((s) => (
               <div
                 key={s.label}
@@ -200,7 +201,7 @@ export default function JourneyPage() {
                   className="font-mono text-2xl tabular-nums"
                   style={{ color: s.color }}
                 >
-                  {s.value}
+                  {typeof s.value === "number" ? <CountUp value={s.value} /> : s.value}
                 </div>
                 <div className="hud-label">{s.label}</div>
               </div>

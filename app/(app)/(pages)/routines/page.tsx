@@ -119,7 +119,7 @@ export default function RoutinesPage() {
       ) : !routines.length ? (
         <Empty>No routines yet. Make one, or say &quot;when I say gym mode, play workout songs and log my exercise&quot;.</Empty>
       ) : (
-        <ul className="space-y-3">
+        <ul className="list-in space-y-3">
           {routines.map((r) => (
             <li key={r.id} className="rounded-xl border border-line bg-panel p-4">
               {/* Name and actions on one row; the phrases wrap underneath, so every card lines up. */}

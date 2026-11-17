@@ -178,7 +178,7 @@ function Share() {
       <ErrorText error={error} />
 
       {results && (
-        <ul className="mb-6 space-y-2">
+        <ul className="list-in mb-6 space-y-2">
           {results.map((r, i) =>
             "error" in r ? (
               <li key={i} className="rounded-xl border border-alert/40 bg-panel p-3 text-sm text-alert">

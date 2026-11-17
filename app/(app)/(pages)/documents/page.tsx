@@ -86,7 +86,7 @@ function Documents() {
         {!docs.data?.length ? (
           <Empty>{docs.loading ? "Loading…" : "No documents yet."}</Empty>
         ) : (
-          <ul className="space-y-2">
+          <ul className="list-in space-y-2">
             {docs.data.map((d) => (
               <li key={d.id} className={`rounded-lg border bg-panel p-3 ${openId === d.id ? "border-accent" : "border-line"}`}>
                 <div className="flex items-start justify-between gap-2">

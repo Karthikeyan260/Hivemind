@@ -21,9 +21,9 @@ export default function GamesPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader eyebrow="Play" title="Games" subtitle="Quick games inside HIVEMIND, by tap or by voice." />
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="list-in grid gap-3 sm:grid-cols-2">
         {GAMES.map((g) => (
-          <Link key={g.href} href={g.href} className="group rounded-xl border border-line bg-panel p-5 hover:border-core/60">
+          <Link key={g.href} href={g.href} className="lift group rounded-xl border border-line bg-panel p-5 hover:border-core/60">
             <g.icon size={22} className="text-core" />
             <h2 className="mt-3 text-lg font-semibold group-hover:text-core">{g.title}</h2>
             <p className="font-mono text-[10.5px] uppercase tracking-wider text-faint">{g.who}</p>
