@@ -167,3 +167,11 @@ This closes the "no tests for `lib/session.ts` lockout and revocation, or the op
   secrets and empty files are skipped, parents restore before children, a failed batch exits with code 2, and bad input is refused. This closes the "no tests for the backup export and restore" gap (B11).
 - Found and fixed: the restore script crashed Node on Windows at exit (`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`, exit code 3221226505) even when the restore had succeeded;
   a wrong file name or a damaged backup now gives a clear message instead of a stack trace.
+
+## Added 2026-11-17: offline queue tests
+
+`tests/offline-queue.test.ts` (25 tests) runs `lib/offline.ts` against an imitation of the browser's IndexedDB (`fake-indexeddb`, a dev-only package):
+what may be cached or queued, writes made offline (temporary ids, shown at once, edits folded into an unsynced create, a delete cancelling it),
+syncing (order, `client_id` on creates, temporary to real id mapping, stopping on network errors, 401, 5xx and 429 without losing anything, dropping a write the
+server rejects, two flushes at once), cache refresh rules, reading while offline, and locking the device (waiting changes are sent first, then everything is wiped,
+even when the network never answers). No bug was found. This closes the "`lib/offline.ts` has no tests" gap in section F.
