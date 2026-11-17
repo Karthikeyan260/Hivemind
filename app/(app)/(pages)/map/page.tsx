@@ -270,7 +270,7 @@ function MapView() {
           )}
         </div>
 
-        <aside className="space-y-3">
+        <aside className="list-in space-y-3">
           {route && (
             <div className="rounded-xl border border-core/50 bg-panel p-3">
               <div className="mb-1 text-xs text-soft">Way to</div>

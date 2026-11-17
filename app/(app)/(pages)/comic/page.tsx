@@ -147,7 +147,7 @@ function ComicDay() {
           <h2 className="mb-2 text-center font-black uppercase tracking-wide text-black sm:text-lg" style={{ fontFamily: "'Comic Sans MS','Comic Neue',ui-rounded,system-ui,sans-serif" }}>
             {comic.title}
           </h2>
-          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+          <div className="list-in grid grid-cols-2 gap-2 sm:gap-3">
             {comic.panels.map((p, i) => (
               <ComicPanel key={i} p={p} n={i + 1} />
             ))}

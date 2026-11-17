@@ -172,7 +172,7 @@ export default function BriefPage() {
               {speaking ? <Square size={13} /> : <Volume2 size={13} />} {speaking ? "Stop" : "Listen"}
             </Button>
           </div>
-          <div className="space-y-4">
+          <div className="list-in space-y-4">
             {d.brief.items.map((i) => (
               <section key={i.topic}>
                 <h3 className="mb-1 font-mono text-[11px] uppercase tracking-wider text-core">{i.topic}</h3>

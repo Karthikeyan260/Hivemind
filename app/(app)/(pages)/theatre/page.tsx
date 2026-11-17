@@ -281,7 +281,7 @@ export default function TheatrePage() {
       {found ? (
         <section className="px-4 pt-4 pb-20 sm:px-8">
           <h2 className="mb-3 text-lg font-medium">{found.length ? `Results for “${query.trim()}”${found.length > 150 ? ` · first 150 of ${found.length}, type more to narrow` : ""}` : `Nothing matches “${query.trim()}”`}</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="list-in grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {found.slice(0, 150).map((m) => (
               <Card key={m.id} m={m} onOpen={setOpen} wide />
             ))}
