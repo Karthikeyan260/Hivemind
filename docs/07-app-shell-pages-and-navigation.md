@@ -260,6 +260,10 @@ Sending notifications is covered in `docs/05-daily-life-habits-reminders-career.
 update; reloads on failure). The setting itself is applied by the brain and voice code (`docs/02-brain-and-ai.md`,
 `docs/03-voice-and-wake-word.md`).
 
+### Motion
+
+Inner pages share one motion set at the end of `app/globals.css`. `app/(app)/(pages)/template.tsx` fades each page in (opacity only, 220 ms, so fixed bars are not re-anchored). Classes: `head-in` (page title blocks rise in piece by piece), `list-in` (children rise in about 35 ms apart), `press` and `lift` (press scale 0.97; lift only under a mouse), `tick-pop` (habit check), `shimmer` (loading bars), `pop-in`. `components/count-up.tsx` counts Journey stats up. Rules: transform and opacity only, under 300 ms, `backwards` fill so finished animations leave no stacking context, and the global `prefers-reduced-motion` rule turns it all off. Keyboard-driven UI (command palette) is not animated.
+
 ### Theming
 
 All colours are CSS variables on `:root` in `app/globals.css` (oklch): graphite background, amber `--core` (the AI, primary
