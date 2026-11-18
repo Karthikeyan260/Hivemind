@@ -40,7 +40,6 @@ export function buildStation(id: StationId, accent: THREE.Color | string, track:
     return m;
   };
   const oak = surface(mat("#9c7b56", 0.55), "oak", 1);
-  const laminate = mat("#d6d2ca", 0.7);
   const steel = mat("#3b3d42", 0.45, 0.8);
   const brushed = mat("#9a9da3", 0.35, 1);
   const plastic = mat("#18191c", 0.5, 0.1);
@@ -102,13 +101,10 @@ export function buildStation(id: StationId, accent: THREE.Color | string, track:
     add(parent, box(0.06, 0.02, 0.1), plastic, x + 0.32, 0.805, z);
   };
   /** A desk with an oak or laminate top, steel legs and a modesty panel, its back edge against z = 0 of `o`. */
-  const desk = (x: number, z: number, w: number, d: number, yaw = 0, top: THREE.Material = oak) => {
+  const desk = (x: number, z: number, w: number, d: number, yaw = 0) => {
     const o = holder(x, z, yaw);
-    add(o, box(w, 0.04, d), top, 0, 0.77, 0);
-    for (const sx of [-1, 1]) {
-      add(o, box(0.05, 0.75, d - 0.08), steel, sx * (w / 2 - 0.05), 0.375, 0);
-    }
-    add(o, box(w - 0.12, 0.35, 0.02), steel, 0, 0.5, -d / 2 + 0.05);
+    // a real office desk (Poly Haven, CC0), fitted to this length and depth, 77 cm tall
+    placeModel(o, "desk", { x: 0, z: 0, fit: { w, h: 0.77, d } });
     return o;
   };
   /** An office chair: five-star base, gas lift, seat and back. */
@@ -235,7 +231,7 @@ export function buildStation(id: StationId, accent: THREE.Color | string, track:
       const r1 = rack(-0.75, -1.85);
       const r2 = rack(0.0, -1.85);
       const leds = [...r1.leds, ...r2.leds];
-      const d = desk(1.35, -1.0, 1.3, 0.7, -0.55, laminate);
+      const d = desk(1.35, -1.0, 1.3, 0.7, -0.55);
       deskMonitor(d, "schedule", -0.25, -0.12, 0, 0.62, 0.36);
       deskMonitor(d, "terminal", 0.38, -0.08, -0.25, 0.48, 0.3);
       keyboard(d, -0.1, 0.12);

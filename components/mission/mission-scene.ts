@@ -7,7 +7,6 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 import { N8AOPass } from "n8ao";
 import { placeModel, surface } from "./assets";
-import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { buildRobot, RIG_HEIGHT, type Act, type Rig } from "./robot";
 import { buildStation, HOME, type Station, type Stop } from "./stations";
 import type { AgentState, CrewAgent, CrewId } from "@/lib/mission";
@@ -36,7 +35,7 @@ const PLACE: Record<string, { x: number; z: number; front?: boolean }> = {
 const PORTRAIT_SHRINK = 0.62; // tall, narrow screens: the same layout, closer together
 /** The way an area faces: front-row areas face the camera, the rest face the core. */
 const faceDir = (pos: THREE.Vector3, front: boolean) => (front ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(-pos.x, 0, -pos.z).normalize());
-const HOME_TARGET = new THREE.Vector3(0, 2.2, -1.2);
+const HOME_TARGET = new THREE.Vector3(0, 1.3, 0); // eye level, the middle of the floor
 // Why a robot leaves its area: who it goes to see and what it is doing there (shown on its label while it is out).
 const JOBS: Record<CrewId, Array<{ to: CrewId | "core"; text: string }>> = {
   scheduler: [{ to: "autopilot", text: "Winding up Scout's schedule" }, { to: "core", text: "Syncing the clocks with the core" }, { to: "apps", text: "Fetching gears from Maker" }],
@@ -420,8 +419,7 @@ export class MissionScene {
   private hit: THREE.Object3D[] = [];
   private disposables: Array<{ dispose(): void }> = [];
   private dead = false;
-  private model: GLTF | null = null;
-  private modelDone = false;
+  private modelDone = true; // classic built robots: no model to wait for
   private pending: CrewAgent[] | null = null;
   private coreGroup = new THREE.Group();
   private sweep = new THREE.Group();
@@ -448,6 +446,7 @@ export class MissionScene {
   /** Inside on the operations floor, or outside looking at the building from the approach. */
   private view: "inside" | "outside" = "inside";
   private roofGroup = new THREE.Group();
+  private officeMat: THREE.MeshBasicMaterial | null = null;
   /** Lit floor paths between two places while they really exchange work. */
   private links: Array<{ key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; until: number }> = [];
   private flowTex: THREE.CanvasTexture | null = null;
@@ -485,6 +484,9 @@ export class MissionScene {
   private level = 0;
   private since = performance.now();
   private idleSince = performance.now();
+  private swayAmt = 0;
+  private drift = new THREE.Vector3();
+  private look = new THREE.Vector3();
   private pointers = new Map<number, { x: number; y: number }>();
   private pinch = 0;
   private down: { x: number; y: number; t: number; moved: number } | null = null;
@@ -536,9 +538,6 @@ export class MissionScene {
       composer.addPass(new OutputPass());
       this.composer = composer;
     }
-
-    // The robots are built in code (rounded helmet, glass visor, glowing eyes), so there is no model file to wait for.
-    this.modelDone = true;
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(canvas);
@@ -626,6 +625,7 @@ export class MissionScene {
     this.key.color.set(dusk > 0.3 ? "#ffc58f" : day > 0.5 ? "#fff4e4" : "#ffd6a8");
     this.rim.intensity = 0.25 + 0.5 * day;
     this.renderer.toneMappingExposure = 0.92 + 0.18 * day;
+    this.officeMat?.color.setScalar(0.35 + (1 - day) * 0.65);
     this.loadHdri(day > 0.5 ? "day" : "night");
     const hour = Math.floor(h);
     if (hour !== this.skyHour) {
@@ -768,31 +768,32 @@ export class MissionScene {
   }
 
   /**
-   * The building from outside: the glass drum of the operations hall on a concrete base, a stone-faced entrance
-   * portal with a canopy, glass doors and, above it, the facade emblem (the K's second and only other place); a roof
-   * parapet with ventilation units and solar panels; and the site: lawns, a stone approach path with lamps and trees,
-   * an entrance gate with a barrier, and a small car park.
+   * The headquarters from outside. In front of the round operations hall stands a three-storey office wing: a glass
+   * curtain wall between aluminium fins and concrete floor slabs (offices lit inside after dark), a stone feature panel
+   * carrying the facade emblem (the K's only place outside), a cantilevered entrance canopy with glass doors and a
+   * name sign, and plant and solar panels on the roof. Around it: a paved plaza with shrub hedges, planters and
+   * benches, a stone approach path with street lamps, the road, a car park with covered cars, and a guard booth with
+   * a barrier. Real photo textures and real models throughout (Poly Haven, CC0).
    */
   private buildExterior() {
     const sc = this.scene;
     const RW = 31;
-    const glass = new THREE.MeshPhysicalMaterial({ color: "#9fb3c4", metalness: 0.1, roughness: 0.05, transparent: true, opacity: 0.16, envMapIntensity: 1.4, depthWrite: false });
-    const concreteMat = surface(new THREE.MeshStandardMaterial(), "concrete_wall", 6, "#cfcac2");
-    const stone = new THREE.MeshStandardMaterial({ color: "#6d6862", roughness: 0.8 });
+    const glass = new THREE.MeshPhysicalMaterial({ color: "#7d93a3", metalness: 0.1, roughness: 0.05, transparent: true, opacity: 0.16, envMapIntensity: 1.4, depthWrite: false });
+    const curtain = new THREE.MeshPhysicalMaterial({ color: "#5d7282", metalness: 0.35, roughness: 0.06, transparent: true, opacity: 0.55, envMapIntensity: 1.6, depthWrite: false });
+    const concreteMat = surface(new THREE.MeshStandardMaterial({ envMapIntensity: 0.6 }), "concrete_wall", 5, "#d8d3cb");
+    const slabMat = surface(new THREE.MeshStandardMaterial({ envMapIntensity: 0.6 }), "concrete_wall", 10, "#e4e0d8");
+    const granite = new THREE.MeshStandardMaterial({ color: "#3a3937", roughness: 0.35, metalness: 0.1, envMapIntensity: 1 });
+    const alu = new THREE.MeshStandardMaterial({ color: "#9aa0a6", metalness: 0.9, roughness: 0.35 });
     const steel = new THREE.MeshStandardMaterial({ color: "#3a3c40", metalness: 0.8, roughness: 0.4 });
-    const grass = new THREE.MeshStandardMaterial({ color: "#3e5a36", roughness: 0.95 });
-    const asphalt = new THREE.MeshStandardMaterial({ color: "#2c2d2f", roughness: 0.9 });
-    const paving = new THREE.MeshStandardMaterial({ color: "#a29b90", roughness: 0.85 });
-    const white = new THREE.MeshBasicMaterial({ color: "#d9d6cf" });
-    const bark = new THREE.MeshStandardMaterial({ color: "#4a3a2c", roughness: 0.9 });
-    const leaves = new THREE.MeshStandardMaterial({ color: "#3f6b3e", roughness: 0.85 });
+    const grass = surface(new THREE.MeshStandardMaterial(), "grass", 70, "#8fb07a");
+    const pavers = surface(new THREE.MeshStandardMaterial(), "pavers", 10, "#b9b9b6");
+    const pathMat = surface(new THREE.MeshStandardMaterial(), "pavers", 4, "#c4c3bf");
+    const asphalt = surface(new THREE.MeshStandardMaterial(), "asphalt", 12, "#ffffff");
+    const lotMat = surface(new THREE.MeshStandardMaterial(), "asphalt", 6, "#ffffff");
+    const white = new THREE.MeshBasicMaterial({ color: "#e8e6e0" });
     const lampLight = new THREE.MeshBasicMaterial({ color: "#ffe2b8" });
-    const solar = new THREE.MeshStandardMaterial({ color: "#1d2a3c", metalness: 0.6, roughness: 0.25 });
-    this.disposables.push(glass, concreteMat, stone, steel, grass, asphalt, paving, white, bark, leaves, lampLight, solar);
-    // the roof and what stands on it only show from outside: inside, the camera looks down through the open top
-    const roofGroup = this.roofGroup;
-    sc.add(roofGroup);
-    roofGroup.visible = this.view === "outside";
+    const solar = new THREE.MeshStandardMaterial({ color: "#1b2636", metalness: 0.6, roughness: 0.2 });
+    this.disposables.push(glass, curtain, concreteMat, slabMat, granite, alu, steel, grass, pavers, pathMat, asphalt, lotMat, white, lampLight, solar);
     let into: THREE.Object3D = sc;
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, ry = 0) => {
       const m = new THREE.Mesh(geo, mat);
@@ -802,72 +803,129 @@ export class MissionScene {
       this.disposables.push(geo);
       return m;
     };
-    // the glass drum above the base wall, its outer concrete base and the roof edge
+    const flat = (w: number, d: number, mat: THREE.Material, x: number, y: number, z: number) => {
+      const m = add(new THREE.PlaneGeometry(w, d), mat, x, y, z);
+      m.rotation.x = -Math.PI / 2;
+      m.receiveShadow = true;
+      return m;
+    };
+
+    // the operations hall: its glass drum above the concrete base (the roof only shows from outside)
     add(new THREE.CylinderGeometry(RW + 0.15, RW + 0.15, 14.8, 64, 1, true), glass, 0, 4.2 + 7.4, 0);
     add(new THREE.CylinderGeometry(RW + 0.3, RW + 0.3, 4.2, 64, 1, true), concreteMat, 0, 2.1, 0);
-    const parapet = add(new THREE.TorusGeometry(RW + 0.1, 0.45, 8, 96), concreteMat, 0, 19.2, 0);
-    parapet.rotation.x = Math.PI / 2;
+    const roofGroup = this.roofGroup;
+    sc.add(roofGroup);
+    roofGroup.visible = this.view === "outside";
     into = roofGroup;
-    const roof = add(new THREE.CircleGeometry(RW, 64), concreteMat, 0, 19.3, 0);
-    roof.rotation.x = -Math.PI / 2;
-    // rooftop: ventilation units and a field of solar panels
-    for (const [x, z] of [[-14, -8], [-10, 12], [12, -12], [16, 6]]) {
-      add(new THREE.BoxGeometry(3.2, 1.6, 2.2), steel, x, 20.1, z);
-      add(new THREE.CylinderGeometry(0.7, 0.7, 0.4, 16), steel, x, 21.1, z);
-    }
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < 6; c++) {
-        const p = add(new THREE.BoxGeometry(2.2, 0.08, 1.3), solar, -6.6 + c * 2.6, 19.9, -20 + r * 1.9);
-        p.rotation.x = -0.35;
-      }
-    }
+    add(new THREE.TorusGeometry(RW + 0.1, 0.45, 8, 96), concreteMat, 0, 19.2, 0).rotation.x = Math.PI / 2;
+    add(new THREE.CircleGeometry(RW, 64), concreteMat, 0, 19.3, 0).rotation.x = -Math.PI / 2;
     into = sc;
-    // the entrance portal: stone piers, a canopy, glass doors, and a stone panel carrying the emblem
-    const front = RW + 0.4;
-    add(new THREE.BoxGeometry(16, 10.5, 0.9), stone, 0, 12.6, front - 0.1);
-    add(new THREE.BoxGeometry(1.1, 7.4, 1.1), stone, -7, 3.7, front + 0.2);
-    add(new THREE.BoxGeometry(1.1, 7.4, 1.1), stone, 7, 3.7, front + 0.2);
-    add(new THREE.BoxGeometry(15, 0.45, 5.5), concreteMat, 0, 4.9, front + 2.4);
-    for (const x of [-5.5, 5.5]) add(new THREE.CylinderGeometry(0.16, 0.16, 4.7, 12), steel, x, 2.35, front + 4.7);
-    const doors = add(new THREE.PlaneGeometry(10, 4.4), glass, 0, 2.2, front + 0.45);
-    doors.renderOrder = 2;
-    for (const x of [-5, -2.5, 0, 2.5, 5]) add(new THREE.BoxGeometry(0.08, 4.4, 0.12), steel, x, 2.2, front + 0.46);
-    add(new THREE.BoxGeometry(10, 0.1, 0.14), steel, 0, 4.4, front + 0.46);
-    // canopy downlights
-    for (const x of [-4.5, -1.5, 1.5, 4.5]) add(new THREE.CircleGeometry(0.18, 16), lampLight, x, 4.66, front + 2.4).rotation.x = Math.PI / 2;
-    const steps = [0, 1, 2];
-    for (const i of steps) add(new THREE.BoxGeometry(12 - i * 0.6, 0.15, 1.2), paving, 0, 0.075 + i * 0.15, front + 5.2 - i * 0.6);
-    // the facade emblem: the same K as inside, larger, centred over the entrance
-    const emblem = buildEmblem(6, this.disposables);
-    emblem.position.set(0, 12.6, front + 0.45);
+
+    // ---- the office wing ----
+    const X0 = -18;
+    const X1 = 18;
+    const ZB = 27;
+    const ZF = 39;
+    const FL = 4; // storey height
+    const H = FL * 3;
+    const W = X1 - X0;
+    const cx = (X0 + X1) / 2;
+    const cz = (ZB + ZF) / 2;
+    for (let fl = 0; fl <= 3; fl++) add(new THREE.BoxGeometry(W + 0.6, 0.38, ZF - ZB + 0.6), slabMat, cx, fl * FL + 0.19, cz);
+    for (const x of [X0, X1]) add(new THREE.BoxGeometry(0.6, H, ZF - ZB), concreteMat, x, H / 2, cz);
+    add(new THREE.BoxGeometry(W + 0.6, 1.0, 0.5), concreteMat, cx, H + 0.6, ZF + 0.05); // parapet
+    // offices seen through the glass: ceiling light rows and desks, lit after dark
+    const oc = document.createElement("canvas");
+    oc.width = 1024;
+    oc.height = 384;
+    const og = oc.getContext("2d")!;
+    for (let fl = 0; fl < 3; fl++) {
+      const y0 = oc.height - (fl + 1) * 128;
+      const gr = og.createLinearGradient(0, y0, 0, y0 + 128);
+      gr.addColorStop(0, "#2b2a28");
+      gr.addColorStop(1, "#14130f");
+      og.fillStyle = gr;
+      og.fillRect(0, y0, 1024, 128);
+      og.fillStyle = "#fff2d6";
+      for (let x = 20; x < 1024; x += 64) og.fillRect(x, y0 + 10, 40, 4);
+      og.fillStyle = "#3d3a35";
+      for (let x = 30; x < 1024; x += 90) og.fillRect(x, y0 + 84, 56, 8);
+      og.fillStyle = "#8fb3c9";
+      for (let x = 46; x < 1024; x += 90) if ((x * 7) % 3) og.fillRect(x, y0 + 66, 20, 14);
+    }
+    const ot = new THREE.CanvasTexture(oc);
+    ot.colorSpace = THREE.SRGBColorSpace;
+    const officeMat = new THREE.MeshBasicMaterial({ map: ot, toneMapped: false });
+    this.officeMat = officeMat;
+    this.disposables.push(ot, officeMat);
+    add(new THREE.PlaneGeometry(W - 0.6, H - 0.4), officeMat, cx, H / 2, ZF - 1.4);
+    // the curtain wall and its aluminium fins
+    add(new THREE.PlaneGeometry(W - 0.6, H - 0.4), curtain, cx, H / 2, ZF - 0.05).renderOrder = 2;
+    for (let x = X0 + 1.8; x < X1; x += 1.8) {
+      if (Math.abs(x) < 4.6) continue; // the stone feature panel sits here
+      add(new THREE.BoxGeometry(0.1, H, 0.45), alu, x, H / 2, ZF + 0.2);
+    }
+    // the stone feature panel with the facade emblem, on the upper two floors above the entrance
+    add(new THREE.BoxGeometry(9, 8.2, 0.6), granite, 0, FL + 4.1 + 0.2, ZF + 0.25);
+    const emblem = buildEmblem(5.4, this.disposables);
+    emblem.position.set(0, FL + 4.3, ZF + 0.62);
     sc.add(emblem);
-    // the site: lawns all round, the approach path, lamps and trees along it
-    const lawn = add(new THREE.RingGeometry(RW + 0.4, 110, 96), grass, 0, 0.012, 0);
+    // the entrance: a cantilevered canopy, glass doors, steps, and the name on the canopy edge
+    add(new THREE.BoxGeometry(14, 0.4, 6), concreteMat, 0, 4.3, ZF + 3);
+    for (const x of [-6.2, 6.2]) add(new THREE.CylinderGeometry(0.14, 0.14, 4.1, 12), steel, x, 2.05, ZF + 5.6);
+    for (const x of [-4.5, -1.5, 1.5, 4.5]) add(new THREE.CircleGeometry(0.2, 16), lampLight, x, 4.09, ZF + 3).rotation.x = Math.PI / 2;
+    const doors = add(new THREE.PlaneGeometry(8, 3.4), glass, 0, 1.9, ZF + 0.3);
+    doors.renderOrder = 2;
+    for (const x of [-4, -2, 0, 2, 4]) add(new THREE.BoxGeometry(0.07, 3.4, 0.1), steel, x, 1.9, ZF + 0.32);
+    for (let st = 0; st < 3; st++) add(new THREE.BoxGeometry(12 - st * 0.8, 0.14, 1.0), pathMat, 0, 0.07 + st * 0.14, ZF + 6.2 - st * 0.7);
+    const nc = document.createElement("canvas");
+    nc.width = 1024;
+    nc.height = 96;
+    const ng = nc.getContext("2d")!;
+    ng.fillStyle = "#d6d8db";
+    ng.font = "600 60px ui-monospace, Consolas, monospace";
+    ng.textAlign = "center";
+    ng.textBaseline = "middle";
+    ng.fillText("H I V E M I N D", 512, 50);
+    const nt = new THREE.CanvasTexture(nc);
+    nt.colorSpace = THREE.SRGBColorSpace;
+    const nameMat = new THREE.MeshBasicMaterial({ map: nt, transparent: true, toneMapped: false });
+    this.disposables.push(nt, nameMat);
+    add(new THREE.PlaneGeometry(6.5, 0.6), nameMat, 0, 4.3, ZF + 6.02);
+    // the roof of the wing: plant and solar panels
+    for (const [x, z] of [[-12, 30], [-6, 34], [12, 31]]) add(new THREE.BoxGeometry(3.2, 1.6, 2.4), steel, x, H + 1.0, z);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 7; c++) add(new THREE.BoxGeometry(2.0, 0.08, 1.2), solar, 1 + c * 2.2, H + 0.7, 29 + r * 1.7).rotation.x = -0.35;
+
+    // ---- the site ----
+    // lawn all round the buildings (a ring, so it stops at the hall wall)
+    const lawn = add(new THREE.RingGeometry(RW + 0.35, 130, 96), grass, 0, 0.006, 0);
     lawn.rotation.x = -Math.PI / 2;
-    const path = add(new THREE.PlaneGeometry(8, 40), paving, 0, 0.03, front + 25);
-    path.rotation.x = -Math.PI / 2;
-    for (let i = 0; i < 5; i++) {
-      const z = front + 10 + i * 7;
-      for (const x of [-6, 6]) {
-        add(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 8), steel, x, 1.8, z);
-        add(new THREE.BoxGeometry(0.5, 0.12, 0.25), lampLight, x, 3.6, z);
-        add(new THREE.CylinderGeometry(0.18, 0.25, 2.4, 8), bark, x * 1.9, 1.2, z + 3.5);
-        add(new THREE.IcosahedronGeometry(1.6, 1), leaves, x * 1.9, 3.6, z + 3.5);
-      }
+    lawn.receiveShadow = true;
+    flat(46, 18, pavers, 0, 0.02, ZF + 9); // plaza
+    flat(8, 34, pathMat, 0, 0.022, ZF + 35); // approach path
+    flat(240, 9, asphalt, 0, 0.018, ZF + 56); // road
+    for (let x = -110; x < 110; x += 6) flat(3, 0.18, white, x, 0.03, ZF + 56);
+    flat(28, 18, lotMat, 34, 0.02, ZF + 22); // car park
+    for (let k = 0; k <= 9; k++) flat(0.14, 5.4, white, 21.5 + k * 2.75, 0.03, ZF + 16.5);
+    for (let k = 0; k <= 9; k++) flat(0.14, 5.4, white, 21.5 + k * 2.75, 0.03, ZF + 27.5);
+    for (const [x, z, r] of [[24.2, ZF + 16.5, Math.PI], [29.7, ZF + 16.5, Math.PI], [40.7, ZF + 16.5, Math.PI], [27, ZF + 27.5, 0], [38, ZF + 27.5, 0]]) placeModel(sc, "car", { x, z, yaw: r, width: 4.4 });
+    // street lamps along the path and round the plaza
+    for (let k = 0; k < 5; k++) for (const x of [-5.5, 5.5]) placeModel(sc, "streetLamp", { x, z: ZF + 22 + k * 7, yaw: x > 0 ? -Math.PI / 2 : Math.PI / 2, height: 4.2 });
+    for (const x of [-21, 21]) placeModel(sc, "streetLamp", { x, z: ZF + 4, height: 4.2 });
+    // shrub hedges along the front of the building, planters and benches on the plaza
+    for (let x = X0 + 1; x < X1; x += 1.6) if (Math.abs(x) > 7.5) placeModel(sc, "shrub", { x, z: ZF + 1.4, yaw: x * 1.7, height: 1.1 });
+    for (const x of [-15, -9, 9, 15]) {
+      placeModel(sc, "planter", { x, z: ZF + 11, yaw: 0, width: 2.4 });
+      add(new THREE.BoxGeometry(2.4, 0.45, 0.6), granite, x, 0.23, ZF + 13);
     }
-    // entrance gate: a guard post and a barrier arm across the path
-    add(new THREE.BoxGeometry(2.4, 2.8, 2.4), concreteMat, 6.2, 1.4, front + 46);
-    add(new THREE.BoxGeometry(0.4, 1.1, 0.4), steel, -4.4, 0.55, front + 45);
-    add(new THREE.BoxGeometry(8.6, 0.14, 0.14), white, -0.1, 1.05, front + 45);
-    // a small car park to the right of the approach, with bay lines
-    const lot = add(new THREE.PlaneGeometry(22, 14), asphalt, 22, 0.025, front + 22);
-    lot.rotation.x = -Math.PI / 2;
-    for (let i = 0; i <= 8; i++) {
-      const line = add(new THREE.PlaneGeometry(0.12, 5), white, 12.2 + i * 2.45, 0.035, front + 18);
-      line.rotation.x = -Math.PI / 2;
-    }
-    // outdoor benches by the path
-    for (const z of [front + 14, front + 28]) add(new THREE.BoxGeometry(2.2, 0.45, 0.6), stone, -9, 0.23, z);
+    for (let x = -21; x <= 21; x += 3) if (Math.abs(x) > 4.5) add(new THREE.CylinderGeometry(0.12, 0.12, 0.9, 12), steel, x, 0.45, ZF + 18);
+    // the gate: a guard booth and a barrier across the path
+    add(new THREE.BoxGeometry(2.6, 0.3, 2.6), concreteMat, 7.2, 2.75, ZF + 50);
+    add(new THREE.BoxGeometry(2.4, 2.6, 2.4), glass, 7.2, 1.3, ZF + 50).renderOrder = 2;
+    add(new THREE.BoxGeometry(2.6, 0.2, 2.6), concreteMat, 7.2, 0.1, ZF + 50);
+    add(new THREE.BoxGeometry(0.4, 1.1, 0.4), steel, -4.6, 0.55, ZF + 50);
+    add(new THREE.BoxGeometry(9, 0.12, 0.12), white, -0.1, 1.05, ZF + 50);
+    for (const x of [-3, 0, 3]) add(new THREE.BoxGeometry(0.6, 0.13, 0.14), new THREE.MeshBasicMaterial({ color: "#c0392b" }), x, 1.05, ZF + 50);
   }
 
   /** The live operations summary (a canvas shared by the wall board and the coordination desk screens). */
@@ -1746,8 +1804,8 @@ export class MissionScene {
     // view the pod from the side it faces, a little off to one side, so screens face us and the core stays out of shot
     const f = faceDir(p.pos, !!PLACE[id]?.front);
     this.tTarget.set(p.pos.x + f.x * 0.7, 1.4, p.pos.z + f.z * 0.7);
-    this.tDist = this.portrait ? 9 : 6.2;
-    this.tPhi = 1.38;
+    this.tDist = this.portrait ? 10 : 7.5;
+    this.tPhi = 1.08; // high enough to look over the room walls at the robot and its desk
     const want = Math.atan2(f.x, f.z) + (p.pos.x >= 0 ? -0.6 : 0.6);
     const d = ((want - this.theta + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     this.tTheta = this.theta + d;
@@ -1878,11 +1936,11 @@ export class MissionScene {
 
   /** Where the camera looks when nothing is picked: the middle of the deck. */
   private homeTarget() {
-    return this.view === "outside" ? new THREE.Vector3(0, 7.5, 31) : HOME_TARGET.clone();
+    return this.view === "outside" ? new THREE.Vector3(0, 5.5, 42) : HOME_TARGET.clone();
   }
 
   private homePhi() {
-    return this.view === "outside" ? 1.3 : this.portrait ? 0.92 : 1.12;
+    return this.view === "outside" ? 1.3 : this.portrait ? 1.05 : 1.27; // low, like standing in the hall
   }
 
   /** Switches between the operations floor and the view of the building from outside. */
@@ -1898,8 +1956,8 @@ export class MissionScene {
   }
 
   private homeDist() {
-    if (this.view === "outside") return this.portrait ? 46 : 44;
-    return this.portrait ? 38 : 32;
+    if (this.view === "outside") return this.portrait ? 46 : 40;
+    return this.portrait ? 30 : 21;
   }
 
   // ---------- input ----------
@@ -2010,7 +2068,11 @@ export class MissionScene {
 
     // camera: glide to the target view, with a slow sway when left alone
     const idle = !this.selected && !this.pointers.size && now - this.idleSince > 3500;
-    const sway = idle ? Math.sin(t * 0.14) * 0.22 : 0;
+    // left alone inside, it drifts like a film camera: a slow pan and a glide across the floor between departments
+    const cine = idle && this.view === "inside";
+    this.swayAmt += ((cine ? 1 : idle ? 0.25 : 0) - this.swayAmt) * (1 - Math.pow(0.4, dt));
+    const sway = Math.sin(t * 0.045) * 0.9 * this.swayAmt;
+    this.drift.lerp(this.tmp.set(cine ? Math.sin(t * 0.031) * 5 : 0, 0, cine ? Math.cos(t * 0.023) * 3.5 : 0), 1 - Math.pow(0.5, dt));
     this.theta += (this.tTheta - this.theta) * ease;
     this.phi += (this.tPhi - this.phi) * ease;
     this.dist += (this.tDist - this.dist) * ease;
@@ -2025,8 +2087,9 @@ export class MissionScene {
     this.target.lerp(this.tTarget, ease);
     const th = this.theta + sway;
     const sp = Math.sin(this.phi);
-    this.camera.position.set(this.target.x + this.dist * sp * Math.sin(th), this.target.y + this.dist * Math.cos(this.phi), this.target.z + this.dist * sp * Math.cos(th));
-    this.camera.lookAt(this.target);
+    const look = this.look.copy(this.target).add(this.drift);
+    this.camera.position.set(look.x + this.dist * sp * Math.sin(th), look.y + this.dist * Math.cos(this.phi), look.z + this.dist * sp * Math.cos(th));
+    this.camera.lookAt(look);
 
 
     // the operations table's edge light: brighter (and breathing) while a command you gave is running

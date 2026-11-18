@@ -44,3 +44,6 @@ All from Poly Haven (https://polyhaven.com), licensed CC0 (public domain).
     }
   ]
 }
+
+Added for the exterior: textures square_concrete_pavers, asphalt_02, leafy_grass; models shrub_03, street_lamp_02, planter_box_01, covered_car (all CC0, Poly Haven).
+Textures hangar_concrete_floor and concrete_wall_008 replaced smooth_concrete_floor and precast_concrete_wall.
