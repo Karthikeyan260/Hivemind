@@ -5,7 +5,7 @@ import { listApps } from "@/lib/apps";
 import { getFeed } from "@/lib/autopilot";
 import { getBriefSettings, listBriefDates } from "@/lib/brief";
 import { getDream, getDreamSettings, listDreamDates } from "@/lib/dream";
-import { type CrewAgent, buildCrew, type MissionFacts, summary } from "@/lib/mission";
+import { type CrewAgent, buildCrew, type MissionFacts, summary, type SystemStats, systemStats } from "@/lib/mission";
 import { readJSON } from "@/lib/private-store";
 import { agenda, HOME_TZ } from "@/lib/reminders";
 import { steelConfigured } from "@/lib/web-agent/steel";
@@ -14,7 +14,7 @@ import { listTasks } from "@/lib/web-agent/store";
 const BRIEF_HOUR = Number(process.env.BRIEF_HOUR ?? 8);
 
 /** Gathers what each background job has been doing. A job whose data can't be read shows as quiet, never breaks the page. */
-export async function loadMission(supabase: SupabaseClient): Promise<{ crew: CrewAgent[]; summary: string; at: string }> {
+export async function loadMission(supabase: SupabaseClient): Promise<{ crew: CrewAgent[]; summary: string; at: string; stats: SystemStats; activity: Array<{ message: string; at: string }> }> {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: HOME_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(now);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
@@ -22,7 +22,7 @@ export async function loadMission(supabase: SupabaseClient): Promise<{ crew: Cre
   const hour = Number(get("hour")) % 24;
   const safe = <T,>(p: Promise<T>, fallback: T) => p.catch(() => fallback);
 
-  const [state, feed, tasks, dreamSet, dreamDates, briefSet, briefDates, cal, apps] = await Promise.all([
+  const [state, feed, tasks, dreamSet, dreamDates, briefSet, briefDates, cal, apps, recent] = await Promise.all([
     safe(readJSON<{ lastRun?: string }>(supabase, "notify-state", {}), {} as { lastRun?: string }),
     safe(getFeed(supabase), null),
     safe(listTasks(supabase), []),
@@ -32,6 +32,11 @@ export async function loadMission(supabase: SupabaseClient): Promise<{ crew: Cre
     safe(listBriefDates(supabase), [] as string[]),
     safe(agenda(supabase, 1), null),
     safe(listApps(supabase), []),
+    // the latest things HIVEMIND did (the same log the home dashboard shows), for the operations board
+    safe(
+      Promise.resolve(supabase.from("activity").select("message, created_at").order("created_at", { ascending: false }).limit(8)).then((r) => (r.data ?? []) as Array<{ message: string; created_at: string }>),
+      [] as Array<{ message: string; created_at: string }>,
+    ),
   ]);
   const lastDreamDate = [...dreamDates].sort().pop();
   const lastDream = lastDreamDate ? await safe(getDream(supabase, lastDreamDate), null) : null;
@@ -64,5 +69,6 @@ export async function loadMission(supabase: SupabaseClient): Promise<{ crew: Cre
     apps: apps.map((a) => ({ name: a.name, status: a.status, updated_at: a.updated_at })),
   };
   const crew = buildCrew(facts);
-  return { crew, summary: summary(crew), at: now.toISOString() };
+  const activity = recent.map((r) => ({ message: String(r.message ?? "").slice(0, 140), at: r.created_at }));
+  return { crew, summary: summary(crew), at: now.toISOString(), stats: systemStats(facts, crew), activity };
 }

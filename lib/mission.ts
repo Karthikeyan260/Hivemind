@@ -180,3 +180,30 @@ export function summary(crew: CrewAgent[]): string {
   if (working) parts.push(`${working} working`);
   return parts.length ? parts.join(", ") : "All quiet. Everyone is where they should be";
 }
+
+/** The top bar of Mission Control: real counts only (what the background jobs report), nothing estimated. */
+export type SystemStats = {
+  /** "ok" while the outside timer is ticking and nothing needs you; "attention" otherwise. */
+  health: "ok" | "attention";
+  working: number;
+  agents: number;
+  webRunning: number;
+  approvals: number;
+  remindersDue: number;
+  overdue: number;
+  appsBuilding: number;
+};
+
+export function systemStats(f: MissionFacts, crew: CrewAgent[]): SystemStats {
+  const clock = crew.find((c) => c.id === "scheduler");
+  return {
+    health: clock?.state === "alert" || crew.some((c) => c.state === "alert") ? "attention" : "ok",
+    working: crew.filter((c) => c.state === "working").length,
+    agents: crew.length,
+    webRunning: f.web.tasks.filter((t) => t.status === "running" || t.status === "queued").length,
+    approvals: f.web.tasks.filter((t) => t.status === "needs_approval" || t.status === "needs_you").length,
+    remindersDue: f.reminders.today,
+    overdue: f.reminders.overdue,
+    appsBuilding: f.apps.filter((a) => a.status === "building").length,
+  };
+}

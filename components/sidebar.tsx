@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Blocks, MicVocal, Clapperboard, ChefHat, Images, PartyPopper, CalendarRange, Sprout, Gamepad2, Laugh, Moon, Newspaper, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Radar, Search, Settings, Sparkles, StickyNote } from "lucide-react";
+import { Lock, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cx } from "@/components/ui";
@@ -8,38 +8,9 @@ import { PALETTE_EVENT } from "@/lib/client-api";
 import { clearOfflineCache } from "@/lib/offline";
 import { useMyApps } from "@/components/apps/nav-apps";
 
-export const NAV = [
-  { label: "HIVEMIND", href: "/", icon: Sparkles },
-  { label: "Autopilot", href: "/autopilot", icon: Compass },
-  { label: "Web tasks", href: "/web", icon: Globe },
-  { label: "Mission control", href: "/mission", icon: Activity },
-  { label: "Friends theatre", href: "/theatre", icon: Clapperboard },
-  { label: "Map", href: "/map", icon: MapIcon },
-  { label: "Apps", href: "/apps", icon: Blocks },
-  { label: "Routines", href: "/routines", icon: Zap },
-  { label: "Morning brief", href: "/brief", icon: Newspaper },
-  { label: "Dream mode", href: "/dream", icon: Moon },
-  { label: "Calls", href: "/calls", icon: PhoneIncoming },
-  { label: "Share", href: "/share", icon: Share2 },
-  { label: "Kitchen mode", href: "/focus", icon: ChefHat },
-  { label: "Day comic", href: "/comic", icon: Laugh },
-  { label: "Games", href: "/games", icon: Gamepad2 },
-  { label: "Karaoke", href: "/karaoke", icon: MicVocal },
-  { label: "Projects", href: "/projects", icon: FolderKanban },
-  { label: "Memories", href: "/memories", icon: Brain },
-  { label: "Photos", href: "/photos", icon: Images },
-  { label: "This week", href: "/weekly", icon: CalendarRange },
-  { label: "My Wrapped", href: "/wrapped", icon: PartyPopper },
-  { label: "Nova's garden", href: "/garden", icon: Sprout },
-  { label: "Career", href: "/career", icon: Briefcase },
-  { label: "Journey", href: "/journey", icon: GitBranch },
-  { label: "Habits", href: "/habits", icon: CalendarHeart },
-  { label: "Notes", href: "/notes", icon: StickyNote },
-  { label: "Documents", href: "/documents", icon: FileText },
-  { label: "Sources", href: "/sources", icon: Radar },
-  { label: "Search", href: "/search", icon: Search },
-  { label: "Settings", href: "/settings", icon: Settings },
-] as const;
+import { HOME, NAV, NAV_GROUPS } from "@/components/nav-config";
+
+export { NAV };
 
 export function Sidebar({ canLock }: { canLock: boolean }) {
   const path = usePathname();
@@ -74,19 +45,24 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
           <kbd className="font-mono text-[10px]">Ctrl K</kbd>
         </button>
         <nav className="no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]" aria-label="Main">
-          {NAV.map(({ label, href, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active(href) ? "page" : undefined}
-              className={cx(
-                "group flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150",
-                active(href) ? "bg-raised text-fg" : "text-soft hover:bg-raised/60 hover:text-fg",
-              )}
-            >
-              <Icon size={16} strokeWidth={1.75} className={active(href) ? "text-core" : "text-faint group-hover:text-soft"} />
-              {label}
-            </Link>
+          {[{ title: "", items: [HOME] }, ...NAV_GROUPS].map((g) => (
+            <div key={g.title || "home"} className={g.title ? "mt-3" : ""}>
+              {g.title && <div className="hud-label mb-1 px-3 text-[9.5px] tracking-[0.2em]">{g.title.toUpperCase()}</div>}
+              {g.items.map(({ label, href, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={active(href) ? "page" : undefined}
+                  className={cx(
+                    "group flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors duration-150",
+                    active(href) ? "bg-raised text-fg" : "text-soft hover:bg-raised/60 hover:text-fg",
+                  )}
+                >
+                  <Icon size={16} strokeWidth={1.75} className={active(href) ? "text-core" : "text-faint group-hover:text-soft"} />
+                  {label}
+                </Link>
+              ))}
+            </div>
           ))}
           {/* Apps HIVEMIND built: each one gets its own menu entry. */}
           {myApps.length > 0 && (

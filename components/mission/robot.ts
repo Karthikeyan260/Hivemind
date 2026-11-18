@@ -30,7 +30,7 @@ type Disposable = { dispose(): void };
 
 export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, label = ""): Rig {
   const track: Disposable[] = [];
-  const armor = new THREE.MeshPhysicalMaterial({ color: "#e9edf4", metalness: 0.18, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.3 });
+  const armor = new THREE.MeshPhysicalMaterial({ color: "#d8d5ce", metalness: 0.12, roughness: 0.55, clearcoat: 0.25, clearcoatRoughness: 0.35, envMapIntensity: 0.9 });
   const graphite = new THREE.MeshStandardMaterial({ color: "#1b1f2a", metalness: 0.85, roughness: 0.4, envMapIntensity: 1.2 });
   const steel = new THREE.MeshStandardMaterial({ color: "#a3acbe", metalness: 1, roughness: 0.27, envMapIntensity: 1.3 });
   const glass = new THREE.MeshPhysicalMaterial({ color: "#03050b", metalness: 0.3, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 2.2 });
@@ -165,11 +165,11 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
     rib.rotation.x = Math.PI / 2;
   }
   const chest = pivot(spine, 0, 0.2, 0);
-  part(new RoundedBoxGeometry(0.8, 0.58, 0.48, 5, 0.14), armor, chest, 0, 0.3, 0);
+  part(new RoundedBoxGeometry(0.78, 0.56, 0.46, 4, 0.06), armor, chest, 0, 0.3, 0);
   part(box(0.5, 0.3, 0.05, 0.02), graphite, chest, 0, 0.3, 0.245);
-  const reactor = part(new THREE.TorusGeometry(0.095, 0.016, 10, 40), steel, chest, 0, 0.3, 0.275);
-  reactor.rotation.x = 0;
-  const core = part(new THREE.CircleGeometry(0.075, 28), glow, chest, 0, 0.3, 0.272);
+  // a small status light on the chest plate (no glowing reactor)
+  part(box(0.14, 0.035, 0.02, 0.006), steel, chest, 0, 0.36, 0.272);
+  const core = part(box(0.11, 0.018, 0.012, 0.004), glow, chest, 0, 0.36, 0.283);
   core.castShadow = false;
   for (const s of [-1, 1]) {
     part(box(0.07, 0.48, 0.02, 0.008), trim, chest, s * 0.3, 0.3, 0.245);
@@ -205,7 +205,7 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
   // a ring of tick marks that turns around the reactor
   const spinRing = pivot(chest, 0, 0.3, 0.28);
   const ticks = part(new THREE.TorusGeometry(0.125, 0.007, 6, 32, Math.PI * 1.5), glow, spinRing);
-  ticks.castShadow = false;
+  ticks.visible = false;
   part(box(0.52, 0.44, 0.22, 0.05), graphite, chest, 0, 0.34, -0.34); // back pack
   for (let i = 0; i < 4; i++) part(box(0.36, 0.022, 0.012, 0.005), glow, chest, 0, 0.5 - i * 0.09, -0.455);
   for (const s of [-1, 1]) part(new THREE.CylinderGeometry(0.045, 0.06, 0.2, 14), steel, chest, s * 0.17, 0.62, -0.34); // exhausts
@@ -217,26 +217,19 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
 
   // ----- head
   const head = pivot(chest, 0, 0.68, 0);
-  part(new RoundedBoxGeometry(0.5, 0.4, 0.46, 5, 0.15), armor, head, 0, 0.2, 0);
-  part(box(0.41, 0.2, 0.1, 0.06), glass, head, 0, 0.22, 0.21);
-  for (const s of [-1, 1]) {
-    part(box(0.1, 0.034, 0.02, 0.012), glow, head, s * 0.09, 0.235, 0.255);
-    const ear = part(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 28), graphite, head, s * 0.27, 0.2, 0);
-    ear.rotation.z = Math.PI / 2;
-    const ring = part(new THREE.TorusGeometry(0.068, 0.012, 8, 28), glow, head, s * 0.312, 0.2, 0);
-    ring.rotation.y = Math.PI / 2;
-  }
-  part(box(0.06, 0.025, 0.3, 0.01), trim, head, 0, 0.405, 0); // crest
-  part(box(0.45, 0.25, 0.07, 0.03), steel, head, 0, 0.22, 0.185); // visor frame
-  part(box(0.44, 0.03, 0.13, 0.012), armor, head, 0, 0.35, 0.19).rotation.x = -0.18; // brow
+  // a proportioned head with tight edges, a dark faceplate and one slim sensor strip (no cartoon eyes)
+  part(new RoundedBoxGeometry(0.42, 0.36, 0.42, 4, 0.06), armor, head, 0, 0.2, 0);
+  part(box(0.38, 0.17, 0.08, 0.03), glass, head, 0, 0.22, 0.19);
+  part(box(0.24, 0.016, 0.02, 0.006), glow, head, 0, 0.235, 0.235);
+
+  part(box(0.05, 0.02, 0.26, 0.008), trim, head, 0, 0.385, 0); // crest
+  part(box(0.4, 0.22, 0.06, 0.02), steel, head, 0, 0.22, 0.17); // visor frame
+  part(box(0.4, 0.025, 0.1, 0.01), armor, head, 0, 0.34, 0.18).rotation.x = -0.15; // brow
   part(box(0.28, 0.07, 0.2, 0.03), graphite, head, 0, 0.03, 0.12); // chin
   for (const sd of [-1, 1]) {
-    part(box(0.05, 0.14, 0.22, 0.02), armor, head, sd * 0.235, 0.14, 0.1);
-    part(box(0.01, 0.08, 0.14, 0.004), glow, head, sd * 0.262, 0.14, 0.1);
+    part(box(0.04, 0.12, 0.2, 0.015), armor, head, sd * 0.215, 0.14, 0.08);
+    part(box(0.008, 0.05, 0.1, 0.003), glow, head, sd * 0.237, 0.14, 0.08);
   }
-  part(new THREE.CylinderGeometry(0.011, 0.011, 0.22, 8), steel, head, 0.13, 0.5, -0.05);
-  const bulb = part(new THREE.SphereGeometry(0.03, 12, 8), glow, head, 0.13, 0.62, -0.05);
-  bulb.castShadow = false;
 
   // ----- arms
   const arms = [-1, 1].map((s) => {
@@ -313,12 +306,14 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
     const m = new THREE.SpriteMaterial({ map: zTex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
     track.push(m);
     const sp = new THREE.Sprite(m);
+    sp.visible = false; // no floating "z z z": asleep shows as the robot resting on its charging dock
     root.add(sp);
     return sp;
   });
   const bangMat = new THREE.SpriteMaterial({ map: bangTex, color: "#ff4d6d", transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
   track.push(bangMat);
   const bang = new THREE.Sprite(bangMat);
+  bang.visible = false; // no floating "!": "needs you" shows on the screens, the board and the system bar
   root.add(bang);
 
   // ----- posing: each joint eases toward a target that depends on the mood
@@ -598,7 +593,7 @@ export function buildRobot(trimColour: THREE.Color | string, tone: THREE.Color, 
     // the console grows in front of it while it works; the bars flicker like code
     consoleOn += ((state === "working" ? 1 : 0) - consoleOn) * k;
     consoleG.scale.setScalar(Math.max(0.001, consoleOn));
-    consoleG.visible = consoleOn > 0.02;
+    consoleG.visible = false; // it works at the real monitors on its desk, not a floating hologram
     holo.opacity = 0.55 * consoleOn;
     if (consoleG.visible) {
       bars.forEach((b, r) => {

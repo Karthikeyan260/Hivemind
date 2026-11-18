@@ -1,0 +1,159 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v5.1.20",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "worn_metal_rack"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "worn_metal_rack",
+      "normalTexture": {
+        "index": 0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicRoughnessTexture": {
+          "index": 2
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Plane.016",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/jpeg",
+      "name": "worn_metal_rack_nor_gl",
+      "uri": "textures/worn_metal_rack_nor_gl_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "worn_metal_rack_diff",
+      "uri": "textures/worn_metal_rack_diff_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "worn_metal_rack_metal-worn_metal_rack_rough",
+      "uri": "textures/worn_metal_rack_arm_1k.jpg"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 7224,
+      "max": [
+        0.45541658997535706,
+        1.899999976158142,
+        0.30000001192092896
+      ],
+      "min": [
+        -0.46000006794929504,
+        -4.783835549915239e-10,
+        -0.30000001192092896
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 7224,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 7224,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 19116,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 86688,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 86688,
+      "byteOffset": 86688,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 57792,
+      "byteOffset": 173376,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 38232,
+      "byteOffset": 231168,
+      "target": 34963
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 269400,
+      "uri": "worn_metal_rack.bin"
+    }
+  ]
+}

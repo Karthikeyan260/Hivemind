@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Blocks, MicVocal, Clapperboard, ChefHat, Images, PartyPopper, CalendarRange, Sprout, Gamepad2, Laugh, Moon, Newspaper, PhoneIncoming, Share2, Zap, Brain, Briefcase, CalendarHeart, Compass, FileText, Globe, Map as MapIcon, FolderKanban, GitBranch, Lock, Menu, Radar, Search, Settings, Sparkles, StickyNote, X } from "lucide-react";
+import { Brain, Briefcase, GitBranch, Lock, Menu, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
@@ -8,6 +8,7 @@ import { cx } from "@/components/ui";
 import { isPublicPage } from "@/lib/public-paths";
 import { clearOfflineCache } from "@/lib/offline";
 import { useMyApps } from "@/components/apps/nav-apps";
+import { NAV_GROUPS } from "@/components/nav-config";
 
 const TABS = [
   { label: "Home", href: "/", icon: Sparkles },
@@ -16,34 +17,10 @@ const TABS = [
   { label: "Journey", href: "/journey", icon: GitBranch },
 ] as const;
 
-const MORE = [
-  { label: "Autopilot", href: "/autopilot", icon: Compass },
-  { label: "Web tasks", href: "/web", icon: Globe },
-  { label: "Mission control", href: "/mission", icon: Activity },
-  { label: "Friends theatre", href: "/theatre", icon: Clapperboard },
-  { label: "Map", href: "/map", icon: MapIcon },
-  { label: "Apps", href: "/apps", icon: Blocks },
-  { label: "Routines", href: "/routines", icon: Zap },
-  { label: "Morning brief", href: "/brief", icon: Newspaper },
-  { label: "Dream mode", href: "/dream", icon: Moon },
-  { label: "Calls", href: "/calls", icon: PhoneIncoming },
-  { label: "Share", href: "/share", icon: Share2 },
-  { label: "Kitchen mode", href: "/focus", icon: ChefHat },
-  { label: "Day comic", href: "/comic", icon: Laugh },
-  { label: "Games", href: "/games", icon: Gamepad2 },
-  { label: "Karaoke", href: "/karaoke", icon: MicVocal },
-  { label: "Habits", href: "/habits", icon: CalendarHeart },
-  { label: "Projects", href: "/projects", icon: FolderKanban },
-  { label: "Photos", href: "/photos", icon: Images },
-  { label: "This week", href: "/weekly", icon: CalendarRange },
-  { label: "My Wrapped", href: "/wrapped", icon: PartyPopper },
-  { label: "Nova's garden", href: "/garden", icon: Sprout },
-  { label: "Notes", href: "/notes", icon: StickyNote },
-  { label: "Documents", href: "/documents", icon: FileText },
-  { label: "Sources", href: "/sources", icon: Radar },
-  { label: "Search", href: "/search", icon: Search },
-  { label: "Settings", href: "/settings", icon: Settings },
-] as const;
+// The bottom bar already holds Home, Memories, Career and Journey; the sheet lists everything else, in groups.
+const TAB_HREFS: string[] = TABS.map((t) => t.href);
+const MORE_GROUPS = NAV_GROUPS.map((g) => ({ title: g.title, items: g.items.filter((i) => !TAB_HREFS.includes(i.href)) })).filter((g) => g.items.length);
+const MORE = MORE_GROUPS.flatMap((g) => g.items);
 
 /** Phone navigation like a native app: a bottom tab bar, with the rest of the pages in a "More" sheet. */
 export function MobileNav({ canLock }: { canLock: boolean }) {
@@ -101,18 +78,23 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
               </button>
             </div>
             <nav className="grid min-h-0 flex-1 grid-cols-3 content-start gap-2 overflow-y-auto overscroll-contain pb-1" aria-label="More pages">
-              {MORE.map(({ label, href, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cx(
-                    "flex min-h-[4.25rem] flex-col items-center justify-center gap-1.5 rounded-xl border px-1.5 py-2.5 text-center text-[12px] leading-tight",
-                    active(href) ? "border-core/50 bg-core/10 text-fg" : "border-line text-soft active:bg-raised",
-                  )}
-                >
-                  <Icon size={20} strokeWidth={1.75} className={active(href) ? "text-core" : ""} />
-                  {label}
-                </Link>
+              {MORE_GROUPS.map((g) => (
+                <div key={g.title} className="col-span-3 grid grid-cols-3 gap-2">
+                  <div className="hud-label col-span-3 mt-1 text-[9.5px] tracking-[0.2em]">{g.title.toUpperCase()}</div>
+                  {g.items.map(({ label, href, icon: Icon }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={cx(
+                        "flex min-h-[4.25rem] flex-col items-center justify-center gap-1.5 rounded-xl border px-1.5 py-2.5 text-center text-[12px] leading-tight",
+                        active(href) ? "border-core/50 bg-core/10 text-fg" : "border-line text-soft active:bg-raised",
+                      )}
+                    >
+                      <Icon size={20} strokeWidth={1.75} className={active(href) ? "text-core" : ""} />
+                      {label}
+                    </Link>
+                  ))}
+                </div>
               ))}
               {myApps.map((a) => (
                 <Link

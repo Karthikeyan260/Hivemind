@@ -4,8 +4,10 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
-import { buildMocapRobot } from "./mocap-robot";
+import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
+import { N8AOPass } from "n8ao";
+import { placeModel, surface } from "./assets";
+import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { buildRobot, RIG_HEIGHT, type Act, type Rig } from "./robot";
 import { buildStation, HOME, type Station, type Stop } from "./stations";
 import type { AgentState, CrewAgent, CrewId } from "@/lib/mission";
@@ -17,24 +19,24 @@ import type { AgentState, CrewAgent, CrewId } from "@/lib/mission";
  */
 
 const HEX: Record<AgentState, string> = { working: "#34d399", idle: "#38bdf8", sleeping: "#64748b", alert: "#f43f5e" };
-const MODEL = "/models/xbot.glb";
-const ROBOT_H = 2.45; // height of a robot in world units
+const ROBOT_H = 1.8; // a robot stands 1.8 m, next to 0.75 m desks (the hall is built in metres)
 const ROBOT_SCALE = ROBOT_H / RIG_HEIGHT;
 const R = 8.6; // pod ring radius
-const SPAN = Math.PI * 1.2;
-const PLACE: Record<string, { a: number; r: number }> = {
-  scheduler: { a: -0.52, r: 10.6 },
-  autopilot: { a: -0.4, r: 8.8 },
-  web: { a: -0.16, r: 12.6 },
-  dream: { a: 0.06, r: 10.6 },
-  brief: { a: 0.26, r: 8.8 },
-  reminders: { a: 0.4, r: 11.2 },
-  apps: { a: 0.57, r: 8.6 },
-}; // arc the pods sit on, open toward the camera
-const R_PORTRAIT = 6.4; // a tighter ring for tall, narrow screens
-const SPAN_PORTRAIT = Math.PI * 1.08;
-const HOME_TARGET = new THREE.Vector3(0, 2.4, -3.6);
-const PANEL_Y = 6.5;
+// Where each area sits on the deck (the core is at 0,0; the camera looks from +z). Four along the back facing the core,
+// three along the front facing the camera, so the hall reads as working places all around the K emblem.
+const PLACE: Record<string, { x: number; z: number; front?: boolean }> = {
+  scheduler: { x: -12, z: -5 },
+  autopilot: { x: -6.2, z: -10.5 },
+  web: { x: 6.2, z: -10.5 },
+  dream: { x: 12, z: -5 },
+  brief: { x: -9.5, z: 7, front: true },
+  reminders: { x: 6, z: 9, front: true },
+  apps: { x: 12, z: 5, front: true },
+};
+const PORTRAIT_SHRINK = 0.62; // tall, narrow screens: the same layout, closer together
+/** The way an area faces: front-row areas face the camera, the rest face the core. */
+const faceDir = (pos: THREE.Vector3, front: boolean) => (front ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(-pos.x, 0, -pos.z).normalize());
+const HOME_TARGET = new THREE.Vector3(0, 2.2, -1.2);
 // Why a robot leaves its area: who it goes to see and what it is doing there (shown on its label while it is out).
 const JOBS: Record<CrewId, Array<{ to: CrewId | "core"; text: string }>> = {
   scheduler: [{ to: "autopilot", text: "Winding up Scout's schedule" }, { to: "core", text: "Syncing the clocks with the core" }, { to: "apps", text: "Fetching gears from Maker" }],
@@ -45,15 +47,10 @@ const JOBS: Record<CrewId, Array<{ to: CrewId | "core"; text: string }>> = {
   reminders: [{ to: "apps", text: "Warning Maker of a deadline" }, { to: "brief", text: "Checking the calendar with Scribe" }],
   apps: [{ to: "scheduler", text: "Asking Clockwork for timing" }, { to: "core", text: "Delivering a new app to the core" }],
 };
-const STROLLS = [
-  { z: 5.5, text: "Stretching its legs" },
-  { z: 8, text: "Looking out over the city" },
-  { z: 6.5, text: "Checking the hall is tidy" },
-];
-const GLYPH: Record<CrewId, string> = { scheduler: "⚙", autopilot: "🔭", web: "</>", dream: "☾", brief: "✎", reminders: "🔔", apps: "⬢" };
+const STATE_WORD: Record<string, string> = { working: "WORKING", idle: "READY", sleeping: "ASLEEP", alert: "NEEDS YOU" };
 const ALERT_STOP: Stop = { x: 0, z: 1.0, face: 0, act: "none", dwell: 99 };
 // Each agent has its own paint, so the crew reads as individuals; the mood shows in the visor, halo and floor light.
-const PAINT: Record<CrewId, string> = { scheduler: "#f59e0b", autopilot: "#38bdf8", web: "#a78bfa", dream: "#6366f1", brief: "#2dd4bf", reminders: "#f472b6", apps: "#fb923c" };
+const PAINT: Record<CrewId, string> = { scheduler: "#c8913a", autopilot: "#5f8fa8", web: "#8486b3", dream: "#6a74a0", brief: "#4f9a8c", reminders: "#b0645a", apps: "#c97a3d" }; // muted industrial paints
 
 type Pod = {
   id: CrewId;
@@ -99,6 +96,11 @@ type Pod = {
   born: number;
   cele: number;
   lift: number;
+  /** Reached its door on the way in or out: walk straight through. */
+  gated: boolean;
+  /** The planned route across the floor (world points), and the goal it was planned for. */
+  path: THREE.Vector3[] | null;
+  pathGoal: THREE.Vector3 | null;
   burst: number;
   hv: number;
 };
@@ -229,49 +231,144 @@ function radialTexture(stops: Array<[number, string]>) {
   return t;
 }
 
-/** A holographic Earth: glowing blue sphere with a lat/long grid and light continents. */
-function globeTexture() {
-  const W = 1024;
-  const H = 512;
-  const c = document.createElement("canvas");
-  c.width = W;
-  c.height = H;
-  const g = c.getContext("2d")!;
-  const bg = g.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#1b3fa8");
-  bg.addColorStop(0.5, "#2563eb");
-  bg.addColorStop(1, "#1b3fa8");
-  g.fillStyle = bg;
-  g.fillRect(0, 0, W, H);
-  let seed = 11;
-  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  g.fillStyle = "rgba(160,235,255,0.85)";
-  const lands: Array<[number, number, number]> = [[220, 190, 1], [330, 340, 0.8], [520, 180, 1.1], [560, 320, 0.9], [760, 170, 1.2], [850, 360, 0.6], [140, 120, 0.5]];
-  for (const [lx, ly, sc] of lands) {
-    for (let i = 0; i < 26; i++) {
-      g.beginPath();
-      g.ellipse(lx + (rnd() - 0.5) * 120 * sc, ly + (rnd() - 0.5) * 90 * sc, (14 + rnd() * 36) * sc, (10 + rnd() * 26) * sc, rnd() * 3, 0, Math.PI * 2);
-      g.fill();
+/** A glowing name plate for a workplace: the agent's name in its own colour on a dark panel with a lit edge. */
+function nameSign(name: string, colour: string, track: Array<{ dispose(): void }>) {
+  const cv = document.createElement("canvas");
+  cv.width = 640;
+  cv.height = 140;
+  const g = cv.getContext("2d")!;
+  g.fillStyle = "rgba(10,10,22,0.88)";
+  g.beginPath();
+  g.roundRect(6, 6, 628, 128, 18);
+  g.fill();
+  g.strokeStyle = colour;
+  g.lineWidth = 5;
+  g.stroke();
+  g.font = "700 64px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.shadowColor = colour;
+  g.shadowBlur = 22;
+  g.fillStyle = colour;
+  const text = name.toUpperCase().split("").join(String.fromCharCode(8202)); // hair spaces: a little letter-spacing
+  g.fillText(text, 320, 74, 590);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 0.5), mat);
+  track.push(tex, mat, mesh.geometry);
+  return mesh;
+}
+
+/** Does the segment (x0,z0)→(x1,z1) pass through the box |x| < hx, |z| < hz? (Liang–Barsky clipping.) */
+function segHitsBox(x0: number, z0: number, x1: number, z1: number, hx: number, hz: number) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  for (const [p, q] of [[-dx, x0 + hx], [dx, hx - x0], [-dz, z0 + hz], [dz, hz - z0]]) {
+    if (p === 0) {
+      if (q < 0) return false;
+    } else {
+      const r = q / p;
+      if (p < 0) t0 = Math.max(t0, r);
+      else t1 = Math.min(t1, r);
+      if (t0 > t1) return false;
     }
   }
-  g.strokeStyle = "rgba(190,240,255,0.55)";
-  g.lineWidth = 1.5;
-  for (let x = 0; x <= W; x += W / 24) {
-    g.beginPath();
-    g.moveTo(x, 0);
-    g.lineTo(x, H);
-    g.stroke();
+  return true;
+}
+
+/** Does the segment (x0,z0)→(x1,z1) come within r of the origin? */
+function segHitsCircle(x0: number, z0: number, x1: number, z1: number, r: number) {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const len2 = dx * dx + dz * dz;
+  const t = len2 ? Math.max(0, Math.min(1, -(x0 * dx + z0 * dz) / len2)) : 0;
+  return Math.hypot(x0 + dx * t, z0 + dz * t) < r;
+}
+
+/** Polished concrete: mottled grey with wear, a few stains and saw-cut joints every few metres. */
+function concreteTexture() {
+  const S = 1024;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#9a958e";
+  g.fillRect(0, 0, S, S);
+  let seed = 11;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 900; i++) {
+    const x = rnd() * S;
+    const y = rnd() * S;
+    const r = 6 + rnd() * 60;
+    const v = 120 + rnd() * 50;
+    const rg = g.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, `rgba(${v},${v - 4},${v - 9},0.16)`);
+    rg.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = rg;
+    g.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  for (let y = 0; y <= H; y += H / 12) {
+  for (let i = 0; i < 9000; i++) {
+    const v = rnd() < 0.5 ? 70 : 190;
+    g.fillStyle = `rgba(${v},${v},${v},0.07)`;
+    g.fillRect(rnd() * S, rnd() * S, 1.5, 1.5);
+  }
+  g.strokeStyle = "rgba(40,38,35,0.35)";
+  g.lineWidth = 2;
+  for (let k = 1; k < 4; k++) {
     g.beginPath();
-    g.moveTo(0, y);
-    g.lineTo(W, y);
+    g.moveTo((k * S) / 4, 0);
+    g.lineTo((k * S) / 4, S);
+    g.moveTo(0, (k * S) / 4);
+    g.lineTo(S, (k * S) / 4);
     g.stroke();
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(10, 10);
+  t.anisotropy = 8;
   return t;
+}
+
+/**
+ * The Hivemind K: a split stem and a sharp chevron that stands just clear of it, so the letter reads as three solid
+ * pieces with two clean cuts of light between them. About 2.5 units tall, centred on the origin, for extruding.
+ */
+function kEmblemShapes() {
+  const poly = (pts: Array<[number, number]>) => new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+  return [
+    poly([[-1.05, 0.07], [-0.47, 0.07], [-0.47, 1.25], [-1.05, 1.25]]), // upper stem
+    poly([[-1.05, -1.25], [-0.47, -1.25], [-0.47, -0.07], [-1.05, -0.07]]), // lower stem
+    poly([[-0.29, 0], [0.31, 0], [1.1, 1.25], [0.5, 1.25]]), // upper arm
+    poly([[-0.29, 0], [0.5, -1.25], [1.1, -1.25], [0.31, 0]]), // lower arm
+  ];
+}
+
+/**
+ * The emblem as a permanent piece of architecture: brushed titanium faces on a dark gunmetal body, with a soft white
+ * wash of light behind it. `height` in world units. Used in exactly two places: the centre of the operations floor and the facade.
+ */
+function buildEmblem(height: number, track: Array<{ dispose(): void }>, onWall = true) {
+  const g = new THREE.Group();
+  const k = height / 2.5;
+  const geo = new THREE.ExtrudeGeometry(kEmblemShapes(), { depth: 0.32, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.025, bevelSegments: 2 });
+  geo.center();
+  const titanium = new THREE.MeshStandardMaterial({ color: "#bfc2c7", metalness: 1, roughness: 0.34, envMapIntensity: 1.2 });
+  const gunmetal = new THREE.MeshStandardMaterial({ color: "#2e3034", metalness: 0.85, roughness: 0.45 });
+  const mesh = new THREE.Mesh(geo, [titanium, gunmetal]);
+  mesh.scale.setScalar(k);
+  const wash = new THREE.Mesh(
+    new THREE.PlaneGeometry(height * 1.7, height * 1.5),
+    new THREE.MeshBasicMaterial({ map: radialTexture([[0, "rgba(255,255,255,0.22)"], [0.5, "rgba(255,255,255,0.06)"], [1, "rgba(255,255,255,0)"]]), transparent: true, depthWrite: false, toneMapped: false }),
+  );
+  wash.position.z = -0.32 * k;
+  if (onWall) g.add(wash);
+  g.add(mesh);
+  track.push(geo, titanium, gunmetal, wash.geometry, wash.material as THREE.Material, (wash.material as THREE.MeshBasicMaterial).map!);
+  return g;
 }
 
 /** Concentric rings and tick marks drawn on the floor, like a landing pad. */
@@ -330,7 +427,34 @@ export class MissionScene {
   private sweep = new THREE.Group();
   private sweepMat!: THREE.MeshBasicMaterial;
   private gyros: THREE.Mesh[] = [];
-  private dust!: THREE.Points;
+  private dust: THREE.Points | null = null;
+  private hemi!: THREE.HemisphereLight;
+  private pmrem: THREE.PMREMGenerator | null = null;
+  private hdri: "day" | "night" | null = null;
+  private shadowsDone = false;
+  private concrete: THREE.CanvasTexture | null = null;
+  private key!: THREE.DirectionalLight;
+  private rim!: THREE.DirectionalLight;
+  private skyCtx!: CanvasRenderingContext2D;
+  private skyTex!: THREE.CanvasTexture;
+  private skyHour = -1;
+  private board!: { ctx: CanvasRenderingContext2D; tex: THREE.CanvasTexture };
+  private crew: CrewAgent[] = [];
+  /** HIVEMIND's latest actions (from the activity log), shown on the operations board. */
+  private feed: Array<{ message: string; at: string }> = [];
+  /** When the crew data last arrived, for the board's "updated" counter. */
+  private fedAt = 0;
+  private panelClock = 0;
+  /** Inside on the operations floor, or outside looking at the building from the approach. */
+  private view: "inside" | "outside" = "inside";
+  private roofGroup = new THREE.Group();
+  /** Lit floor paths between two places while they really exchange work. */
+  private links: Array<{ key: string; mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; until: number }> = [];
+  private flowTex: THREE.CanvasTexture | null = null;
+  /** 0..1: a command you gave is running (the hub brightens). */
+  private busy = 0;
+  private busyOn = false;
+  private boardMinute = -1;
   private sky: THREE.Mesh | null = null;
   private raf = 0;
   private last = performance.now();
@@ -375,48 +499,46 @@ export class MissionScene {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.shadowMap.enabled = false;
+    // real soft shadows from the key light
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = this.scene;
-    scene.background = new THREE.Color("#1a1230");
-    scene.fog = new THREE.Fog("#241a38", 34, 70); // same as the sky's horizon, so the floor melts into it
+    scene.background = new THREE.Color("#15171b");
+    scene.fog = new THREE.Fog("#1a1c20", 40, 95);
     this.buildSky();
     const pmrem = new THREE.PMREMGenerator(renderer);
     const env = pmrem.fromScene(new RoomEnvironment(), 0.04);
     scene.environment = env.texture;
     scene.environmentIntensity = 0.55;
     this.disposables.push(pmrem, env);
+    this.pmrem = pmrem;
+    this.loadHdri(new Date().getHours() >= 7 && new Date().getHours() < 19 ? "day" : "night");
 
     this.buildLights();
     this.buildFloor();
     this.buildCore();
     this.buildHall();
-    this.buildDust();
+    this.buildBoard();
+    this.buildExterior();
+    this.applyDaylight();
 
     if (!this.mobile) {
       const composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, this.camera));
-      composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.5, 1.0));
+      const ao = new N8AOPass(scene, this.camera, 1, 1);
+      ao.configuration.aoRadius = 1.2;
+      ao.configuration.distanceFalloff = 1.0;
+      ao.configuration.intensity = 2.2;
+      ao.setQualityMode("Medium");
+      composer.addPass(ao);
+      composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.14, 0.4, 0.92));
       composer.addPass(new OutputPass());
       this.composer = composer;
     }
 
-    // The robot body is a real skinned model; the deck waits for it (and falls back to the built robot if it can't load).
-    new GLTFLoader().load(
-      MODEL,
-      (gltf) => {
-        if (this.dead) return;
-        this.model = gltf;
-        this.modelDone = true;
-        if (this.pending) this.setCrew(this.pending);
-      },
-      undefined,
-      () => {
-        if (this.dead) return;
-        this.modelDone = true;
-        if (this.pending) this.setCrew(this.pending);
-      },
-    );
+    // The robots are built in code (rounded helmet, glass visor, glowing eyes), so there is no model file to wait for.
+    this.modelDone = true;
 
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(canvas);
@@ -435,38 +557,96 @@ export class MissionScene {
   // ---------- build ----------
   private buildLights() {
     const s = this.scene;
-    s.add(new THREE.HemisphereLight("#ffc9a0", "#2a1c40", 0.55));
-    const key = new THREE.DirectionalLight("#ffb27a", 1.5);
+    this.hemi = new THREE.HemisphereLight("#dfe6ee", "#3a3632", 0.6);
+    s.add(this.hemi);
+    const key = new THREE.DirectionalLight("#fff1de", 1.4);
+    this.key = key;
     key.position.set(7, 16, 13);
-    if (false as boolean) {
+    {
       key.castShadow = true;
-      key.shadow.mapSize.set(2048, 2048);
+      key.shadow.mapSize.set(this.mobile ? 1024 : 2048, this.mobile ? 1024 : 2048);
       const c = key.shadow.camera;
-      c.left = c.bottom = -16;
-      c.right = c.top = 16;
+      c.left = c.bottom = -20;
+      c.right = c.top = 20;
       c.near = 1;
-      c.far = 50;
-      key.shadow.bias = -0.0004;
-      key.shadow.normalBias = 0.03;
+      c.far = 60;
+      key.shadow.bias = -0.0003;
+      key.shadow.normalBias = 0.04;
+      key.shadow.radius = 4;
     }
     s.add(key);
-    const rim = new THREE.DirectionalLight("#6a7cff", 1.7);
+    const rim = new THREE.DirectionalLight("#a9bcd6", 0.6);
     rim.position.set(-12, 8, -14);
+    this.rim = rim;
     s.add(rim);
-    const core = new THREE.PointLight("#5aa0ff", 45, 26, 2);
-    core.position.set(0, 3.2, 0);
+    // the coordination desk's own warm work light
+    const core = new THREE.PointLight("#ffd9b0", 16, 18, 2);
+    core.position.set(0, 4.6, 0);
     s.add(core);
   }
 
+  /** Lights the hall with a real office HDRI (Poly Haven, CC0): the daytime one, or its night version. */
+  private loadHdri(which: "day" | "night") {
+    if (this.hdri === which || !this.pmrem) return;
+    this.hdri = which;
+    new RGBELoader().load(`/hq/hdri/${which === "day" ? "unfinished_office" : "unfinished_office_night"}_1k.hdr`, (hdr) => {
+      if (this.dead || !this.pmrem) return hdr.dispose();
+      const rt = this.pmrem.fromEquirectangular(hdr);
+      hdr.dispose();
+      this.scene.environment = rt.texture;
+      this.scene.environmentIntensity = which === "day" ? 0.9 : 0.6;
+      this.disposables.push(rt);
+    });
+  }
+
+  /** Everything solid casts and receives shadows (glass, screens and light lines don't). Run once the areas exist. */
+  private enableShadows() {
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material & { isMeshStandardMaterial?: boolean };
+      if (!mat?.isMeshStandardMaterial || mat.transparent) return;
+      m.castShadow = true;
+      m.receiveShadow = true;
+    });
+  }
+
+  /**
+   * Daylight from the real clock: bright, neutral light through the windows by day, a warm low sun at dawn and dusk,
+   * and at night the hall runs on its own lamps. Redrawn once a minute at most.
+   */
+  private applyDaylight(date = new Date()) {
+    const h = date.getHours() + date.getMinutes() / 60;
+    // 0 at night, 1 in full day, with an hour of twilight either side of 6:30 and 18:30
+    const day = THREE.MathUtils.clamp(Math.min(h - 5.5, 19.5 - h) / 2, 0, 1);
+    const dusk = day > 0 && day < 1 ? 1 - Math.abs(day - 0.5) * 2 : 0;
+    this.hemi.intensity = 0.32 + 0.5 * day;
+    this.hemi.color.set(day > 0.5 ? "#e4ebf2" : "#9aa6c2");
+    this.key.intensity = 0.55 + 1.05 * day;
+    this.key.color.set(dusk > 0.3 ? "#ffc58f" : day > 0.5 ? "#fff4e4" : "#ffd6a8");
+    this.rim.intensity = 0.25 + 0.5 * day;
+    this.renderer.toneMappingExposure = 0.92 + 0.18 * day;
+    this.loadHdri(day > 0.5 ? "day" : "night");
+    const hour = Math.floor(h);
+    if (hour !== this.skyHour) {
+      this.skyHour = hour;
+      this.drawSky(day, dusk);
+    }
+  }
+
   private buildFloor() {
-    const floorMat = new THREE.MeshPhysicalMaterial({ color: "#25222f", metalness: 0.65, roughness: 0.3, clearcoat: 0.5, clearcoatRoughness: 0.25, envMapIntensity: 1.0 });
+    const concrete = concreteTexture();
+    this.concrete = concrete;
+    const floorMat = new THREE.MeshPhysicalMaterial({ metalness: 0.0, clearcoat: 0.35, clearcoatRoughness: 0.35, envMapIntensity: 0.8 });
+    surface(floorMat, "concrete_floor", 30, "#d4d0ca");
+    this.disposables.push(concrete);
     const floor = new THREE.Mesh(new THREE.CircleGeometry(60, 96), floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     this.scene.add(floor);
 
     const ft = floorTexture();
-    const decal = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ map: ft, color: "#ffb36b", transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    const decal = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshBasicMaterial({ map: ft, color: "#6f6a62", transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
     decal.rotation.x = -Math.PI / 2;
     decal.position.y = 0.012;
     this.scene.add(decal);
@@ -497,101 +677,420 @@ export class MissionScene {
     swMesh.position.y = 0.02;
     this.sweep.add(swMesh);
     this.sweepMat = swMat;
-    this.scene.add(this.sweep);
     this.disposables.push(floorMat, floor.geometry, ft, decal.geometry, decal.material as THREE.Material, swTex, swMat);
   }
 
+  /**
+   * The middle of the floor is the coordination desk: an eight-sided ring of desks with screens facing out (they show
+   * the same live operations summary as the wall board), round a brushed-steel K on a stone plinth.
+   */
   private buildCore() {
     const g = this.coreGroup;
-    const metal = new THREE.MeshStandardMaterial({ color: "#2c2a3c", metalness: 0.8, roughness: 0.28 });
-    const glowCol = new THREE.Color("#818cf8");
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.5, 0.5, 64), metal);
-    base.position.y = 0.25;
-    base.castShadow = base.receiveShadow = true;
-    const baseRingMat = new THREE.MeshStandardMaterial({ color: "#0b1020", emissive: glowCol, emissiveIntensity: 2.4, roughness: 0.4 });
-    const baseRing = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.06, 12, 96), baseRingMat);
-    baseRing.rotation.x = Math.PI / 2;
-    baseRing.position.y = 0.52;
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.5, 1.4, 32), metal);
-    stem.position.y = 1.2;
-    stem.castShadow = true;
-
-    const globeTex = globeTexture();
-    const coreMat = new THREE.MeshStandardMaterial({ color: "#1a2f80", map: globeTex, emissive: "#ffffff", emissiveMap: globeTex, emissiveIntensity: 1.1, roughness: 0.25, metalness: 0.1, transparent: true, opacity: 0.93 });
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(1.35, 48, 32), coreMat);
-    this.disposables.push(globeTex);
-    orb.position.y = 3.1;
-    const cage = new THREE.Mesh(new THREE.IcosahedronGeometry(1.62, 2), new THREE.MeshBasicMaterial({ color: "#7dd3fc", wireframe: true, transparent: true, opacity: 0.22, toneMapped: false }));
-    cage.position.y = 3.1;
-    const glow = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), new THREE.MeshBasicMaterial({ map: radialTexture([[0, "rgba(129,140,248,0.4)"], [0.4, "rgba(99,102,241,0.1)"], [1, "rgba(99,102,241,0)"]]), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
-    glow.rotation.x = -Math.PI / 2;
-    glow.position.y = 0.04;
-
-    const gyroMat = new THREE.MeshStandardMaterial({ color: "#2a3350", metalness: 1, roughness: 0.25, emissive: "#4f46e5", emissiveIntensity: 0.5 });
-    for (const [r, tilt] of [[2.0, 0], [2.35, Math.PI / 3], [2.7, -Math.PI / 3]] as const) {
-      const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.035, 12, 128), gyroMat);
-      m.position.y = 3.1;
-      m.rotation.x = Math.PI / 2 + tilt;
-      m.userData.speed = 0.35 + r * 0.18;
-      this.gyros.push(m);
-      g.add(m);
+    const stone = new THREE.MeshStandardMaterial({ color: "#55524d", roughness: 0.85, metalness: 0.05 });
+    const darkSteel = new THREE.MeshStandardMaterial({ color: "#2c2e32", metalness: 0.8, roughness: 0.45 });
+    const wood = new THREE.MeshStandardMaterial({ color: "#7a5a3e", roughness: 0.6, metalness: 0.05 });
+    const fabric = new THREE.MeshStandardMaterial({ color: "#2b2d31", roughness: 0.9 });
+    // the operations table: a stone pedestal, an oak top, and a built-in display showing the live summary
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.4, 0.74, 32), stone);
+    base.position.y = 0.37;
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.3, 0.08, 64), wood);
+    top.position.y = 0.78;
+    // the monumental K stands at the very centre, on a stone pedestal rising from the table, lit softly from below
+    const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.9, 0.55, 8), stone);
+    pedestal.position.y = 1.1;
+    const uplightMat = new THREE.MeshBasicMaterial({ color: "#f4f1ea", toneMapped: false });
+    const uplight = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.012, 6, 8), uplightMat);
+    uplight.rotation.x = Math.PI / 2;
+    uplight.rotation.z = Math.PI / 8;
+    uplight.position.y = 1.38;
+    const emblem = buildEmblem(3.6, this.disposables, false);
+    emblem.position.y = 1.38 + 1.85;
+    g.userData.emblem = emblem;
+    // a thin light line round the table edge: it brightens while a command you gave is running
+    const glowMat = new THREE.MeshBasicMaterial({ color: "#38d6f5", transparent: true, opacity: 0.3, toneMapped: false });
+    const edge = new THREE.Mesh(new THREE.TorusGeometry(2.31, 0.015, 6, 96), glowMat);
+    edge.rotation.x = Math.PI / 2;
+    edge.position.y = 0.8;
+    g.add(base, top, pedestal, uplight, emblem, edge);
+    g.userData.glow = glowMat;
+    // the ring of desks, a screen and a chair at every other one
+    const R = 3.6;
+    const screenMat = new THREE.MeshBasicMaterial({ map: this.ensureBoard().tex, toneMapped: false });
+    const seatGeo = new THREE.BoxGeometry(0.52, 0.08, 0.5);
+    const backGeo = new THREE.BoxGeometry(0.5, 0.62, 0.06);
+    const poleGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.38, 8);
+    const legGeo = new THREE.BoxGeometry(0.34, 0.03, 0.05);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const seg = new THREE.Group();
+      seg.position.set(Math.sin(a) * R, 0, Math.cos(a) * R);
+      seg.rotation.y = a;
+      const deskTop = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.06, 0.85), wood);
+      deskTop.position.y = 0.78;
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.7, 0.05), darkSteel);
+      panel.position.set(0, 0.4, -0.38);
+      seg.add(deskTop, panel);
+      this.disposables.push(deskTop.geometry, panel.geometry);
+      if (i % 2 === 0) {
+        const bezel = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.5, 0.05), darkSteel);
+        bezel.position.set(0, 1.36, -0.12);
+        bezel.rotation.x = -0.12;
+        const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.28, 0.42), screenMat);
+        screen.position.set(0, 1.36, -0.09);
+        screen.rotation.x = -0.12;
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.55, 0.06), darkSteel);
+        arm.position.set(0, 1.06, -0.18);
+        // an office chair pulled up to the screen
+        const chair = new THREE.Group();
+        chair.position.set(0.15, 0, 0.75);
+        chair.rotation.y = Math.PI + 0.25;
+        const seat = new THREE.Mesh(seatGeo, fabric);
+        seat.position.y = 0.5;
+        const back = new THREE.Mesh(backGeo, fabric);
+        back.position.set(0, 0.86, -0.24);
+        const pole = new THREE.Mesh(poleGeo, darkSteel);
+        pole.position.y = 0.27;
+        chair.add(seat, back, pole);
+        for (let l = 0; l < 5; l++) {
+          const leg = new THREE.Mesh(legGeo, darkSteel);
+          leg.position.y = 0.06;
+          leg.rotation.y = (l / 5) * Math.PI * 2;
+          leg.translateX(0.17);
+          chair.add(leg);
+        }
+        seg.add(bezel, screen, arm, chair);
+        this.disposables.push(bezel.geometry, screen.geometry, arm.geometry);
+      }
+      g.add(seg);
     }
-    g.add(base, baseRing, stem, orb, cage, glow);
-    g.userData.orb = orb;
-    g.userData.cage = cage;
-    g.userData.coreMat = coreMat;
     this.scene.add(g);
-    this.disposables.push(metal, baseRingMat, coreMat, gyroMat, glow.material as THREE.Material);
+    this.disposables.push(stone, darkSteel, wood, fabric, glowMat, screenMat, base.geometry, top.geometry, pedestal.geometry, uplightMat, uplight.geometry, edge.geometry, seatGeo, backGeo, poleGeo, legGeo);
+  }
+
+  /**
+   * The building from outside: the glass drum of the operations hall on a concrete base, a stone-faced entrance
+   * portal with a canopy, glass doors and, above it, the facade emblem (the K's second and only other place); a roof
+   * parapet with ventilation units and solar panels; and the site: lawns, a stone approach path with lamps and trees,
+   * an entrance gate with a barrier, and a small car park.
+   */
+  private buildExterior() {
+    const sc = this.scene;
+    const RW = 31;
+    const glass = new THREE.MeshPhysicalMaterial({ color: "#9fb3c4", metalness: 0.1, roughness: 0.05, transparent: true, opacity: 0.16, envMapIntensity: 1.4, depthWrite: false });
+    const concreteMat = surface(new THREE.MeshStandardMaterial(), "concrete_wall", 6, "#cfcac2");
+    const stone = new THREE.MeshStandardMaterial({ color: "#6d6862", roughness: 0.8 });
+    const steel = new THREE.MeshStandardMaterial({ color: "#3a3c40", metalness: 0.8, roughness: 0.4 });
+    const grass = new THREE.MeshStandardMaterial({ color: "#3e5a36", roughness: 0.95 });
+    const asphalt = new THREE.MeshStandardMaterial({ color: "#2c2d2f", roughness: 0.9 });
+    const paving = new THREE.MeshStandardMaterial({ color: "#a29b90", roughness: 0.85 });
+    const white = new THREE.MeshBasicMaterial({ color: "#d9d6cf" });
+    const bark = new THREE.MeshStandardMaterial({ color: "#4a3a2c", roughness: 0.9 });
+    const leaves = new THREE.MeshStandardMaterial({ color: "#3f6b3e", roughness: 0.85 });
+    const lampLight = new THREE.MeshBasicMaterial({ color: "#ffe2b8" });
+    const solar = new THREE.MeshStandardMaterial({ color: "#1d2a3c", metalness: 0.6, roughness: 0.25 });
+    this.disposables.push(glass, concreteMat, stone, steel, grass, asphalt, paving, white, bark, leaves, lampLight, solar);
+    // the roof and what stands on it only show from outside: inside, the camera looks down through the open top
+    const roofGroup = this.roofGroup;
+    sc.add(roofGroup);
+    roofGroup.visible = this.view === "outside";
+    let into: THREE.Object3D = sc;
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, ry = 0) => {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.rotation.y = ry;
+      into.add(m);
+      this.disposables.push(geo);
+      return m;
+    };
+    // the glass drum above the base wall, its outer concrete base and the roof edge
+    add(new THREE.CylinderGeometry(RW + 0.15, RW + 0.15, 14.8, 64, 1, true), glass, 0, 4.2 + 7.4, 0);
+    add(new THREE.CylinderGeometry(RW + 0.3, RW + 0.3, 4.2, 64, 1, true), concreteMat, 0, 2.1, 0);
+    const parapet = add(new THREE.TorusGeometry(RW + 0.1, 0.45, 8, 96), concreteMat, 0, 19.2, 0);
+    parapet.rotation.x = Math.PI / 2;
+    into = roofGroup;
+    const roof = add(new THREE.CircleGeometry(RW, 64), concreteMat, 0, 19.3, 0);
+    roof.rotation.x = -Math.PI / 2;
+    // rooftop: ventilation units and a field of solar panels
+    for (const [x, z] of [[-14, -8], [-10, 12], [12, -12], [16, 6]]) {
+      add(new THREE.BoxGeometry(3.2, 1.6, 2.2), steel, x, 20.1, z);
+      add(new THREE.CylinderGeometry(0.7, 0.7, 0.4, 16), steel, x, 21.1, z);
+    }
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 6; c++) {
+        const p = add(new THREE.BoxGeometry(2.2, 0.08, 1.3), solar, -6.6 + c * 2.6, 19.9, -20 + r * 1.9);
+        p.rotation.x = -0.35;
+      }
+    }
+    into = sc;
+    // the entrance portal: stone piers, a canopy, glass doors, and a stone panel carrying the emblem
+    const front = RW + 0.4;
+    add(new THREE.BoxGeometry(16, 10.5, 0.9), stone, 0, 12.6, front - 0.1);
+    add(new THREE.BoxGeometry(1.1, 7.4, 1.1), stone, -7, 3.7, front + 0.2);
+    add(new THREE.BoxGeometry(1.1, 7.4, 1.1), stone, 7, 3.7, front + 0.2);
+    add(new THREE.BoxGeometry(15, 0.45, 5.5), concreteMat, 0, 4.9, front + 2.4);
+    for (const x of [-5.5, 5.5]) add(new THREE.CylinderGeometry(0.16, 0.16, 4.7, 12), steel, x, 2.35, front + 4.7);
+    const doors = add(new THREE.PlaneGeometry(10, 4.4), glass, 0, 2.2, front + 0.45);
+    doors.renderOrder = 2;
+    for (const x of [-5, -2.5, 0, 2.5, 5]) add(new THREE.BoxGeometry(0.08, 4.4, 0.12), steel, x, 2.2, front + 0.46);
+    add(new THREE.BoxGeometry(10, 0.1, 0.14), steel, 0, 4.4, front + 0.46);
+    // canopy downlights
+    for (const x of [-4.5, -1.5, 1.5, 4.5]) add(new THREE.CircleGeometry(0.18, 16), lampLight, x, 4.66, front + 2.4).rotation.x = Math.PI / 2;
+    const steps = [0, 1, 2];
+    for (const i of steps) add(new THREE.BoxGeometry(12 - i * 0.6, 0.15, 1.2), paving, 0, 0.075 + i * 0.15, front + 5.2 - i * 0.6);
+    // the facade emblem: the same K as inside, larger, centred over the entrance
+    const emblem = buildEmblem(6, this.disposables);
+    emblem.position.set(0, 12.6, front + 0.45);
+    sc.add(emblem);
+    // the site: lawns all round, the approach path, lamps and trees along it
+    const lawn = add(new THREE.RingGeometry(RW + 0.4, 110, 96), grass, 0, 0.012, 0);
+    lawn.rotation.x = -Math.PI / 2;
+    const path = add(new THREE.PlaneGeometry(8, 40), paving, 0, 0.03, front + 25);
+    path.rotation.x = -Math.PI / 2;
+    for (let i = 0; i < 5; i++) {
+      const z = front + 10 + i * 7;
+      for (const x of [-6, 6]) {
+        add(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 8), steel, x, 1.8, z);
+        add(new THREE.BoxGeometry(0.5, 0.12, 0.25), lampLight, x, 3.6, z);
+        add(new THREE.CylinderGeometry(0.18, 0.25, 2.4, 8), bark, x * 1.9, 1.2, z + 3.5);
+        add(new THREE.IcosahedronGeometry(1.6, 1), leaves, x * 1.9, 3.6, z + 3.5);
+      }
+    }
+    // entrance gate: a guard post and a barrier arm across the path
+    add(new THREE.BoxGeometry(2.4, 2.8, 2.4), concreteMat, 6.2, 1.4, front + 46);
+    add(new THREE.BoxGeometry(0.4, 1.1, 0.4), steel, -4.4, 0.55, front + 45);
+    add(new THREE.BoxGeometry(8.6, 0.14, 0.14), white, -0.1, 1.05, front + 45);
+    // a small car park to the right of the approach, with bay lines
+    const lot = add(new THREE.PlaneGeometry(22, 14), asphalt, 22, 0.025, front + 22);
+    lot.rotation.x = -Math.PI / 2;
+    for (let i = 0; i <= 8; i++) {
+      const line = add(new THREE.PlaneGeometry(0.12, 5), white, 12.2 + i * 2.45, 0.035, front + 18);
+      line.rotation.x = -Math.PI / 2;
+    }
+    // outdoor benches by the path
+    for (const z of [front + 14, front + 28]) add(new THREE.BoxGeometry(2.2, 0.45, 0.6), stone, -9, 0.23, z);
+  }
+
+  /** The live operations summary (a canvas shared by the wall board and the coordination desk screens). */
+  private ensureBoard() {
+    if (!this.board) {
+      const c = document.createElement("canvas");
+      c.width = 1600;
+      c.height = 520;
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      this.board = { ctx: c.getContext("2d")!, tex };
+      this.disposables.push(tex);
+    }
+    return this.board;
+  }
+
+  /** The big wall display behind the back row: a steel-framed screen on two legs, facing the floor. */
+  private buildBoard() {
+    const frameMat = new THREE.MeshStandardMaterial({ color: "#26282c", metalness: 0.7, roughness: 0.5 });
+    const wallMat = surface(new THREE.MeshStandardMaterial({ envMapIntensity: 0.6 }), "concrete_wall", 3, "#b9b4ac");
+    const screenMat = new THREE.MeshBasicMaterial({ map: this.ensureBoard().tex, toneMapped: false });
+    const wall = new THREE.Group();
+    wall.position.set(0, 0, -19);
+    // a board-formed concrete feature wall, the focal point of the floor
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(19, 12, 0.5), wallMat);
+    panel.position.set(0, 6, -0.45);
+    const plinthStrip = new THREE.Mesh(new THREE.BoxGeometry(19, 0.12, 0.08), new THREE.MeshBasicMaterial({ color: "#d9d2c5" }));
+    plinthStrip.position.set(0, 0.06, -0.18);
+    // the monumental K (the interior one of the emblem's two places)
+    // the operations display, mounted on the wall below it
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(12.6, 4.2, 0.22), frameMat);
+    frame.position.y = 4.4;
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(12.2, 3.96), screenMat);
+    screen.position.set(0, 4.4, 0.12);
+    wall.add(panel, plinthStrip, frame, screen);
+    this.scene.add(wall);
+    this.disposables.push(frameMat, wallMat, screenMat, panel.geometry, plinthStrip.geometry, plinthStrip.material as THREE.Material, frame.geometry, screen.geometry);
+    this.drawBoard();
+  }
+
+  /**
+   * The operations display, redrawn every second from real data: a running clock and a blinking LIVE light, the
+   * state counts, every agent's own line and how long ago it last did something, HIVEMIND's latest actions from the
+   * activity log, and how many seconds since the data was refreshed. Nothing on it is made up.
+   */
+  private drawBoard() {
+    const { ctx: g, tex } = this.ensureBoard();
+    const W = 1600;
+    const H = 520;
+    const now = Date.now();
+    const sec = Math.floor(now / 1000);
+    const ago = (iso: string | null) => {
+      if (!iso) return "—";
+      const ms = now - Date.parse(iso.length === 10 ? `${iso}T12:00:00Z` : iso);
+      if (!Number.isFinite(ms)) return "—";
+      if (ms < 60_000) return `${Math.max(0, Math.floor(ms / 1000))}s ago`;
+      if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} min ago`;
+      if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)} h ago`;
+      return `${Math.floor(ms / 86_400_000)} d ago`;
+    };
+    g.fillStyle = "#0b0d10";
+    g.fillRect(0, 0, W, H);
+    g.textBaseline = "alphabetic";
+    // header: name, live light, the time with seconds
+    g.textAlign = "left";
+    g.fillStyle = "#e9e4da";
+    g.font = "600 34px ui-monospace, Consolas, monospace";
+    g.fillText("HIVEMIND  OPERATIONS", 40, 58);
+    g.textAlign = "right";
+    g.fillStyle = "#e9e4da";
+    g.font = "600 40px ui-monospace, Consolas, monospace";
+    g.fillText(new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }), W - 40, 60);
+    g.fillStyle = sec % 2 ? "#3fbf7f" : "#1f5f40";
+    g.beginPath();
+    g.arc(W - 300, 46, 9, 0, Math.PI * 2);
+    g.fill();
+    g.font = "600 22px ui-monospace, Consolas, monospace";
+    g.fillStyle = "#7fd3a6";
+    g.fillText("LIVE", W - 318, 54);
+    g.fillStyle = "#23262b";
+    g.fillRect(40, 78, W - 80, 2);
+    const crew = this.crew;
+    if (!crew.length) {
+      g.textAlign = "left";
+      g.fillStyle = "#8b8f96";
+      g.font = "400 30px system-ui, sans-serif";
+      g.fillText("Waiting for the crew's status…", 40, 150);
+      tex.needsUpdate = true;
+      return;
+    }
+    // state counts
+    const n = (st: string) => crew.filter((c) => c.state === st).length;
+    const counts: Array<[string, number, string]> = [["WORKING", n("working"), HEX.working], ["READY", n("idle"), HEX.idle], ["ASLEEP", n("sleeping"), HEX.sleeping], ["NEEDS YOU", n("alert"), HEX.alert]];
+    g.textAlign = "left";
+    let x = 40;
+    for (const [label, v, col] of counts) {
+      g.fillStyle = col;
+      g.fillRect(x, 102, 6, 30);
+      g.fillStyle = "#e9e4da";
+      g.font = "600 28px ui-monospace, Consolas, monospace";
+      g.fillText(`${v}`, x + 18, 128);
+      g.fillStyle = "#8b9097";
+      g.font = "600 18px ui-monospace, Consolas, monospace";
+      g.fillText(label, x + 18 + g.measureText(`${v}`).width + 34, 126);
+      x += 230;
+    }
+    // agents, one row each
+    g.fillStyle = "#6e737a";
+    g.font = "600 16px ui-monospace, Consolas, monospace";
+    g.fillText("AGENT", 40, 170);
+    g.fillText("NOW", 250, 170);
+    g.textAlign = "right";
+    g.fillText("LAST", 920, 170);
+    crew.forEach((c, i) => {
+      const y = 205 + i * 42;
+      const working = c.state === "working";
+      if (working) {
+        g.fillStyle = "rgba(63,191,127,0.08)";
+        g.fillRect(36, y - 28, 892, 38);
+      }
+      g.fillStyle = HEX[c.state];
+      g.globalAlpha = working ? 0.55 + 0.45 * (sec % 2) : 1;
+      g.beginPath();
+      g.arc(52, y - 9, 7, 0, Math.PI * 2);
+      g.fill();
+      g.globalAlpha = 1;
+      g.textAlign = "left";
+      g.fillStyle = "#f2eee6";
+      g.font = "600 25px system-ui, 'Segoe UI', sans-serif";
+      g.fillText(c.name, 72, y);
+      g.fillStyle = "#a6abb2";
+      g.font = "400 22px system-ui, 'Segoe UI', sans-serif";
+      g.fillText(wrap(g, c.line, 520, 1)[0] ?? "", 250, y);
+      g.textAlign = "right";
+      g.fillStyle = "#7c828a";
+      g.font = "400 20px ui-monospace, Consolas, monospace";
+      g.fillText(ago(c.at), 920, y);
+    });
+    // HIVEMIND's latest actions
+    const fx = 980;
+    g.fillStyle = "#1a1d21";
+    g.fillRect(fx - 20, 150, 2, H - 190);
+    g.textAlign = "left";
+    g.fillStyle = "#6e737a";
+    g.font = "600 16px ui-monospace, Consolas, monospace";
+    g.fillText("LATEST ACTIVITY", fx, 170);
+    if (!this.feed.length) {
+      g.fillStyle = "#8b8f96";
+      g.font = "400 22px system-ui, sans-serif";
+      g.fillText("Nothing logged yet.", fx, 210);
+    }
+    const hi = this.feed.length ? sec % this.feed.length : -1; // the highlight steps down the list, one entry a second
+    this.feed.slice(0, 7).forEach((e, i) => {
+      const y = 208 + i * 42;
+      if (i === hi) {
+        g.fillStyle = "rgba(255,255,255,0.05)";
+        g.fillRect(fx - 8, y - 27, W - fx - 32, 38);
+      }
+      g.fillStyle = i === 0 ? "#e9e4da" : "#a6abb2";
+      g.font = `${i === 0 ? 600 : 400} 21px system-ui, 'Segoe UI', sans-serif`;
+      g.fillText(wrap(g, e.message, 440, 1)[0] ?? "", fx, y);
+      g.textAlign = "right";
+      g.fillStyle = "#6e737a";
+      g.font = "400 18px ui-monospace, Consolas, monospace";
+      g.fillText(ago(e.at), W - 40, y);
+      g.textAlign = "left";
+    });
+    // freshness
+    g.fillStyle = "#5c6168";
+    g.font = "400 17px ui-monospace, Consolas, monospace";
+    g.textAlign = "left";
+    g.fillText(this.fedAt ? `DATA UPDATED ${Math.max(0, Math.floor((now - this.fedAt) / 1000))}s AGO · REFRESHES EVERY 6s` : "", 40, H - 18);
+    tex.needsUpdate = true;
   }
 
   /** A dusk sky over a sci-fi city, seen through the hangar windows. */
   private buildSky() {
+    const c = document.createElement("canvas");
+    c.width = 1024;
+    c.height = 512;
+    this.skyCtx = c.getContext("2d")!;
+    this.skyTex = new THREE.CanvasTexture(c);
+    this.skyTex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshBasicMaterial({ map: this.skyTex, side: THREE.BackSide, fog: false, depthWrite: false, toneMapped: false });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(125, 48, 24), mat);
+    dome.renderOrder = -10;
+    this.sky = dome;
+    this.scene.add(dome);
+    this.disposables.push(this.skyTex, mat, dome.geometry);
+  }
+
+  /** Paints the sky for the hour: `day` 0 (night) to 1 (full day), `dusk` 0 to 1 near sunrise and sunset. */
+  private drawSky(day: number, dusk: number) {
+    const g = this.skyCtx;
     const W = 1024;
     const H = 512;
-    const c = document.createElement("canvas");
-    c.width = W;
-    c.height = H;
-    const g = c.getContext("2d")!;
-    // top of the image = zenith, middle = horizon
+    const mix = (a: string, b: string, k: number) => "#" + new THREE.Color(a).lerp(new THREE.Color(b), k).getHexString();
+    const top = mix("#0b1020", "#6f8fb3", day);
+    const mid = mix("#18203a", "#a9bed3", day);
+    const horizon = dusk > 0.2 ? mix(mix("#18203a", "#c9d4dc", day), "#e29b62", dusk * 0.8) : mix("#202943", "#d3dbe1", day);
     const grad = g.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, "#150f33");
-    grad.addColorStop(0.22, "#2b2060");
-    grad.addColorStop(0.38, "#6d3f80");
-    grad.addColorStop(0.46, "#c8606a");
-    grad.addColorStop(0.5, "#f0905a");
-    grad.addColorStop(0.52, "#1a1230");
-    grad.addColorStop(1, "#1a1230");
+    grad.addColorStop(0, top);
+    grad.addColorStop(0.35, mid);
+    grad.addColorStop(0.5, horizon);
+    grad.addColorStop(0.52, "#121418");
+    grad.addColorStop(1, "#121418");
     g.fillStyle = grad;
     g.fillRect(0, 0, W, H);
-    // nebula clouds
-    const clouds: Array<[number, number, number, string]> = [
-      [200, 150, 190, "rgba(255,190,150,0.35)"],
-      [520, 100, 230, "rgba(190,140,255,0.30)"],
-      [820, 170, 200, "rgba(130,190,255,0.28)"],
-      [360, 215, 170, "rgba(255,150,190,0.30)"],
-      [960, 90, 150, "rgba(255,200,160,0.30)"],
-    ];
-    for (const [x, y, r, col] of clouds) {
-      const rg = g.createRadialGradient(x, y, 0, x, y, r);
-      rg.addColorStop(0, col);
-      rg.addColorStop(1, "rgba(0,0,0,0)");
-      g.fillStyle = rg;
-      g.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    // a sci-fi city skyline at dusk: two layers of towers with lit windows, and a few flying ships
+    // the city outside: two layers of towers; windows lit in the evening and at night
     let seed = 7;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const towers = (fill: string, hMin: number, hMax: number, lit: number) => {
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const lit = 0.04 + (1 - day) * 0.3;
+    const towers = (fill: string, hMin: number, hMax: number, k: number) => {
       for (let x = 0; x < W; ) {
         const bw = 12 + rnd() * 30;
         const bh = hMin + rnd() * rnd() * (hMax - hMin);
         g.fillStyle = fill;
         g.fillRect(x, H * 0.52 - bh, bw, bh);
-        if (rnd() < 0.3) g.fillRect(x + bw * 0.45, H * 0.52 - bh - 14 - rnd() * 24, 3, 24); // antenna
         for (let wy = H * 0.52 - bh + 4; wy < H * 0.52 - 3; wy += 6) {
           for (let wx = x + 3; wx < x + bw - 3; wx += 5) {
-            if (rnd() < lit) {
-              g.fillStyle = rnd() < 0.7 ? "rgba(255,200,130,0.85)" : "rgba(130,210,255,0.85)";
+            if (rnd() < lit * k) {
+              g.fillStyle = "rgba(255,214,160,0.85)";
               g.fillRect(wx, wy, 2, 3);
             }
           }
@@ -599,27 +1098,18 @@ export class MissionScene {
         x += bw + 1 + rnd() * 3;
       }
     };
-    towers("#3a2a5e", 20, 90, 0.08);
-    towers("#14102a", 16, 120, 0.22);
-    g.fillStyle = "rgba(255,230,200,0.9)";
-    for (let i = 0; i < 9; i++) g.fillRect(rnd() * W, H * (0.3 + rnd() * 0.12), 7, 2);
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false, toneMapped: false });
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(125, 48, 24), mat);
-    dome.renderOrder = -10;
-    this.sky = dome;
-    this.scene.add(dome);
-    this.disposables.push(tex, mat, dome.geometry);
+    towers(mix("#2a2f3a", "#8a96a3", day), 20, 90, 0.6);
+    towers(mix("#14171d", "#5d6773", day), 16, 120, 1);
+    this.skyTex.needsUpdate = true;
   }
 
   /** The hangar around the deck: a window wall onto the city, a skylight ring, the hologram column, a K emblem, plants. */
   private buildHall() {
     const sc = this.scene;
-    const dark = new THREE.MeshStandardMaterial({ color: "#1d1a29", metalness: 0.7, roughness: 0.4, envMapIntensity: 0.6, side: THREE.BackSide });
-    const metal = new THREE.MeshStandardMaterial({ color: "#2b2738", metalness: 0.8, roughness: 0.35, envMapIntensity: 0.7 });
-    const amber = new THREE.MeshBasicMaterial({ color: "#ffae5e", toneMapped: false });
-    const blue = new THREE.MeshBasicMaterial({ color: "#60b4ff", toneMapped: false });
+    const dark = new THREE.MeshStandardMaterial({ color: "#2a2b2e", metalness: 0.4, roughness: 0.7, envMapIntensity: 0.6, side: THREE.BackSide });
+    const metal = new THREE.MeshStandardMaterial({ color: "#3a3c40", metalness: 0.8, roughness: 0.45, envMapIntensity: 0.7 });
+    const amber = new THREE.MeshBasicMaterial({ color: "#a8784a" });
+    const blue = new THREE.MeshBasicMaterial({ color: "#efe4d2" });
     this.disposables.push(dark, metal, amber, blue);
     const RW = 31;
     // low wall and window mullions all the way round
@@ -635,6 +1125,7 @@ export class MissionScene {
     const mull = new THREE.BoxGeometry(0.7, 15, 0.7);
     for (let i = 0; i < 28; i++) {
       const a = (i / 28) * Math.PI * 2;
+      if (-Math.cos(a) * RW > 20 && Math.abs(Math.sin(a) * RW) < 9) continue; // the entrance and the facade emblem
       const m = new THREE.Mesh(mull, metal);
       m.position.set(Math.sin(a) * RW, 4.2 + 7.5, -Math.cos(a) * RW);
       m.rotation.z = Math.sin(a * 2) * 0.05;
@@ -668,91 +1159,21 @@ export class MissionScene {
     const colMat = new THREE.MeshBasicMaterial({ map: ct, transparent: true, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
     const col = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.1, 18.6, 48, 1, true), colMat);
     col.position.y = 9.3;
-    sc.add(col);
     this.disposables.push(ct, colMat);
-    // the K emblem on the back wall
-    const ec = document.createElement("canvas");
-    ec.width = ec.height = 512;
-    const eg = ec.getContext("2d")!;
-    const rg = eg.createRadialGradient(256, 256, 40, 256, 256, 250);
-    rg.addColorStop(0, "#3a3550");
-    rg.addColorStop(1, "#15121f");
-    eg.fillStyle = rg;
-    eg.beginPath();
-    eg.arc(256, 256, 240, 0, Math.PI * 2);
-    eg.fill();
-    eg.strokeStyle = "#cfd3e6";
-    eg.lineWidth = 16;
-    eg.stroke();
-    eg.strokeStyle = "#ffb36b";
-    eg.lineWidth = 5;
-    eg.beginPath();
-    eg.arc(256, 256, 214, 0, Math.PI * 2);
-    eg.stroke();
-    eg.font = "900 330px Georgia, serif";
-    eg.textAlign = "center";
-    eg.textBaseline = "middle";
-    eg.shadowColor = "#ffb36b";
-    eg.shadowBlur = 24;
-    eg.fillStyle = "#e9ecf8";
-    eg.fillText("K", 256, 282);
-    const et = new THREE.CanvasTexture(ec);
-    et.colorSpace = THREE.SRGBColorSpace;
-    et.anisotropy = 8;
-    const emblem = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshBasicMaterial({ map: et, transparent: true, toneMapped: false }));
-    emblem.position.set(-9, 11, -(RW - 0.8));
-    sc.add(emblem);
-    this.disposables.push(et, emblem.material as THREE.Material);
-    // plants in pots round the edge and between the stations
-    const potGeo = new THREE.CylinderGeometry(0.55, 0.42, 0.9, 12);
-    const leafGeo = new THREE.SphereGeometry(0.5, 8, 6);
-    const potMat = new THREE.MeshStandardMaterial({ color: "#3a3446", metalness: 0.3, roughness: 0.5 });
-    const leafMat = new THREE.MeshStandardMaterial({ color: "#2f8a52", roughness: 0.6, emissive: "#0c3a1c", emissiveIntensity: 0.4 });
-    this.disposables.push(potGeo, leafGeo, potMat, leafMat);
+    // real potted plants round the edge of the hall
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2 + 0.2;
       const r = i % 2 ? RW - 2 : 20.5;
-      const g2 = new THREE.Group();
-      g2.position.set(Math.sin(a) * r, 0, -Math.cos(a) * r);
-      const pot = new THREE.Mesh(potGeo, potMat);
-      pot.position.y = 0.45;
-      g2.add(pot);
-      for (let k = 0; k < 9; k++) {
-        const lf = new THREE.Mesh(leafGeo, leafMat);
-        const ka = (k / 9) * Math.PI * 2;
-        lf.scale.set(0.35, 1.5 + (k % 3) * 0.35, 0.6);
-        lf.position.set(Math.sin(ka) * 0.32, 1.5 + (k % 3) * 0.25, Math.cos(ka) * 0.32);
-        lf.rotation.set(Math.cos(ka) * 0.5, ka, -Math.sin(ka) * 0.5);
-        g2.add(lf);
-      }
-      sc.add(g2);
+      placeModel(sc, "plant", { x: Math.sin(a) * r, z: -Math.cos(a) * r, yaw: a * 3, height: 1.9 });
     }
-  }
-
-  private buildDust() {
-    const n = this.mobile ? 160 : 420;
-    const pos = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 3 + Math.random() * 22;
-      pos[i * 3] = Math.cos(a) * r;
-      pos[i * 3 + 1] = Math.random() * 12;
-      pos[i * 3 + 2] = Math.sin(a) * r;
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({ color: "#9fb4ff", size: 0.06, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true });
-    this.dust = new THREE.Points(geo, mat);
-    this.scene.add(this.dust);
-    this.disposables.push(mat);
   }
 
   private buildPod(a: CrewAgent, i: number, n: number): Pod {
     // Not an even ring: every area sits at its own angle and distance, so the hall reads as seven different places.
-    const spot = PLACE[a.id] ?? { a: (n === 1 ? 0 : i / (n - 1) - 0.5) * 1.2, r: R };
-    const ang = spot.a * Math.PI * (this.portrait ? SPAN_PORTRAIT / SPAN : 1);
-    const ringR = spot.r * (this.portrait ? R_PORTRAIT / R : 1);
-    const pos = new THREE.Vector3(Math.sin(ang) * ringR, 0, -Math.cos(ang) * ringR);
+    const fallback = (n === 1 ? 0 : i / (n - 1) - 0.5) * Math.PI * 1.2;
+    const spot = PLACE[a.id] ?? { x: Math.sin(fallback) * R, z: -Math.cos(fallback) * R };
+    const k = this.portrait ? PORTRAIT_SHRINK : 1;
+    const pos = new THREE.Vector3(spot.x * k, 0, spot.z * k);
     const group = new THREE.Group();
     group.position.copy(pos);
     const col = new THREE.Color(HEX[a.state]);
@@ -762,17 +1183,19 @@ export class MissionScene {
     // Each agent has its own kind of place: round clock dais, observatory deck, control room, bedroom, study, bell plaza, workshop.
     const TH: Record<string, { shape: "round" | "oct" | "box"; w: number; d: number; floor: string; wall: string | null; rough: number }> = {
       scheduler: { shape: "round", w: 2.9, d: 2.9, floor: "#6a4a30", wall: null, rough: 0.5 },
-      autopilot: { shape: "oct", w: 2.9, d: 2.9, floor: "#2b3a58", wall: null, rough: 0.35 },
-      web: { shape: "box", w: 5.4, d: 4.7, floor: "#1e2a46", wall: "#16203a", rough: 0.3 },
-      dream: { shape: "box", w: 5.3, d: 4.7, floor: "#6b4a33", wall: "#43356a", rough: 0.6 },
+      autopilot: { shape: "oct", w: 2.9, d: 2.9, floor: "#4a4d52", wall: null, rough: 0.6 },
+      web: { shape: "box", w: 5.4, d: 4.7, floor: "#3b3e43", wall: "#2c2f34", rough: 0.6 },
+      dream: { shape: "box", w: 5.3, d: 4.7, floor: "#6b4a33", wall: "#4a4642", rough: 0.6 },
       brief: { shape: "box", w: 5.3, d: 4.7, floor: "#7a5a3a", wall: "#4a3a2a", rough: 0.6 },
-      reminders: { shape: "oct", w: 2.9, d: 2.9, floor: "#7a4a62", wall: null, rough: 0.45 },
+      reminders: { shape: "oct", w: 2.9, d: 2.9, floor: "#5c544c", wall: null, rough: 0.7 },
       apps: { shape: "box", w: 5.4, d: 4.7, floor: "#3a3d46", wall: "#2e3038", rough: 0.55 },
     };
     const th = TH[a.id] ?? TH.web;
     const W = th.w;
     const D = th.d;
-    const floorMat = new THREE.MeshStandardMaterial({ color: th.floor, metalness: 0.25, roughness: th.rough, envMapIntensity: 0.7 });
+    // each area's own floor: oak boards in the warm rooms, polished concrete in the technical ones
+    const woodFloor = a.id === "scheduler" || a.id === "dream" || a.id === "brief";
+    const floorMat = surface(new THREE.MeshStandardMaterial({ envMapIntensity: 0.7 }), woodFloor ? "oak" : "concrete_floor", 2, woodFloor ? "#b8a58e" : "#bdb8b0");
     const wallMat = new THREE.MeshStandardMaterial({ color: th.wall ?? "#2a2433", metalness: 0.3, roughness: 0.55, envMapIntensity: 0.6 });
     this.disposables.push(floorMat, wallMat);
     const ring = new THREE.Group();
@@ -832,9 +1255,9 @@ export class MissionScene {
       ring.add(step);
     }
     // a rug or floor marking that gives each place its own character
-    const rugCol: Record<string, string> = { dream: "#3c2a66", brief: "#5b3a8a", apps: "#facc15", web: "#2a4b8a" };
+    const rugCol: Record<string, string> = { dream: "#3d3c40", brief: "#4a4038", apps: "#2a2b2d", web: "#35383d" }; // carpet tiles; a rubber mat at the bench
     if (a.id === "dream" || a.id === "brief" || a.id === "web") {
-      const rug = new THREE.Mesh(a.id === "dream" ? new THREE.CircleGeometry(1.6, 40) : new THREE.PlaneGeometry(a.id === "web" ? 3.4 : 2.8, 1.9), new THREE.MeshStandardMaterial({ color: rugCol[a.id], roughness: 0.95 }));
+      const rug = new THREE.Mesh(a.id === "dream" ? new THREE.PlaneGeometry(2.8, 1.9) : new THREE.PlaneGeometry(a.id === "web" ? 3.4 : 2.8, 1.9), new THREE.MeshStandardMaterial({ color: rugCol[a.id], roughness: 0.95 }));
       rug.rotation.x = -Math.PI / 2;
       rug.position.set(0, 0.405, 0.35);
       this.disposables.push(rug.geometry, rug.material as THREE.Material);
@@ -855,53 +1278,10 @@ export class MissionScene {
     const mark = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.01, 64), ringMat);
     mark.rotation.x = -Math.PI / 2;
     mark.position.y = 0.405;
+    mark.visible = false; // no glowing circle on the floor: the state shows on the station screen
     ring.add(mark);
-    // clutter that makes it a working space: crates in one back corner, a warm lamp and a plant in the other
-    const crateMat = new THREE.MeshStandardMaterial({ color: "#5a4636", metalness: 0.4, roughness: 0.55, envMapIntensity: 0.6 });
-    const bandMat = new THREE.MeshBasicMaterial({ color: "#ffae5e", toneMapped: false });
-    const crateGeo = new THREE.BoxGeometry(0.95, 0.7, 0.95);
-    const crateGeo2 = new THREE.BoxGeometry(0.7, 0.55, 0.7);
-    const bandGeo = new THREE.BoxGeometry(0.97, 0.06, 0.97);
-    const c1 = new THREE.Mesh(crateGeo, crateMat);
-    c1.position.set(-2.0, 0.75, -1.65);
-    const c2 = new THREE.Mesh(crateGeo2, crateMat);
-    c2.position.set(-2.05, 1.38, -1.62);
-    c2.rotation.y = 0.5;
-    const c3 = new THREE.Mesh(crateGeo, crateMat);
-    c3.position.set(-1.0, 0.75, -1.85);
-    c3.rotation.y = -0.2;
-    for (const m of a.id === "scheduler" || a.id === "apps" || a.id === "autopilot" ? [c1, c3] : []) {
-      const band = new THREE.Mesh(bandGeo, bandMat);
-      band.position.copy(m.position);
-      band.rotation.y = m.rotation.y;
-      ring.add(band);
-    }
-    const poleMat = new THREE.MeshStandardMaterial({ color: "#2a2638", metalness: 0.8, roughness: 0.35 });
-    const lampGlow = new THREE.SpriteMaterial({ map: radialTexture([[0, "rgba(255,190,110,0.95)"], [0.35, "rgba(255,160,70,0.35)"], [1, "rgba(255,150,60,0)"]]), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.7, 8), poleMat);
-    pole.position.set(2.1, 1.25, 1.95);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), bandMat);
-    bulb.position.set(2.1, 2.18, 1.95);
-    const gl = new THREE.Sprite(lampGlow);
-    gl.position.copy(bulb.position);
-    gl.scale.setScalar(2.2);
-    const potM = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.27, 0.5, 12), poleMat);
-    potM.position.set(-2.1, 0.65, 1.9);
-    for (let k = 0; k < 7; k++) {
-      const lf = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshStandardMaterial({ color: "#2f8a52", roughness: 0.6, emissive: "#0c3a1c", emissiveIntensity: 0.4 }));
-      const ka = (k / 7) * Math.PI * 2;
-      lf.scale.set(0.3, 1.5, 0.5);
-      lf.position.set(-2.1 + Math.sin(ka) * 0.2, 1.3 + (k % 2) * 0.15, 1.9 + Math.cos(ka) * 0.2);
-      lf.rotation.set(Math.cos(ka) * 0.5, ka, -Math.sin(ka) * 0.5);
-      ring.add(lf);
-      this.disposables.push(lf.geometry, lf.material as THREE.Material);
-    }
-    if (a.id === "scheduler" || a.id === "apps" || a.id === "autopilot") ring.add(c1, c2, c3);
-    ring.add(pole, bulb, gl, potM);
-    this.disposables.push(crateMat, bandMat, crateGeo, crateGeo2, bandGeo, poleMat, lampGlow, pole.geometry, bulb.geometry, potM.geometry);
-
     // the robot itself: built in code, scaled to a fixed height, standing on the plinth
-    const rig = this.model ? buildMocapRobot(this.model, PAINT[a.id], col, ROBOT_SCALE) : buildRobot(PAINT[a.id], col, a.name);
+    const rig = buildRobot(PAINT[a.id], col, a.name);
     rig.root.scale.setScalar(ROBOT_SCALE);
     rig.root.position.y = 0.4;
     this.disposables.push(rig);
@@ -910,6 +1290,7 @@ export class MissionScene {
     const halo = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.028, 10, 48), haloMat);
     halo.rotation.x = Math.PI / 2;
     halo.position.y = ROBOT_H + 0.75;
+    halo.visible = false; // the state shows on the station screen and the wall board, not as a ring over its head
 
     // soft pool of coloured light on the floor + an alert ripple
     const glowMat = new THREE.MeshBasicMaterial({ map: radialTexture([[0, "rgba(255,255,255,0.5)"], [0.5, "rgba(255,255,255,0.08)"], [1, "rgba(255,255,255,0)"]]), color: col, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
@@ -929,8 +1310,29 @@ export class MissionScene {
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 8;
-    const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.06), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
-    panel.position.y = PANEL_Y;
+    // the station's status screen: on a floor stand at the front corner, angled toward the open floor
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.47), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+    {
+      const sx = th.shape === "box" ? W / 2 - 0.55 : W * 0.62;
+      const sz = th.shape === "box" ? D / 2 - 0.3 : W * 0.62;
+      const standMat = new THREE.MeshStandardMaterial({ color: "#26282c", metalness: 0.7, roughness: 0.5 });
+      const bezel = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.57, 0.06), standMat);
+      const pole = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.95, 0.07), standMat);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.04, 0.35), standMat);
+      const stand = new THREE.Group();
+      stand.position.set(sx, 0.4, sz);
+      stand.rotation.y = -0.45;
+      stand.scale.setScalar(0.8);
+      bezel.position.set(0, 1.1, -0.035);
+      bezel.rotation.x = -0.35; // a waist-height kiosk, tilted up toward whoever walks past
+      pole.position.set(0, 0.48, -0.06);
+      foot.position.set(0, 0.02, -0.06);
+      panel.position.set(0, 1.1, 0.001);
+      panel.rotation.x = -0.35;
+      stand.add(bezel, pole, foot, panel);
+      ring.add(stand);
+      this.disposables.push(standMat, bezel.geometry, pole.geometry, foot.geometry);
+    }
     panel.renderOrder = 5;
 
     // click target: a generous invisible column
@@ -948,21 +1350,33 @@ export class MissionScene {
     blob.position.y = 0.03; // rides with the robot, so its shadow follows it across the deck
     this.disposables.push(shadowTex, blob.material as THREE.Material);
     rig.root.add(blob);
+    // A lit name sign, like the room signs in a real office: high on the back wall, or on a post for open platforms.
+    const sign = nameSign(a.name, PAINT[a.id], this.disposables);
+    if (th.shape === "box") sign.position.set(0, 3.72, -D / 2 + 0.12);
+    else {
+      sign.position.set(0, 3.05, -W + 0.2);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.5, 8), metal);
+      post.position.set(0, 0.4 + 1.25, -W + 0.15);
+      this.disposables.push(post.geometry);
+      ring.add(post);
+    }
+    ring.add(sign);
     group.add(slab, plinth, ring, halo, glow, ripple, panel, hit, station.group);
     group.add(rig.root);
-    group.lookAt(0, 0, 0);
+    const face = faceDir(pos, !!spot.front);
+    group.lookAt(pos.x + face.x, 0, pos.z + face.z);
     this.scene.add(group);
 
     // energy line to the core (curve in world space) and the packets that ride it
-    const from = new THREE.Vector3(pos.x * 0.84, 0.35, pos.z * 0.84);
-    const to = new THREE.Vector3(0, 0.55, 0);
-    const mid = from.clone().lerp(to, 0.5).setY(1.6);
+    const from = new THREE.Vector3(pos.x * 0.8, 0.05, pos.z * 0.8);
+    const to = new THREE.Vector3(pos.x, 0, pos.z).setLength(4.3).setY(0.05);
+    const mid = from.clone().lerp(to, 0.5).setY(0.05);
     const curve = new THREE.QuadraticBezierCurve3(from, mid, to);
-    const beamMat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
-    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.022, 6, false), beamMat);
+    const beamMat = new THREE.MeshBasicMaterial({ color: "#2f3033" });
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.035, 6, false), beamMat);
     this.scene.add(tube);
     const packetMat = new THREE.MeshBasicMaterial({ color: col, toneMapped: false });
-    const pg = new THREE.SphereGeometry(0.11, 12, 8);
+    const pg = new THREE.SphereGeometry(0.055, 10, 6);
     const packets = [0, 1, 2].map(() => {
       const m = new THREE.Mesh(pg, packetMat);
       m.visible = false;
@@ -971,11 +1385,20 @@ export class MissionScene {
     });
     this.disposables.push(metal, ringMat, haloMat, glowMat, rippleMat, tex, panel.material as THREE.Material, hit.material as THREE.Material, beamMat, packetMat);
 
-    return { id: a.id, pos, group, rig, station, at: { x: HOME.x, z: HOME.z }, mode: "", stopIdx: 0, dwell: 0, arrived: false, act: "none" as Act, walk: 0, errand: null, nextErrand: performance.now() / 1000 + 2 + i * 1.1, fw: th.shape === "box" ? W / 2 : W, fd: th.shape === "box" ? D / 2 : W, fr: th.shape === "box" ? 0 : W, note: null, agent: a, hostUntil: 0, hostFace: 0, halo, haloMat, prop, ringMat, glowMat, rippleMat, ripple, beamMat, packetMat, curve, packets, panel, tex, ctx, key: "", state: a.state, col, tgt: col.clone(), phase: i * 1.3, born: performance.now() + 250 + i * 130, cele: 0, lift: this.portrait && i % 2 ? 1.7 : 0, burst: 0, hv: 0 };
+    return { id: a.id, pos, group, rig, station, at: { x: HOME.x, z: HOME.z }, mode: "", stopIdx: 0, dwell: 0, arrived: false, act: "none" as Act, walk: 0, errand: null, nextErrand: performance.now() / 1000 + 2 + i * 1.1, fw: th.shape === "box" ? W / 2 : W, fd: th.shape === "box" ? D / 2 : W, fr: th.shape === "box" ? 0 : W, note: null, agent: a, hostUntil: 0, hostFace: 0, halo, haloMat, prop, ringMat, glowMat, rippleMat, ripple, beamMat, packetMat, curve, packets, panel, tex, ctx, key: "", state: a.state, col, tgt: col.clone(), phase: i * 1.3, born: performance.now() + 250 + i * 130, cele: 0, gated: false, path: null, pathGoal: null, lift: spot.front ? -2.3 : this.portrait && i % 2 ? 1.7 : 0, burst: 0, hv: 0 };
   }
 
   // ---------- data ----------
+  /** The latest entries of HIVEMIND's activity log, newest first. */
+  setFeed(feed: Array<{ message: string; at: string }>) {
+    this.feed = feed.slice(0, 8);
+    if (this.board) this.drawBoard();
+  }
+
   setCrew(crew: CrewAgent[]) {
+    this.crew = crew;
+    this.fedAt = Date.now();
+    if (this.board) this.drawBoard();
     if (!this.modelDone) {
       this.pending = crew; // build the pods once the robot model has arrived
       return;
@@ -983,6 +1406,10 @@ export class MissionScene {
     if (this.pods.length === 0) {
       crew.forEach((a, i) => this.pods.push(this.buildPod(a, i, crew.length)));
       this.hooks.onReady?.();
+      if (!this.shadowsDone) {
+        this.shadowsDone = true;
+        this.enableShadows();
+      }
     }
     for (const a of crew) {
       const p = this.pods.find((x) => x.id === a.id);
@@ -993,7 +1420,7 @@ export class MissionScene {
         const was = p.state;
         if (was === "working" && (a.state === "idle" || a.state === "sleeping")) {
           p.cele = 1; // it finished: celebrate, then carry the result to the core
-          setTimeout(() => !this.dead && this.startErrand(p, null), 2800);
+          setTimeout(() => !this.dead && this.startErrand(p, null, "Delivering finished work to the coordination desk"), 2800);
         }
         // Clockwork is what wakes the others: when a job starts, it walks over to set it going
         if (a.state === "working" && was !== "working" && p.id !== "scheduler") {
@@ -1023,16 +1450,16 @@ export class MissionScene {
     const now = performance.now() / 1000;
     const busy = mode === "work" || mode === "idle";
     if (p.errand && (!busy || this.selected === p.id)) this.endErrand(p);
-    // Every so often a robot has a reason to walk across the hall to a colleague or to the core.
-    if (!p.errand && busy && this.selected !== p.id && now > p.nextErrand) {
-      p.nextErrand = now + 9 + ((p.phase * 17) % 8);
+    // A working agent now and then takes its work to the coordination desk, or to the colleague it hands work to.
+    // Idle and sleeping agents stay at their own stations: no made-up trips.
+    if (!p.errand && mode === "work" && this.selected !== p.id && now > p.nextErrand) {
+      p.nextErrand = now + 24 + ((p.phase * 17) % 12);
       const jobs = JOBS[p.id].filter((j) => j.to === "core" || this.pods.find((x) => x.id === j.to)?.state !== "sleeping");
       const job = jobs[Math.floor(Math.random() * jobs.length)];
-      // sometimes it just strolls out onto the open floor in front of its area, to stretch its legs or look around
-      if (Math.abs(p.group.position.x) > 4 && Math.random() < 0.4) {
-        const spots = STROLLS[Math.floor(Math.random() * STROLLS.length)];
-        this.startErrand(p, null, spots.text, { x: p.group.position.x * 0.92, z: spots.z });
-      } else if (job) this.startErrand(p, job.to === "core" ? null : (this.pods.find((x) => x.id === job.to) ?? null), job.text);
+      if (job) {
+        const host = job.to === "core" ? null : (this.pods.find((x) => x.id === job.to) ?? null);
+        this.startErrand(p, host, host ? `Handing off to ${host.agent.name}` : "Reporting to the coordination desk");
+      }
     }
     const hosting = p.hostUntil > now && busy;
     const list = mode === "work" ? st.work : mode === "idle" ? st.idle : [mode === "sleep" ? st.sleep : ALERT_STOP];
@@ -1041,10 +1468,22 @@ export class MissionScene {
     if (hosting) stop = { x: p.at.x, z: p.at.z, face: p.hostFace, act: "chat", dwell: 99 };
     // Rooms have walls and props: to get in or out, walk through the open front.
     const inside = (x: number, z: number) => (p.fr > 0 ? Math.hypot(x, z) < p.fr - 0.15 : Math.abs(x) < p.fw - 0.15 && Math.abs(z) < p.fd - 0.15);
+    // Once it has reached the door it goes straight through (it remembers, so a step past the door doesn't send it back).
     const gate = { x: 0, z: p.fd + 0.75 };
-    if (inside(p.at.x, p.at.z) !== inside(stop.x, stop.z) && Math.hypot(gate.x - p.at.x, gate.z - p.at.z) > 0.25) {
+    const crossing = inside(p.at.x, p.at.z) !== inside(stop.x, stop.z);
+    if (!crossing) p.gated = false;
+    else if (Math.hypot(gate.x - p.at.x, gate.z - p.at.z) <= 0.25) p.gated = true;
+    if (crossing && !p.gated) {
       stop = { x: gate.x, z: gate.z, face: 0, act: "none", dwell: 0 };
     }
+    // Never through the walls: if the straight line from outside the room to the stop crosses it, go round a corner first.
+    // (Without this a robot whose target lay behind its own room walked in, was sent back to the door, and so on: walking in place.)
+    // Out on the floor it follows a route planned once, round every room and the coordination desk (planning once,
+    // instead of choosing a detour every frame, is what stops a robot dithering between two ways round).
+    if (!inside(p.at.x, p.at.z) && !inside(stop.x, stop.z)) {
+      const via = this.nextWaypoint(p, stop.x, stop.z);
+      if (via) stop = { x: via.x, z: via.z, face: 0, act: "none", dwell: 0 };
+    } else p.path = null;
     const dx = stop.x - p.at.x;
     const dz = stop.z - p.at.z;
     const dist = Math.hypot(dx, dz);
@@ -1108,20 +1547,23 @@ export class MissionScene {
       lookAt = new THREE.Vector3(0, 0, 0);
     } else if (host) {
       host.group.updateMatrixWorld(true);
-      const g = host.group.localToWorld(new THREE.Vector3(0, 0, host.fd + 1.1)); // just outside the host's open front
+      const side = ((this.pods.indexOf(p) % 3) - 1) * 1.3; // visitors stand side by side, not on one spot
+      const g = host.group.localToWorld(new THREE.Vector3(side, 0, host.fd + 1.1)); // just outside the host's open front
       wx = g.x;
       wz = g.z;
       lookAt = new THREE.Vector3(host.group.position.x, 0, host.group.position.z);
     } else {
       const d = new THREE.Vector3(here.x, 0, here.z).normalize();
-      wx = d.x * 3.7;
-      wz = d.z * 3.7;
+      wx = d.x * 5;
+      wz = d.z * 5;
       lookAt = new THREE.Vector3(0, 0, 0);
     }
     const hl = p.group.worldToLocal(lookAt.clone());
     const l = p.group.worldToLocal(new THREE.Vector3(wx, 0, wz));
     const face = Math.atan2(hl.x - l.x, hl.z - l.z);
     p.errand = { x: l.x, z: l.z, face, host };
+    // the hand-off shows as a lit path between the two stations (or to the hub) for the length of the trip
+    this.link(p.id, host ? host.id : null, 14);
     p.arrived = false;
     if (note) {
       p.note = note;
@@ -1165,79 +1607,241 @@ export class MissionScene {
     const g = p.ctx;
     const W = 640;
     const H = 200;
-    const accent = HEX[a.state];
-    g.clearRect(0, 0, W, H);
-    // a compact dark-glass speech pill: icon tile, name, one line of status, a status dot
-    g.save();
-    g.shadowColor = "rgba(0,0,0,0.5)";
-    g.shadowBlur = 18;
-    g.fillStyle = "rgba(34,30,50,0.86)";
-    g.beginPath();
-    g.roundRect(10, 8, W - 20, 152, 34);
-    g.fill();
-    g.restore();
-    g.lineWidth = 2;
-    g.strokeStyle = "rgba(255,255,255,0.16)";
-    g.beginPath();
-    g.roundRect(10, 8, W - 20, 152, 34);
-    g.stroke();
-    // little tail pointing down at the robot
-    g.fillStyle = "rgba(34,30,50,0.86)";
-    g.beginPath();
-    g.moveTo(W / 2 - 16, 158);
-    g.lineTo(W / 2, 190);
-    g.lineTo(W / 2 + 16, 158);
-    g.fill();
-    // icon tile
-    const tile = g.createLinearGradient(30, 30, 130, 130);
-    tile.addColorStop(0, "#8b5cf6");
-    tile.addColorStop(1, "#6d28d9");
-    g.fillStyle = tile;
-    g.beginPath();
-    g.roundRect(30, 32, 100, 100, 26);
-    g.fill();
-    g.fillStyle = "#ffffff";
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.font = "600 56px system-ui, 'Segoe UI Emoji', sans-serif";
-    g.fillText(GLYPH[a.id], 80, 84);
+    const t = performance.now() / 1000;
+    g.fillStyle = "#0c0e11";
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = HEX[a.state];
+    g.fillRect(0, 0, 8, H);
     g.textAlign = "left";
     g.textBaseline = "alphabetic";
-    g.fillStyle = "#ffffff";
-    g.font = "600 46px system-ui, 'Segoe UI', sans-serif";
-    g.fillText(a.name, 152, 78);
-    g.fillStyle = "rgba(255,255,255,0.68)";
-    g.font = "400 28px system-ui, 'Segoe UI', sans-serif";
-    g.fillText(wrap(g, p.note ?? a.line, W - 152 - 70, 1)[0] ?? "", 152, 120);
-    g.fillStyle = accent;
+    g.fillStyle = "#f2eee6";
+    g.font = "600 44px system-ui, 'Segoe UI', sans-serif";
+    g.fillText(a.name, 30, 56);
+    g.textAlign = "right";
+    g.fillStyle = HEX[a.state];
+    g.font = "600 25px ui-monospace, Consolas, monospace";
+    g.fillText(STATE_WORD[a.state], W - 26, 52);
+    g.textAlign = "left";
+    g.fillStyle = "#b9bdc3";
+    g.font = "400 27px system-ui, 'Segoe UI', sans-serif";
+    wrap(g, p.note ?? a.line, W - 60, 2).forEach((l, i) => g.fillText(l, 30, 100 + i * 33));
+    // an activity trace along the bottom: busy while working, a slow heartbeat when ready, almost flat asleep
+    const speed = a.state === "working" ? 3.2 : a.state === "alert" ? 2 : a.state === "idle" ? 0.8 : 0.2;
+    const amp = a.state === "working" ? 14 : a.state === "alert" ? 10 : a.state === "idle" ? 6 : 1.5;
+    g.strokeStyle = HEX[a.state];
+    g.globalAlpha = 0.85;
+    g.lineWidth = 2;
     g.beginPath();
-    g.arc(W - 48, 50, 11, 0, Math.PI * 2);
-    g.fill();
+    for (let x = 0; x <= W - 60; x += 4) {
+      const u = x / 40 + t * speed;
+      const beat = Math.pow(Math.max(0, Math.sin(u)), 12) * 2 - 0.3;
+      const y = 172 - (a.state === "working" ? Math.sin(u * 2.3) * 0.6 + Math.sin(u * 0.7) * 0.4 + beat * 0.5 : beat) * amp;
+      if (x === 0) g.moveTo(30 + x, y);
+      else g.lineTo(30 + x, y);
+    }
+    g.stroke();
+    g.globalAlpha = 1;
     p.tex.needsUpdate = true;
   }
 
+  /** A command you gave is running (true) or finished (false): the hub hologram brightens while it runs. */
+  setBusy(on: boolean) {
+    this.busyOn = on;
+  }
+
+  /** Your command just used this agent's tool: a lit path runs from the hub to its station, and the station flashes. */
+  signal(id: CrewId) {
+    const p = this.pods.find((x) => x.id === id);
+    if (!p) return;
+    p.burst = 1;
+    this.link(null, id, 7);
+  }
+
+  /** A lit path on the floor between two places (an agent's station, or the hub for null) for `seconds`. */
+  private link(from: CrewId | null, to: CrewId | null, seconds: number) {
+    const key = `${from}>${to}`;
+    const until = performance.now() / 1000 + seconds;
+    const have = this.links.find((l) => l.key === key);
+    if (have) {
+      have.until = Math.max(have.until, until);
+      return;
+    }
+    const at = (id: CrewId | null) => (id ? (this.pods.find((x) => x.id === id)?.group.position.clone() ?? null) : new THREE.Vector3());
+    const a = at(from);
+    const b = at(to);
+    if (!a || !b) return;
+    a.y = b.y = 0;
+    const dir = b.clone().sub(a);
+    const len = dir.length();
+    dir.normalize();
+    // start and end just outside the room (or the hub's desk), not under it
+    const sa = from ? 3.1 : 4.6;
+    const sb = to ? 3.1 : 4.6;
+    if (len < sa + sb + 0.5) return;
+    const p0 = a.clone().addScaledVector(dir, sa);
+    const p1 = b.clone().addScaledVector(dir, -sb);
+    const L = p0.distanceTo(p1);
+    if (!this.flowTex) {
+      const c = document.createElement("canvas");
+      c.width = 128;
+      c.height = 16;
+      const g = c.getContext("2d")!;
+      const gr = g.createLinearGradient(0, 0, 128, 0);
+      gr.addColorStop(0, "rgba(56,214,245,0.05)");
+      gr.addColorStop(0.7, "rgba(56,214,245,0.55)");
+      gr.addColorStop(0.95, "rgba(200,245,255,1)");
+      gr.addColorStop(1, "rgba(56,214,245,0.05)");
+      g.fillStyle = gr;
+      g.fillRect(0, 4, 128, 8);
+      this.flowTex = new THREE.CanvasTexture(c);
+      this.flowTex.wrapS = THREE.RepeatWrapping;
+      this.disposables.push(this.flowTex);
+    }
+    const tex = this.flowTex.clone();
+    tex.needsUpdate = true;
+    tex.repeat.set(L / 1.6, 1);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(L, 0.22), mat);
+    mesh.position.copy(p0.clone().lerp(p1, 0.5)).setY(0.07);
+    mesh.rotation.order = "YXZ";
+    mesh.rotation.y = Math.atan2(-dir.z, dir.x);
+    mesh.rotation.x = -Math.PI / 2;
+    this.scene.add(mesh);
+    this.links.push({ key, mesh, mat, until });
+  }
+
+  /** Paths fade in, flow from sender to receiver, and fade out when the exchange is over. */
+  private updateLinks(t: number, dt: number) {
+    const now = performance.now() / 1000;
+    for (const l of [...this.links]) {
+      const want = now < l.until ? 0.9 : 0;
+      l.mat.opacity += (want - l.mat.opacity) * (1 - Math.pow(0.02, dt));
+      if (l.mat.map) l.mat.map.offset.x = -t * 0.9;
+      if (want === 0 && l.mat.opacity < 0.02) {
+        this.scene.remove(l.mesh);
+        l.mesh.geometry.dispose();
+        l.mat.map?.dispose();
+        l.mat.dispose();
+        this.links.splice(this.links.indexOf(l), 1);
+      }
+    }
+  }
+
   select(id: CrewId | null) {
+    if (id && this.view === "outside") {
+      this.view = "inside";
+      this.roofGroup.visible = false;
+    }
     this.selected = id;
     this.idleSince = performance.now();
     if (!id) {
-      this.tTarget.copy(HOME_TARGET);
+      this.tTarget.copy(this.homeTarget());
       this.tDist = this.homeDist();
-      this.tPhi = this.portrait ? 0.92 : 1.12;
+      this.tPhi = this.homePhi();
       return;
     }
     const p = this.pods.find((x) => x.id === id);
     if (!p) return;
     p.burst = 1;
-    this.tTarget.set(p.pos.x * 0.92, 2.45, p.pos.z * 0.92);
-    this.tDist = this.portrait ? 11 : 7.6;
+    // view the pod from the side it faces, a little off to one side, so screens face us and the core stays out of shot
+    const f = faceDir(p.pos, !!PLACE[id]?.front);
+    this.tTarget.set(p.pos.x + f.x * 0.7, 1.4, p.pos.z + f.z * 0.7);
+    this.tDist = this.portrait ? 9 : 6.2;
     this.tPhi = 1.38;
-    // view the pod from the inner side, a little off to one side, so screens face us and the core stays out of shot
-    const want = Math.atan2(-p.pos.x, -p.pos.z) + (p.pos.x >= 0 ? -0.95 : 0.95);
+    const want = Math.atan2(f.x, f.z) + (p.pos.x >= 0 ? -0.6 : 0.6);
     const d = ((want - this.theta + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     this.tTheta = this.theta + d;
   }
 
   /** Robots never walk through each other: a walker is nudged aside from anyone within arm's reach. */
+  /** The next point to walk to on the way to (tx, tz) in p's own coordinates, planning the route when the goal changes. Null: go straight. */
+  private nextWaypoint(p: Pod, tx: number, tz: number) {
+    const here = p.group.localToWorld(new THREE.Vector3(p.at.x, 0, p.at.z));
+    const goal = p.group.localToWorld(new THREE.Vector3(tx, 0, tz));
+    if (!p.pathGoal || p.pathGoal.distanceTo(goal) > 0.3 || !p.path) {
+      p.pathGoal = goal;
+      p.path = this.plan(here, goal);
+    }
+    while (p.path.length && p.path[0].distanceTo(here) < 0.3) p.path.shift();
+    if (!p.path.length) return null;
+    const l = p.group.worldToLocal(p.path[0].clone());
+    return { x: l.x, z: l.z };
+  }
+
+  /**
+   * Shortest route from a to b across the floor that goes round every room and the coordination desk: a small graph of
+   * points just outside each room's corners and round the desk, joined wherever the straight line between them is clear.
+   * Returns the points to visit after a (ending before b); empty when the straight line is already clear.
+   */
+  private plan(a: THREE.Vector3, b: THREE.Vector3): THREE.Vector3[] {
+    const DESK = 4.5;
+    const v = new THREE.Vector3();
+    const rooms = this.pods.map((h) => ({ h, r: h.fr > 0 }));
+    const inRoom = (x: number, z: number, o: { h: Pod; r: boolean }) => {
+      v.set(x, 0, z);
+      o.h.group.worldToLocal(v);
+      return o.r ? Math.hypot(v.x, v.z) < o.h.fr + 0.25 : Math.abs(v.x) < o.h.fw + 0.25 && Math.abs(v.z) < o.h.fd + 0.25;
+    };
+    // obstacles a or b sit in (a robot at a door, a goal by a desk) don't count for lines touching that end
+    const skipA = rooms.filter((o) => inRoom(a.x, a.z, o));
+    const skipB = rooms.filter((o) => inRoom(b.x, b.z, o));
+    const deskA = Math.hypot(a.x, a.z) < DESK + 0.1;
+    const deskB = Math.hypot(b.x, b.z) < DESK + 0.1;
+    const p0 = new THREE.Vector3();
+    const p1 = new THREE.Vector3();
+    const clear = (x0: number, z0: number, x1: number, z1: number, endA: boolean, endB: boolean) => {
+      if (!(endA && deskA) && !(endB && deskB) && segHitsCircle(x0, z0, x1, z1, DESK)) return false;
+      for (const o of rooms) {
+        // a room the robot (or its goal) stands at the edge of still can't be walked through: only its margin is waived
+        const m = (endA && skipA.includes(o)) || (endB && skipB.includes(o)) ? -0.2 : 0.2;
+        p0.set(x0, 0, z0);
+        p1.set(x1, 0, z1);
+        o.h.group.worldToLocal(p0);
+        o.h.group.worldToLocal(p1);
+        const hit = o.r ? segHitsCircle(p0.x, p0.z, p1.x, p1.z, o.h.fr + m) : segHitsBox(p0.x, p0.z, p1.x, p1.z, o.h.fw + m, o.h.fd + m);
+        if (hit) return false;
+      }
+      return true;
+    };
+    if (clear(a.x, a.z, b.x, b.z, true, true)) return [];
+    // graph nodes: a, b, room corners, points round the desk
+    const nodes: THREE.Vector3[] = [a, b];
+    for (const o of rooms) {
+      const ex = (o.r ? o.h.fr : o.h.fw) + 0.9;
+      const ez = (o.r ? o.h.fr : o.h.fd) + 0.9;
+      for (const [cx, cz] of [[ex, ez], [-ex, ez], [ex, -ez], [-ex, -ez]]) nodes.push(o.h.group.localToWorld(new THREE.Vector3(cx, 0, cz)));
+    }
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      nodes.push(new THREE.Vector3(Math.sin(ang) * (DESK + 1.2), 0, Math.cos(ang) * (DESK + 1.2)));
+    }
+    // drop corners that land inside another room or off the floor
+    const usable = nodes.filter((n, i) => i < 2 || (Math.hypot(n.x, n.z) < 28 && !rooms.some((o) => inRoom(n.x, n.z, o))));
+    const N = usable.length;
+    const dist = new Array(N).fill(Infinity);
+    const prev = new Array(N).fill(-1);
+    const done = new Array(N).fill(false);
+    dist[0] = 0;
+    for (;;) {
+      let u = -1;
+      for (let i = 0; i < N; i++) if (!done[i] && dist[i] < Infinity && (u < 0 || dist[i] < dist[u])) u = i;
+      if (u < 0 || u === 1) break;
+      done[u] = true;
+      for (let w = 0; w < N; w++) {
+        if (done[w] || w === u) continue;
+        const d = dist[u] + usable[u].distanceTo(usable[w]);
+        if (d >= dist[w]) continue;
+        if (!clear(usable[u].x, usable[u].z, usable[w].x, usable[w].z, u === 0, w === 1)) continue;
+        dist[w] = d;
+        prev[w] = u;
+      }
+    }
+    if (prev[1] < 0) return []; // no way round found: walk straight
+    const route: THREE.Vector3[] = [];
+    for (let k = prev[1]; k > 0; k = prev[k]) route.unshift(usable[k].clone());
+    return route;
+  }
+
   private separate(dt: number) {
     const va = this.sepA;
     const vb = this.sepB;
@@ -1262,14 +1866,40 @@ export class MissionScene {
           p.at.x += (wx * c - wz * sn) * k;
           p.at.z += (wx * sn + wz * c) * k;
         };
-        if (a.walk > 0) move(a, dx / d, dz / d, push * mover);
-        if (b.walk > 0) move(b, -dx / d, -dz / d, push * mover);
+        // Mostly sideways, a little apart: a walker slides round whoever is in its way instead of being held
+        // in place by a straight push that cancels its step (which looked like walking on the spot).
+        const nx = dx / d;
+        const nz = dz / d;
+        if (a.walk > 0) move(a, nx * 0.4 - nz, nz * 0.4 + nx, push * mover);
+        if (b.walk > 0) move(b, -nx * 0.4 + nz, -nz * 0.4 - nx, push * mover);
       }
     }
   }
 
+  /** Where the camera looks when nothing is picked: the middle of the deck. */
+  private homeTarget() {
+    return this.view === "outside" ? new THREE.Vector3(0, 7.5, 31) : HOME_TARGET.clone();
+  }
+
+  private homePhi() {
+    return this.view === "outside" ? 1.3 : this.portrait ? 0.92 : 1.12;
+  }
+
+  /** Switches between the operations floor and the view of the building from outside. */
+  setView(v: "inside" | "outside") {
+    this.view = v;
+    this.roofGroup.visible = v === "outside";
+    this.selected = null;
+    this.idleSince = performance.now();
+    this.tTarget.copy(this.homeTarget());
+    this.tDist = this.homeDist();
+    this.tPhi = this.homePhi();
+    this.tTheta = Math.round(this.theta / (Math.PI * 2)) * Math.PI * 2; // face the front of the building
+  }
+
   private homeDist() {
-    return this.portrait ? 31 : 25;
+    if (this.view === "outside") return this.portrait ? 46 : 44;
+    return this.portrait ? 38 : 32;
   }
 
   // ---------- input ----------
@@ -1365,8 +1995,9 @@ export class MissionScene {
     this.camera.fov = this.portrait ? 58 : 42;
     this.camera.updateProjectionMatrix();
     if (!this.selected) {
+      this.tTarget.copy(this.homeTarget());
       this.tDist = this.homeDist();
-      this.tPhi = this.portrait ? 0.92 : 1.12;
+      this.tPhi = this.homePhi();
     }
   }
 
@@ -1388,7 +2019,7 @@ export class MissionScene {
       const sp = this.pods.find((x) => x.id === this.selected);
       if (sp) {
         sp.rig.root.getWorldPosition(this.follow);
-        this.tTarget.set(this.follow.x, 2.3, this.follow.z);
+        this.tTarget.set(this.follow.x, 1.4, this.follow.z);
       }
     }
     this.target.lerp(this.tTarget, ease);
@@ -1397,24 +2028,15 @@ export class MissionScene {
     this.camera.position.set(this.target.x + this.dist * sp * Math.sin(th), this.target.y + this.dist * Math.cos(this.phi), this.target.z + this.dist * sp * Math.cos(th));
     this.camera.lookAt(this.target);
 
-    this.sweep.rotation.y -= dt * 0.32;
-    this.sweepMat.opacity += ((this.selected ? 0 : 1) - this.sweepMat.opacity) * (1 - Math.pow(0.02, dt));
 
-    // core
-    const cg = this.coreGroup;
-    const orb = cg.userData.orb as THREE.Mesh;
-    const cage = cg.userData.cage as THREE.Mesh;
-    cage.rotation.y = t * 0.3;
-    cage.rotation.x = t * 0.17;
-    orb.rotation.y = t * 0.22;
-    (cg.userData.coreMat as THREE.MeshStandardMaterial).emissiveIntensity = 1.0 + Math.sin(t * 1.6) * 0.18;
-    this.gyros.forEach((m, i) => {
-      m.rotation.y = t * m.userData.speed * (i % 2 ? -1 : 1);
-    });
+    // the operations table's edge light: brighter (and breathing) while a command you gave is running
+    this.busy += ((this.busyOn ? 1 : 0) - this.busy) * (1 - Math.pow(0.05, dt));
+    const glow = this.coreGroup.userData.glow as THREE.MeshBasicMaterial | undefined;
+    if (glow) glow.opacity = 0.25 + this.busy * (0.55 + Math.sin(t * 3) * 0.15);
+    this.updateLinks(t, dt);
 
     // pods
     this.separate(dt);
-    const cam = this.camera.position;
     for (const p of this.pods) {
       p.col.lerp(p.tgt, 1 - Math.pow(0.02, dt));
       // each station pops in, one after another, with a little overshoot
@@ -1430,7 +2052,7 @@ export class MissionScene {
       p.halo.position.y = ROBOT_H + 0.75 + Math.sin(t * 1.4 + p.phase) * 0.06;
       p.rig.glow.emissive.copy(p.col);
       p.rig.holo.color.copy(p.col);
-      p.rig.glow.emissiveIntensity = s === "sleeping" ? 0.15 : s === "alert" ? (pulse > 0 ? 3 : 0.6) : s === "working" ? 2.6 : 1.6;
+      p.rig.glow.emissiveIntensity = s === "sleeping" ? 0.1 : s === "alert" ? (pulse > 0 ? 2 : 0.5) : s === "working" ? 1.4 : 0.85;
       this.behave(p, dt);
 
       // where is the viewer, from the robot's point of view?
@@ -1442,11 +2064,9 @@ export class MissionScene {
       p.haloMat.color.copy(p.col);
       p.haloMat.opacity = s === "sleeping" ? 0.35 : s === "alert" ? (pulse > 0 ? 1 : 0.35) : 0.9;
       p.ringMat.emissive.copy(p.col);
-      p.ringMat.emissiveIntensity = (s === "sleeping" ? 0.5 : 2.2) + (isSel ? 2 : 0) + (this.hover === p.id ? 1 : 0);
+      p.ringMat.emissiveIntensity = (s === "sleeping" ? 0.12 : 0.35) + (isSel ? 0.8 : 0) + (this.hover === p.id ? 0.35 : 0);
       p.glowMat.color.copy(p.col);
-      p.glowMat.opacity = (s === "sleeping" ? 0.1 : s === "alert" ? 0.7 : 0.42) * (0.85 + pulse * 0.15);
-      p.beamMat.color.copy(p.col);
-      p.beamMat.opacity = s === "sleeping" ? 0.08 : s === "working" ? 0.5 : 0.28;
+      p.glowMat.opacity = (s === "sleeping" ? 0.04 : s === "alert" ? 0.45 : 0.14) * (0.85 + pulse * 0.15);
       p.packetMat.color.copy(p.col);
 
       p.burst = Math.max(0, p.burst - dt * 0.9);
@@ -1470,23 +2090,22 @@ export class MissionScene {
         m.scale.setScalar(0.7 + Math.sin(k * Math.PI) * 0.6);
       });
 
-      // label always faces the viewer, upright
-      p.panel.quaternion.copy(p.group.quaternion).invert().multiply(this.camera.quaternion);
-      p.panel.position.y = PANEL_Y + p.lift + (isSel ? 0.1 : 0) + Math.sin(t * 0.9 + p.phase) * 0.05;
-      const pm = p.panel.material as THREE.MeshBasicMaterial;
-      pm.opacity += ((this.selected && !isSel ? 0.1 : 1) - pm.opacity) * (1 - Math.pow(0.01, dt));
-      const d = cam.distanceTo(p.group.position);
-      p.panel.scale.setScalar(THREE.MathUtils.clamp(d / 22, 0.5, 1.1) * (1 + 0.12 * p.hv) * (this.portrait ? 1.15 : 1));
     }
 
-    if (this.sky) this.sky.rotation.y += dt * 0.004;
-    const arr = this.dust.geometry.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < arr.count; i++) {
-      let y = arr.getY(i) + dt * 0.12;
-      if (y > 12) y = 0;
-      arr.setY(i, y);
+    // the operations board ticks every second; the light outside follows the clock minute by minute
+    if (Math.floor(now / 1000) !== Math.floor(this.lastFrame / 1000)) {
+      this.drawBoard();
+      const m = new Date().getMinutes();
+      if (m !== this.boardMinute) {
+        this.boardMinute = m;
+        this.applyDaylight();
+      }
     }
-    arr.needsUpdate = true;
+    // the station screens' traces move a couple of times a second
+    if (t - this.panelClock > 0.5) {
+      this.panelClock = t;
+      for (const p of this.pods) this.drawPanel(p, p.agent);
+    }
 
     // watch the frame time; if it stays slow, shed the expensive extras one at a time
     this.ema += ((now - this.lastFrame) / 1000 - this.ema) * 0.05;
@@ -1498,10 +2117,12 @@ export class MissionScene {
         this.composer?.dispose();
         this.composer = null;
       } else if (this.level === 2) {
+        // a slow device: drop the shadows and the pixel ratio
+        this.renderer.shadowMap.enabled = false;
+        this.key.castShadow = false;
         this.renderer.setPixelRatio(1);
         this.renderer.setSize(this.w, this.h, false);
       } else {
-        this.dust.visible = false;
         this.scene.fog = null;
       }
     }
@@ -1511,6 +2132,10 @@ export class MissionScene {
 
   dispose() {
     this.dead = true;
+    for (const l of this.links) {
+      l.mat.map?.dispose();
+      l.mat.dispose();
+    }
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
     this.cleanup.forEach((f) => f());

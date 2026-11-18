@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, buildCrew, type MissionFacts, summary } from "@/lib/mission";
+import { ago, buildCrew, type MissionFacts, summary, systemStats } from "@/lib/mission";
 
 const NOW = Date.parse("2026-11-05T10:00:00Z");
 const min = (m: number) => new Date(NOW - m * 60_000).toISOString();
@@ -81,5 +81,24 @@ describe("ago", () => {
     expect(ago(min(5), NOW)).toBe("5 min ago");
     expect(ago(min(180), NOW)).toBe("3 h ago");
     expect(ago(min(60 * 24 * 3), NOW)).toBe("3 days ago");
+  });
+});
+
+describe("systemStats", () => {
+  const task = (status: string) => ({ goal: "g", status, updated_at: min(1), lastDid: null, question: null, error: null }) as MissionFacts["web"]["tasks"][number];
+  it("counts only what the jobs report", () => {
+    const f = facts({
+      web: { configured: true, tasks: [task("running"), task("queued"), task("needs_approval"), task("needs_you"), task("done"), task("failed")] },
+      reminders: { overdue: 2, today: 3, next: "Call mum" },
+      apps: [{ name: "a", status: "building", updated_at: min(1) }, { name: "b", status: "ready", updated_at: min(1) }],
+    });
+    const s = systemStats(f, buildCrew(f));
+    expect(s).toMatchObject({ webRunning: 2, approvals: 2, remindersDue: 3, overdue: 2, appsBuilding: 1, agents: 7 });
+  });
+  it("is healthy when the timer ticks and nothing needs you, and flags attention otherwise", () => {
+    const calm = facts();
+    expect(systemStats(calm, buildCrew(calm)).health).toBe("ok");
+    const stalled = facts({ scheduler: { lastRun: null, staleMs: 7_200_000 } });
+    expect(systemStats(stalled, buildCrew(stalled)).health).toBe("attention");
   });
 });
