@@ -29,7 +29,7 @@ const PI = Math.PI;
 const PI2 = Math.PI / 2;
 export const HOME: Stop = { x: 0, z: 0.1, face: 0, act: "none", dwell: 3 };
 
-const ROUND = new Set<StationId>(["scheduler", "autopilot", "reminders"]);
+const ROUND = new Set<StationId>(); // every agent now has its own enclosed room (no round platforms)
 
 export function buildStation(id: StationId, accent: THREE.Color | string, track: Disposable[]): Station {
   const g = new THREE.Group();

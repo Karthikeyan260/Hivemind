@@ -2,8 +2,8 @@
 
 import { ArrowUpRight, ChevronUp, Loader2, Play, Send, Square, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { MissionScene } from "@/components/mission/mission-scene";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import { FLOOR_OF, MissionScene, type MissionView } from "@/components/mission/mission-scene";
 import { api, type HiveEvent, streamHivemind } from "@/lib/client-api";
 import { ago, type AgentState, type CrewAgent, type CrewId, type SystemStats } from "@/lib/mission";
 
@@ -21,6 +21,8 @@ const TOOL_AGENT: Array<[RegExp, CrewId]> = [
   [/^dream_report$/, "dream"],
   [/routine/, "scheduler"],
 ];
+/** Stagger delay for one piece of the HUD as it settles in after the opening shot. */
+const D = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 type Step = { key: string; text: string; status: "run" | "ok" | "error" | "info" };
 
 export default function MissionPage() {
@@ -37,12 +39,12 @@ export default function MissionPage() {
   const [touring, setTouring] = useState(false);
   const [ready, setReady] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [view, setView] = useState<"inside" | "outside">("inside");
+  const [view, setView] = useState<MissionView>("outside");
   const [hover, setHover] = useState<{ id: CrewId; x: number; y: number } | null>(null);
 
   const pick = useCallback((id: CrewId | null) => {
     setOpen(id);
-    if (id) setView("inside"); // picking an agent takes you inside
+    if (id) setView(`f${FLOOR_OF[id]}` as MissionView); // picking an agent takes you to its floor
     scene.current?.select(id);
   }, []);
 
@@ -128,8 +130,45 @@ export default function MissionPage() {
 
   return (
     // Sits inside the app frame: the sidebar (laptop) or title bar and tab bar (phone) stay visible.
-    <div className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+3.25rem)] bottom-[var(--tabbar-h)] z-10 select-none overflow-hidden bg-[#04060d] text-white md:top-0 md:bottom-0 md:left-52">
+    <div data-hud={ready || failed ? "in" : "wait"} className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+3.25rem)] bottom-[var(--tabbar-h)] z-10 select-none overflow-hidden bg-[#04060d] text-white md:top-0 md:bottom-0 md:left-52">
       <div ref={host} className="absolute inset-0" />
+
+      {/* The lift panel: look at the tower from outside, into one of its floors, or down in the lobby hall. */}
+      <nav aria-label="Floors" style={D(900)} className="mc-in-left absolute top-1/2 left-3 z-10 w-14 -translate-y-1/2 border border-white/10 bg-[#0a0d14]/85 backdrop-blur-md sm:left-5">
+        <p className="border-b border-white/10 py-1 text-center font-mono text-[8.5px] tracking-[0.2em] text-white/40">LIFT</p>
+        {FLOOR_BUTTONS.map((f) => {
+          // who is on this floor right now: one status light per agent, like the lamps on a real lift panel
+          const here = f.floor === undefined ? [] : crew.filter((c) => FLOOR_OF[c.id] === f.floor);
+          const names = here.map((c) => `${c.name} ${WORD[c.state].toLowerCase()}`).join(", ");
+          return (
+            <button
+              key={f.v}
+              type="button"
+              onClick={() => {
+                setTouring(false);
+                setOpen(null);
+                setView(f.v);
+                scene.current?.setView(f.v);
+              }}
+              aria-pressed={view === f.v}
+              aria-label={names ? `${f.label}: ${names}` : f.label}
+              title={names ? `${f.label}: ${names}` : f.label}
+              className="group flex w-full flex-col items-center gap-1 py-2 font-mono text-white/70 transition hover:text-[#38d6f5] focus-visible:outline-2 focus-visible:outline-[#38d6f5] aria-pressed:bg-[#38d6f5]/10 aria-pressed:text-[#38d6f5] [&+&]:border-t [&+&]:border-white/10"
+            >
+              <span className={`grid size-7 place-items-center rounded-full border text-[10.5px] tracking-wider transition group-aria-pressed:border-[#38d6f5] group-aria-pressed:shadow-[0_0_10px_rgba(56,214,245,0.45)] ${f.floor === undefined ? "border-transparent text-[9px]" : "border-white/25"}`}>
+                {f.short}
+              </span>
+              {here.length > 0 && (
+                <span className="flex gap-1" aria-hidden>
+                  {here.map((c) => (
+                    <span key={c.id} className={`size-1.5 rounded-full ${DOT[c.state]} ${c.state === "alert" ? "animate-pulse" : ""}`} />
+                  ))}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
       <div className="pointer-events-none absolute inset-0 [background:radial-gradient(ellipse_at_center,transparent_55%,rgba(4,6,13,0.55)_100%)]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#04060d]/85 to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#04060d]/80 to-transparent" />
@@ -137,30 +176,20 @@ export default function MissionPage() {
       {/* Header: identity, what's going on, and the system bar (real counts only). */}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 sm:p-5">
         <div className="min-w-0">
-          <p className="hud-label text-[#38d6f5]">HIVEMIND · MISSION CONTROL</p>
-          <h1 className="mt-1 text-lg font-semibold tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.7)] sm:text-2xl">Your agents at work</h1>
-          <p className="mt-1 max-w-md text-xs leading-snug text-white/65 sm:text-[13px]">{mission ? mission.summary : error ? "Can't reach the crew" : "Waking the crew…"}</p>
-          {stats && <SystemBar stats={stats} active={active} />}
+          <p style={D(300)} className="mc-in hud-label text-[#38d6f5]">HIVEMIND · MISSION CONTROL</p>
+          <h1 style={D(380)} className="mc-in mt-1 text-lg font-semibold tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.7)] sm:text-2xl">Your agents at work</h1>
+          <p style={D(460)} className="mc-in mt-1 max-w-md text-xs leading-snug text-white/65 sm:text-[13px]">{mission ? mission.summary : error ? "Can't reach the crew" : "Waking the crew…"}</p>
+          {stats && (
+            <div style={D(560)} className="mc-in">
+              <SystemBar stats={stats} active={active} />
+            </div>
+          )}
         </div>
-        <div className="pointer-events-auto flex shrink-0 items-center gap-2">
+        <div style={D(640)} className="mc-in pointer-events-auto flex shrink-0 items-center gap-2">
           <span className="hidden h-9 items-center gap-2 border border-white/10 bg-[#0a0d14]/80 px-3 font-mono sm:flex text-[10.5px] tracking-wider uppercase backdrop-blur-md">
             <span className={`size-1.5 rounded-full ${error ? "bg-rose-400" : "animate-pulse bg-emerald-400"}`} />
             {error ? "Offline" : `Live · ${crew.length}`}
           </span>
-          <button
-            type="button"
-            onClick={() => {
-              const v = view === "inside" ? "outside" : "inside";
-              setTouring(false);
-              setOpen(null);
-              setView(v);
-              scene.current?.setView(v);
-            }}
-            className={BTN}
-            aria-label={view === "inside" ? "Show the building from outside" : "Go back inside"}
-          >
-            {view === "inside" ? "Exterior" : "Inside"}
-          </button>
           {chosen && (
             <button type="button" onClick={() => userPick(null)} className={BTN}>
               Overview
@@ -203,11 +232,15 @@ export default function MissionPage() {
           );
         })()}
 
-      {!ready && !failed && (
-        <div className="pointer-events-none absolute inset-0 z-[5] grid place-items-center">
-          <div className="flex flex-col items-center gap-4">
-            <span className="size-10 animate-spin rounded-full border-2 border-white/10 border-t-[#38d6f5]" />
-            <span className="font-mono text-[10.5px] tracking-[0.25em] text-white/70">BUILDING THE DECK…</span>
+      {/* The loading curtain: lifts (a quick fade) the moment the scene is drawn, so the crane shot is the reveal. */}
+      {!failed && (
+        <div aria-hidden={ready} className={`pointer-events-none absolute inset-0 z-[5] grid place-items-center bg-[#04060d] transition-opacity duration-700 ease-out ${ready ? "opacity-0" : "opacity-100"}`}>
+          <div className="flex w-56 flex-col items-center gap-3">
+            <span className="font-mono text-[11px] tracking-[0.5em] text-white/85">HIVEMIND</span>
+            <span className="relative h-px w-full overflow-hidden bg-white/10">
+              <span className="mc-scan absolute inset-y-0 left-0 w-2/5 bg-gradient-to-r from-transparent via-[#38d6f5] to-transparent" />
+            </span>
+            <span role="status" className="font-mono text-[9.5px] tracking-[0.3em] text-white/45">{ready ? "" : "RAISING THE TOWER"}</span>
           </div>
         </div>
       )}
@@ -262,7 +295,8 @@ export default function MissionPage() {
       {/* The agent inspector: right column on laptops, a card above the console on phones. */}
       {chosen && (
         <div
-          className="absolute inset-x-3 bottom-[5.25rem] z-10 mx-auto max-h-[55%] max-w-sm overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-4 shadow-2xl backdrop-blur-xl lg:inset-x-auto lg:top-20 lg:right-4 lg:bottom-auto lg:mx-0 lg:max-h-[calc(100%-12rem)] lg:w-80"
+          key={chosen.id}
+          className="mc-panel absolute inset-x-3 bottom-[5.25rem] z-10 mx-auto max-h-[55%] max-w-sm overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-4 shadow-2xl backdrop-blur-xl lg:inset-x-auto lg:top-20 lg:right-4 lg:bottom-auto lg:mx-0 lg:max-h-[calc(100%-12rem)] lg:w-80"
           role="dialog"
           aria-label={`${chosen.name} inspector`}
         >
@@ -312,26 +346,41 @@ export default function MissionPage() {
   );
 }
 
+const FLOOR_BUTTONS: Array<{ v: MissionView; short: string; label: string; floor?: number }> = [
+  { v: "outside", short: "EXT", label: "The building from outside" },
+  { v: "f2", short: "2", label: "Floor 2", floor: 2 },
+  { v: "f1", short: "1", label: "Floor 1", floor: 1 },
+  { v: "f0", short: "G", label: "Ground floor", floor: 0 },
+  { v: "lobby", short: "LOBBY", label: "The lobby hall: the K and the coordination desk" },
+];
+
 const BTN =
   "flex h-9 items-center gap-1.5 border border-white/10 bg-[#0a0d14]/80 px-3 font-mono text-[10.5px] tracking-wider uppercase backdrop-blur-md transition hover:border-[#38d6f5]/60 hover:text-[#38d6f5] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-[#38d6f5]";
 
-/** The system bar: health and real counts from the background jobs. */
+/**
+ * The system bar: health, then the real counts from the background jobs as one readout line. Zeros sit back,
+ * anything non-zero is lit, and anything that needs you is amber.
+ */
 function SystemBar({ stats, active }: { stats: SystemStats; active: number }) {
-  const items: Array<[string, string, boolean]> = [
-    ["HEALTH", stats.health === "ok" ? "OK" : "CHECK", stats.health !== "ok"],
-    ["AGENTS", `${active}/${stats.agents}`, false],
-    ["WEB TASKS", String(stats.webRunning), false],
-    ["APPROVALS", String(stats.approvals), stats.approvals > 0],
-    ["REMINDERS", stats.overdue ? `${stats.remindersDue}+${stats.overdue} late` : String(stats.remindersDue), stats.overdue > 0],
-    ["BUILDING", String(stats.appsBuilding), false],
+  const ok = stats.health === "ok";
+  const items: Array<[string, string, number, boolean]> = [
+    ["agents", `${active}/${stats.agents}`, active, false],
+    ["web tasks", String(stats.webRunning), stats.webRunning, false],
+    ["approvals", String(stats.approvals), stats.approvals, stats.approvals > 0],
+    ["reminders", stats.overdue ? `${stats.remindersDue}+${stats.overdue} late` : String(stats.remindersDue), stats.remindersDue + stats.overdue, stats.overdue > 0],
+    ["building", String(stats.appsBuilding), stats.appsBuilding, false],
   ];
   return (
-    <div className="pointer-events-auto mt-3 flex max-w-[calc(100vw-2rem)] gap-px overflow-x-auto border border-white/10 bg-white/10 [scrollbar-width:none] md:max-w-none [&::-webkit-scrollbar]:hidden" aria-label="System status">
-      {items.map(([k, v, warn]) => (
-        <div key={k} className="shrink-0 bg-[#0a0d14]/85 px-3 py-1.5 backdrop-blur-md">
-          <div className="font-mono text-[9px] tracking-[0.18em] text-white/45">{k}</div>
-          <div className={`font-mono text-sm tabular-nums ${warn ? "text-amber-300" : "text-white/90"}`}>{v}</div>
-        </div>
+    <div className="pointer-events-auto mt-3 flex max-w-[calc(100vw-2rem)] items-center gap-x-4 overflow-x-auto border-t border-white/10 pt-2.5 font-mono [scrollbar-width:none] md:max-w-none [&::-webkit-scrollbar]:hidden" aria-label="System status">
+      <span className={`flex shrink-0 items-center gap-1.5 text-[10px] tracking-[0.16em] uppercase ${ok ? "text-emerald-300" : "text-amber-300"}`}>
+        <span className={`size-1.5 rounded-full ${ok ? "bg-emerald-300 shadow-[0_0_8px_currentColor]" : "animate-pulse bg-amber-300"}`} />
+        {ok ? "All systems ok" : "Check health"}
+      </span>
+      {items.map(([k, v, n, warn]) => (
+        <span key={k} className={`flex shrink-0 items-baseline gap-1.5 transition-colors ${warn ? "text-amber-300" : n > 0 ? "text-white/90" : "text-white/35"}`}>
+          <span className="text-[13px] tabular-nums">{v}</span>
+          <span className="text-[9px] tracking-[0.16em] uppercase opacity-75">{k}</span>
+        </span>
       ))}
     </div>
   );
@@ -391,7 +440,7 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
   }
 
   return (
-    <div className="absolute right-[4.75rem] bottom-3 left-3 z-20 sm:right-auto sm:bottom-4 sm:left-1/2 sm:w-[min(42rem,calc(100%-11rem))] sm:-translate-x-1/2">
+    <div style={D(760)} className="mc-in absolute right-[4.75rem] bottom-3 left-3 z-20 sm:right-auto sm:bottom-4 sm:left-1/2 sm:w-[min(42rem,calc(100%-11rem))] sm:-translate-x-1/2">
       {shown && (steps.length > 0 || reply) && (
         <div className="mb-2 max-h-[38vh] overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-3 text-xs backdrop-blur-xl">
           <div className="mb-2 flex items-center justify-between">
