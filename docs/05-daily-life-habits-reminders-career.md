@@ -205,8 +205,8 @@ as quiet, never breaks the page) and `lib/mission.ts` (`buildCrew`, pure) turns 
 | Maker | app builder | an app failed in the last 24 h | `/apps` |
 
 The summary line counts alerts and workers ("2 need you, 1 working", or "All quiet..."). The scene
-(`components/mission/*`, three.js) uses the Mixamo "X Bot" model `public/models/xbot.glb` (1.2 MB) re-skinned per agent, and
-falls back to a robot built in code if the model does not load. Phones skip shadows and bloom. If WebGL fails the page
+(`components/mission/*`, three.js) draws each agent as a robot built in code (`components/mission/robot.ts`), painted per
+agent. Furniture, textures and lighting come from CC0 Poly Haven assets in `public/hq/`. Phones skip shadows and bloom. If WebGL fails the page
 shows a failure state (`failed`).
 
 ### 3.9 Career
@@ -586,8 +586,7 @@ Findings and risks:
     from storage before any limit is applied.
 12. **Habit voice tool** `tick_habit` on `/habits` matches by substring of the first habit (`app/(app)/(pages)/habits/page.tsx:57`),
     so "read" can tick "Read 20 min" or any habit whose name contains it; the server-side tools use a better matcher.
-13. **Stale comment:** `components/mission/robot.ts` says "no model file", while the scene actually loads
-    `public/models/xbot.glb` first and uses the code-built robot only as a fallback (`mission-scene.ts:904`).
+13. **Resolved:** the X Bot model was removed; the scene now uses only the code-built robot from `components/mission/robot.ts`.
 14. **Docs vs code:** `lib/mission-load.ts` defaults the Dream hour to 3 when settings cannot be read; the cron uses the saved
     setting. Only affects the fallback text.
 15. No dead code was found in the files read.

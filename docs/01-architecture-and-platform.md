@@ -362,7 +362,7 @@ Sets the title template `"%s · HIVEMIND"`, `robots` noindex, Apple web-app meta
 `public/` contents: `sw.js`; `icons/` (`icon-192.png`, `icon-512.png`, `maskable-512.png`); `chess/` (12 piece SVGs +
 `CREDITS.txt`); `mascots/` (karthik and nova direction/reaction sprite sheets, `.webp`); `projects/` (13 project card
 images); `journey/` and `journey-3d/` and `journey-env/` (3D avatar, animations `.fbx`, furniture models `.glb`, photos);
-`models/xbot.glb`; `sky/` (planet and Milky Way textures, `lines.json`); `tex/` (terrain textures); `theatre/posters/`
+`hq/` (Mission Control CC0 HDRIs, textures and models); `sky/` (planet and Milky Way textures, `lines.json`); `tex/` (terrain textures); `theatre/posters/`
 (film posters); `wake/` (two ONNX models for the wake word); default Next SVGs (`file.svg`, `globe.svg`, `next.svg`,
 `vercel.svg`, `window.svg`). `app/icon.svg` and `app/apple-icon.png` are the favicons.
 
