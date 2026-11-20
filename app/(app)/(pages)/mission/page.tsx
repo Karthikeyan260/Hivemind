@@ -3,7 +3,7 @@
 import { ArrowUpRight, ChevronUp, Loader2, Play, Send, Square, X } from "lucide-react";
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
-import { FLOOR_OF, MissionScene, type MissionView } from "@/components/mission/mission-scene";
+import { FLOOR_OF, FLOORS, MissionScene, type MissionView } from "@/components/mission/mission-scene";
 import { api, type HiveEvent, streamHivemind } from "@/lib/client-api";
 import { ago, type AgentState, type CrewAgent, type CrewId, type SystemStats } from "@/lib/mission";
 
@@ -21,6 +21,15 @@ const TOOL_AGENT: Array<[RegExp, CrewId]> = [
   [/^dream_report$/, "dream"],
   [/routine/, "scheduler"],
 ];
+/** The status pill in the inspector, one look per state. */
+const PILL: Record<AgentState, string> = {
+  working: "border-emerald-300/40 bg-emerald-300/10 text-emerald-200",
+  idle: "border-sky-300/40 bg-sky-300/10 text-sky-200",
+  sleeping: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+  alert: "border-rose-400/50 bg-rose-400/15 text-rose-200",
+};
+/** Examples the console's placeholder cycles through: things HIVEMIND's agents really do. */
+const EXAMPLES = ["Remind me to stretch at 4 pm", "What's on my plate today?", "Find remote React jobs posted this week", "Build me a simple habit tracker app", "Brief me on today's AI news"];
 /** Stagger delay for one piece of the HUD as it settles in after the opening shot. */
 const D = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 type Step = { key: string; text: string; status: "run" | "ok" | "error" | "info" };
@@ -47,6 +56,9 @@ export default function MissionPage() {
   const lifted = ready || late || error;
   const [listOpen, setListOpen] = useState(false);
   const [view, setView] = useState<MissionView>("outside");
+  // a lower-third caption names where the camera just went (not on the first view: the opening shot owns that)
+  const [caption, setCaption] = useState<{ key: number; title: string; sub: string } | null>(null);
+  const shownView = useRef<MissionView>("outside");
   const [hover, setHover] = useState<{ id: CrewId; x: number; y: number } | null>(null);
 
   const pick = useCallback((id: CrewId | null) => {
@@ -127,6 +139,19 @@ export default function MissionPage() {
       clearInterval(t);
     };
   }, []);
+
+  useEffect(() => {
+    if (view === shownView.current) return; // only on a real change (also safe when effects run twice)
+    shownView.current = view;
+    const all = latest.current;
+    const n = view[0] === "f" ? Number(view[1]) : -1;
+    const names = all.filter((c) => FLOOR_OF[c.id] === n).map((c) => c.name);
+    const title = view === "outside" ? "The tower" : view === "lobby" ? "The lobby hall" : FLOORS[n];
+    const sub = view === "outside" ? `${all.length} agents on 3 floors` : view === "lobby" ? "The coordination desk" : names.length ? names.join(" · ") : "Open office";
+    setCaption((c) => ({ key: (c?.key ?? 0) + 1, title, sub }));
+    const t = setTimeout(() => setCaption(null), 2900);
+    return () => clearTimeout(t);
+  }, [view]);
 
   const crew = mission?.crew ?? [];
   const stats = mission?.stats;
@@ -299,6 +324,14 @@ export default function MissionPage() {
         </button>
       )}
 
+      {caption && (
+        <div key={caption.key} aria-live="polite" className="mc-caption pointer-events-none absolute bottom-[5.75rem] left-20 z-[6] sm:left-24">
+          <p className="font-mono text-[9.5px] tracking-[0.3em] text-[#38d6f5] uppercase">Now viewing</p>
+          <p className="mt-0.5 text-2xl font-semibold tracking-tight sm:text-3xl">{caption.title}</p>
+          <p className="mt-0.5 text-xs text-white/65">{caption.sub}</p>
+        </div>
+      )}
+
       {/* The agent inspector: right column on laptops, a card above the console on phones. */}
       {chosen && (
         <div
@@ -309,7 +342,7 @@ export default function MissionPage() {
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="hud-label">AGENT INSPECTOR</p>
+              <p className="hud-label">{FLOORS[FLOOR_OF[chosen.id]]} · Office</p>
               <p className="mt-1 text-xl font-semibold leading-tight">{chosen.name}</p>
               <p className="text-xs text-white/60">{chosen.role}</p>
             </div>
@@ -317,27 +350,27 @@ export default function MissionPage() {
               <X size={16} />
             </button>
           </div>
-          <dl className="mt-3 grid grid-cols-[6.5rem_1fr] gap-x-2 gap-y-1.5 border-t border-white/10 pt-3 text-xs">
-            <dt className="text-white/45">Status</dt>
-            <dd className="flex items-center gap-1.5">
-              <span className={`size-2 rounded-full ${DOT[chosen.state]}`} /> {WORD[chosen.state]}
-            </dd>
-            <dt className="text-white/45">Now</dt>
-            <dd className="text-white/90">{chosen.line}</dd>
-            <dt className="text-white/45">Last activity</dt>
-            <dd className="text-white/80">{chosen.at && now > 0 ? ago(chosen.at.length === 10 ? `${chosen.at}T12:00:00Z` : chosen.at, now) : "None recorded"}</dd>
-          </dl>
+          <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wider uppercase ${PILL[chosen.state]}`}>
+              <span className={`size-1.5 rounded-full ${DOT[chosen.state]} ${chosen.state === "alert" ? "animate-pulse" : ""}`} />
+              {WORD[chosen.state]}
+            </span>
+            <span className="font-mono text-[10px] text-white/45">
+              {chosen.at && now > 0 ? `Last activity ${ago(chosen.at.length === 10 ? `${chosen.at}T12:00:00Z` : chosen.at, now)}` : "No activity recorded"}
+            </span>
+          </div>
+          <p className="mt-3 border-t border-white/10 pt-3 text-[15px] leading-snug text-white/95">{chosen.line}</p>
           {chosen.detail.length > 0 && (
             <>
               <p className="hud-label mt-4">RECENT</p>
-              <ul className="mt-1.5 space-y-1.5 text-xs text-white/70">
+              <ol className="mt-2 ml-1 space-y-2.5 border-l border-white/12 text-xs text-white/70">
                 {chosen.detail.map((d, i) => (
-                  <li key={i} className="flex gap-2">
-                    <span aria-hidden className="mt-1.5 size-1 shrink-0 rounded-full bg-[#38d6f5]/70" />
-                    <span>{d}</span>
+                  <li key={i} className="relative pl-3.5">
+                    <span aria-hidden className={`absolute top-1.5 -left-[3.5px] size-1.5 rounded-full ${i === 0 ? "bg-[#38d6f5] shadow-[0_0_6px_#38d6f5]" : "bg-white/30"}`} />
+                    {d}
                   </li>
                 ))}
-              </ul>
+              </ol>
             </>
           )}
           <Link href={chosen.href} className="mt-4 flex h-10 items-center justify-center gap-1.5 bg-core text-sm font-medium text-black transition hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-core">
@@ -407,6 +440,13 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
   const [prefer, setPrefer] = useState<CrewId | "">("");
   const [shown, setShown] = useState(false);
   const convo = useRef<string | null>(null);
+  // the placeholder cycles through examples while the box is empty (a hint of what the agents can do)
+  const [ex, setEx] = useState(-1);
+  useEffect(() => {
+    if (text) return;
+    const t = setInterval(() => setEx((i) => (i + 1) % EXAMPLES.length), 3800);
+    return () => clearInterval(t);
+  }, [text]);
 
   async function send() {
     const msg = text.trim();
@@ -491,7 +531,7 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Command your agents… What should we accomplish?"
+          placeholder={ex < 0 ? "Command your agents… What should we accomplish?" : `Try: ${EXAMPLES[ex]}`}
           aria-label="Command for your agents"
           className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm text-white placeholder:text-white/40 focus:outline-none"
         />
