@@ -2359,7 +2359,7 @@ export class MissionScene {
   private homePhi() {
     if (this.view === "outside") return 1.38;
     if (this.view === "lobby") return this.portrait ? 1.05 : 1.27; // low, like standing in the hall
-    return 1.36; // level with the floor, looking in through the glass
+    return this.portrait ? 1.43 : 1.36; // level with the floor, looking in through the glass (phones: flatter, less plaza)
   }
 
   /** Outside, the lobby hall, or one floor of the tower seen through its glass front. */

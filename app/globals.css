@@ -714,6 +714,16 @@ body {
 [data-bare="1"] .mc-tags {
   visibility: hidden;
 }
+/* a status count that just changed glows once (state change, so it plays each time) */
+@keyframes mc-flash {
+  from {
+    color: oklch(0.88 0.13 210);
+    text-shadow: 0 0 12px oklch(0.8 0.13 210 / 0.9);
+  }
+}
+.mc-flash {
+  animation: mc-flash 1.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
 /* the loading curtain: a thin scan line sweeping under the wordmark */
 @keyframes mc-scan {
   from {

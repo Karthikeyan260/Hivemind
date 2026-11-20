@@ -242,9 +242,9 @@ export default function MissionPage() {
       {/* Header: identity, what's going on, and the system bar (real counts only). */}
       <div className="mc-hud pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 sm:p-5">
         <div className="min-w-0">
-          <p style={D(300)} className="mc-in hud-label text-[#38d6f5]">HIVEMIND · MISSION CONTROL</p>
-          <h1 style={D(380)} className="mc-in mt-1 text-lg font-semibold tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.7)] sm:text-2xl">Your agents at work</h1>
-          <p style={D(460)} className="mc-in mt-1 max-w-md text-xs leading-snug text-white/65 sm:text-[13px]">{mission ? mission.summary : error ? "Can't reach the crew" : "Waking the crew…"}</p>
+          <p style={D(300)} className="mc-in hud-label hidden text-[#38d6f5] sm:block">HIVEMIND · MISSION CONTROL</p>
+          <h1 style={D(380)} className="mc-in text-base font-semibold sm:mt-1 sm:text-lg tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.7)] sm:text-2xl">Your agents at work</h1>
+          <p style={D(460)} className="mc-in mt-0.5 max-w-md truncate text-xs leading-snug text-white/65 sm:mt-1 sm:overflow-visible sm:whitespace-normal sm:text-[13px]">{mission ? mission.summary : error ? "Can't reach the crew" : "Waking the crew…"}</p>
           {stats && (
             <div style={D(560)} className="mc-in">
               <SystemBar stats={stats} active={active} />
@@ -473,7 +473,7 @@ function SystemBar({ stats, active }: { stats: SystemStats; active: number }) {
       </span>
       {items.map(([k, v, n, warn]) => (
         <span key={k} className={`flex shrink-0 items-baseline gap-1.5 transition-colors ${warn ? "text-amber-300" : n > 0 ? "text-white/90" : "text-white/35"}`}>
-          <span className="text-[13px] tabular-nums">{v}</span>
+          <span key={v} className="mc-flash text-[13px] tabular-nums">{v}</span>
           <span className="text-[9px] tracking-[0.16em] uppercase opacity-75">{k}</span>
         </span>
       ))}
