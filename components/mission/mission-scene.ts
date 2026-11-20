@@ -497,6 +497,9 @@ export class MissionScene {
    */
   private levels = [0, 1, 2, 3].map(() => new THREE.Group());
   private shaft = new THREE.Group();
+  /** The cutaway in progress: levels above cutF rise out of view (their height above home, eased each frame). */
+  private cutF = 3;
+  private levelLift = [0, 0, 0, 0];
   /** Ceiling-light materials, one per floor (ground, 1, 2). */
   private floorLights: THREE.MeshBasicMaterial[] = [];
   private floorGlow = [1, 1, 1];
@@ -1745,7 +1748,9 @@ export class MissionScene {
     group.add(rig.root);
     const face = faceDir(pos, !!spot.front);
     group.lookAt(pos.x + face.x, pos.y, pos.z + face.z);
-    this.scene.add(group);
+    // an office belongs to its level of the tower, so it lifts away with it in a cutaway
+    const lvl = FLOOR_OF[a.id];
+    (lvl > 0 ? this.levels[lvl] : this.scene).add(group);
 
     // energy line to the core (curve in world space) and the packets that ride it
     const from = new THREE.Vector3(pos.x * 0.8, 0.05, pos.z * 0.8);
@@ -2414,9 +2419,8 @@ export class MissionScene {
     const f = v[0] === "f" ? Number(v[1]) : 3;
     this.roofGroup.visible = v !== "lobby";
     this.facade.visible = v === "outside" || v === "lobby";
-    this.levels.forEach((g, k) => (g.visible = k <= f));
+    this.cutF = f; // the levels above f rise away in frame()
     this.shaft.scale.y = f >= 3 ? 1 : (f + 1) / 3;
-    for (const p of this.pods) p.group.visible = p.floor <= f;
   }
 
   /** Where a floor's offices sit along the tower: their middle, and how wide they spread (with the room walls). */
@@ -2655,6 +2659,17 @@ export class MissionScene {
     this.camera.position.set(look.x + this.dist * sp * Math.sin(th), look.y + this.dist * Math.cos(ph), look.z + this.dist * sp * Math.cos(th));
     this.camera.lookAt(look);
     this.placeTags();
+    // the cutaway: levels above the floor in view rise up and away (and settle back), a quick ease-out
+    const lk = this.reduce ? 1 : 1 - Math.pow(0.004, dt);
+    this.levels.forEach((g, k) => {
+      if (k === 0) return;
+      const want = k <= this.cutF ? 0 : 16;
+      this.levelLift[k] += (want - this.levelLift[k]) * lk;
+      if (Math.abs(want - this.levelLift[k]) < 0.01) this.levelLift[k] = want;
+      g.position.y = this.levelLift[k];
+      g.visible = this.levelLift[k] < 15.5;
+    });
+    if (this.liftCar) this.liftCar.visible = this.cutF >= 3 || this.liftCar.position.y <= FY(this.cutF) + 0.5;
     if (this.selLight) this.selLight.intensity += ((this.selected ? 9 : 0) - this.selLight.intensity) * (1 - Math.pow(0.02, dt));
 
 
@@ -2691,7 +2706,7 @@ export class MissionScene {
       const back = 1 + 2.70158 * Math.pow(inT - 1, 3) + 1.70158 * Math.pow(inT - 1, 2);
       p.group.scale.setScalar(inT <= 0 ? 0.001 : Math.max(0.001, back));
       // (and in a cutaway, the floors above the one in view are lifted away with their robots)
-      p.group.visible = inT > 0 && (this.view[0] !== "f" || p.floor <= Number(this.view[1]));
+      p.group.visible = inT > 0;
       p.hv += ((this.hover === p.id ? 1 : 0) - p.hv) * (1 - Math.pow(0.002, dt));
       const s = p.state;
       const isSel = this.selected === p.id;
