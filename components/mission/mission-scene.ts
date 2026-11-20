@@ -491,6 +491,12 @@ export class MissionScene {
   private view: MissionView = "outside";
   private liftCar: THREE.Object3D | null = null;
   private facade = new THREE.Group();
+  /**
+   * The cutaway: everything that sits at or above each level of the tower (index 1 to 3: that slab and the ceiling
+   * lights under it, that floor's walls, desks and plants; 3 is the roof). Looking into floor f, levels above f lift away.
+   */
+  private levels = [0, 1, 2, 3].map(() => new THREE.Group());
+  private shaft = new THREE.Group();
   /** Ceiling-light materials, one per floor (ground, 1, 2). */
   private floorLights: THREE.MeshBasicMaterial[] = [];
   private floorGlow = [1, 1, 1];
@@ -948,12 +954,24 @@ export class MissionScene {
     const finish = surface(new THREE.MeshPhysicalMaterial({ envMapIntensity: 0.9, clearcoat: 0.45, clearcoatRoughness: 0.3 }), "concrete_floor", 6, "#ece9e4");
     this.disposables.push(plaster, ceiling, finish);
     // slab faces: +x, -x, top (the floor above), bottom (the ceiling below), front, back
-    for (let fl = 1; fl <= 3; fl++) add(new THREE.BoxGeometry(W + 0.6, 0.38, ZF - ZB + 0.6), [plaster, plaster, finish, ceiling, plaster, plaster] as unknown as THREE.Material, cx, fl * FL + 0.19, cz);
+    for (const g of this.levels) sc.add(g);
+    const lv = (k: number) => (k <= 0 ? sc : this.levels[k]);
+    for (let fl = 1; fl <= 3; fl++) {
+      into = lv(fl);
+      add(new THREE.BoxGeometry(W + 0.6, 0.38, ZF - ZB + 0.6), [plaster, plaster, finish, ceiling, plaster, plaster] as unknown as THREE.Material, cx, fl * FL + 0.19, cz);
+    }
+    into = sc;
     flat(W, ZF - ZB, finish, cx, 0.014, cz);
-    for (const x of [X0, X1]) add(new THREE.BoxGeometry(0.6, H, ZF - ZB), plaster, x, H / 2, cz);
+    // side walls, one storey at a time (so the cutaway can lift the upper ones away)
+    for (let k = 0; k < 3; k++) {
+      into = lv(k);
+      for (const x of [X0, X1]) add(new THREE.BoxGeometry(0.6, FL, ZF - ZB), plaster, x, k * FL + FL / 2, cz);
+      // the upper floors' back wall (the ground floor opens straight into the lobby hall)
+      if (k > 0) add(new THREE.BoxGeometry(W, FL, 0.3), plaster, cx, k * FL + FL / 2, ZB);
+    }
+    into = lv(3);
     add(new THREE.BoxGeometry(W + 0.6, 1.0, 0.5), concreteMat, cx, H + 0.6, ZF + 0.05); // parapet
-    // the upper floors' back wall (the ground floor opens straight into the lobby hall)
-    add(new THREE.BoxGeometry(W, H - FL, 0.3), plaster, cx, FL + (H - FL) / 2, ZB);
+    into = sc;
     // ceiling lights: rows of panels under every slab, so each floor reads as a lit office from outside
     const panelMat = new THREE.MeshBasicMaterial({ color: "#fff3df", toneMapped: false, side: THREE.DoubleSide });
     this.disposables.push(panelMat);
@@ -962,12 +980,14 @@ export class MissionScene {
       const lm = new THREE.MeshBasicMaterial({ color: "#fff3df", toneMapped: false, side: THREE.DoubleSide });
       this.floorLights.push(lm);
       this.disposables.push(lm);
+      into = lv(fl);
       for (let x = X0 + 2; x < X1 - 1; x += 3.2) {
         for (const z of [29, 34.5, 37.8]) {
           const lp = add(new THREE.PlaneGeometry(1.2, 0.3), lm, x, fl * FL - 0.01, z);
           lp.rotation.x = Math.PI / 2;
         }
       }
+      into = sc;
     }
     // looking into one floor, the others sit behind a dark veil (focus plus context, as in building digital twins)
     for (let f = 0; f < 3; f++) {
@@ -999,9 +1019,12 @@ export class MissionScene {
     {
       const shaftMat = new THREE.MeshPhysicalMaterial({ color: "#a9c4d4", roughness: 0.1, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
       this.disposables.push(shaftMat);
+      sc.add(this.shaft);
+      into = this.shaft;
       const sh = add(new THREE.BoxGeometry(LIFT.hx * 2, H, LIFT.hz * 2), shaftMat, LIFT.x, H / 2, LIFT.z);
       sh.renderOrder = 2;
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.BoxGeometry(0.12, H, 0.12), steel, LIFT.x + sx * LIFT.hx, H / 2, LIFT.z + sz * LIFT.hz);
+      into = sc;
       const car = new THREE.Group();
       const floorPlate = new THREE.Mesh(new THREE.BoxGeometry(LIFT.hx * 1.8, 0.1, LIFT.hz * 1.8), alu);
       floorPlate.position.y = -0.05;
@@ -1022,9 +1045,9 @@ export class MissionScene {
     }
     // office bays with no agent: a desk and a plant, so every floor looks lived in
     for (const [fl, x] of SPARE_BAYS) {
-      placeModel(sc, "desk", { x, y: FY(fl), z: ROOM_Z - 1.2, fit: { w: 1.8, h: 0.77, d: 0.8 } });
-      placeModel(sc, "desk", { x, y: FY(fl), z: ROOM_Z + 1.0, fit: { w: 1.8, h: 0.77, d: 0.8 } });
-      placeModel(sc, "plant", { x: x + (x > 0 ? 2.2 : -2.2), y: FY(fl), z: ROOM_Z - 2.2, height: 1.5 });
+      placeModel(lv(fl), "desk", { x, y: FY(fl), z: ROOM_Z - 1.2, fit: { w: 1.8, h: 0.77, d: 0.8 } });
+      placeModel(lv(fl), "desk", { x, y: FY(fl), z: ROOM_Z + 1.0, fit: { w: 1.8, h: 0.77, d: 0.8 } });
+      placeModel(lv(fl), "plant", { x: x + (x > 0 ? 2.2 : -2.2), y: FY(fl), z: ROOM_Z - 2.2, height: 1.5 });
     }
     // the front of the building (glass, fins, the emblem panel, the entrance canopy): looking into one floor it is cut
     // away, like an architect's section, so the offices are in plain view
@@ -1079,10 +1102,11 @@ export class MissionScene {
     const nameMat = new THREE.MeshBasicMaterial({ map: nt, transparent: true, toneMapped: false });
     this.disposables.push(nt, nameMat);
     add(new THREE.PlaneGeometry(6.5, 0.6), nameMat, 0, 4.3, ZF + 6.02);
-    into = sc;
     // the roof of the wing: plant and solar panels
+    into = lv(3);
     for (const [x, z] of [[-12, 30], [-6, 34], [12, 31]]) add(new THREE.BoxGeometry(3.2, 1.6, 2.4), steel, x, H + 1.0, z);
     for (let r = 0; r < 3; r++) for (let c = 0; c < 7; c++) add(new THREE.BoxGeometry(2.0, 0.08, 1.2), solar, 1 + c * 2.2, H + 0.7, 29 + r * 1.7).rotation.x = -0.35;
+    into = sc;
 
     // ---- the site ----
     // lawn all round the buildings (a ring, so it stops at the hall wall)
@@ -2187,8 +2211,7 @@ export class MissionScene {
     this.introOn = false;
     const sp = id ? this.pods.find((x) => x.id === id) : null;
     if (sp) this.view = `f${sp.floor}` as MissionView; // a robot is looked at on its own floor, front cut away
-    this.roofGroup.visible = this.view !== "lobby";
-    this.facade.visible = this.view === "outside" || this.view === "lobby";
+    this.applyCutaway();
     this.selected = id;
     this.idleSince = performance.now();
     if (!id) {
@@ -2205,7 +2228,7 @@ export class MissionScene {
     this.tTarget.set(p.pos.x + f.x * 0.7, p.pos.y + 1.3, p.pos.z + f.z * 0.7);
     this.tDist = this.portrait ? 11 : 8.5;
     // nearly level, so the camera stays under the ceiling slab while it looks into the office
-    this.tPhi = this.portrait ? 1.44 : 1.4;
+    this.tPhi = this.portrait ? 1.22 : 1.16;
     const want = Math.atan2(f.x, f.z) + (p.pos.x >= 0 ? -0.6 : 0.6);
     const d = ((want - this.theta + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     this.tTheta = this.theta + d;
@@ -2353,13 +2376,14 @@ export class MissionScene {
     if (this.view === "outside") return new THREE.Vector3(0, 6, 36);
     if (this.view === "lobby") return HOME_TARGET.clone();
     // portrait tablets: aim a little left so the floor clears the lift panel on the left edge (phones have it at the bottom)
-    return new THREE.Vector3(this.portrait && this.w >= 640 ? -1.6 : 0, FY(Number(this.view[1])) + 1.5, ROOM_Z);
+    const f = Number(this.view[1]);
+    return new THREE.Vector3(this.floorSpan(f).mid + (this.portrait && this.w >= 640 ? -1.6 : 0), FY(f) + 0.8, ROOM_Z - 1.5);
   }
 
   private homePhi() {
     if (this.view === "outside") return 1.38;
     if (this.view === "lobby") return this.portrait ? 1.05 : 1.27; // low, like standing in the hall
-    return this.portrait ? 1.43 : 1.36; // level with the floor, looking in through the glass (phones: flatter, less plaza)
+    return this.portrait ? 0.88 : 1.02; // looking down into the cutaway floor (steeper on tall phone screens)
   }
 
   /** Outside, the lobby hall, or one floor of the tower seen through its glass front. */
@@ -2372,8 +2396,7 @@ export class MissionScene {
   setView(v: MissionView) {
     this.introOn = false;
     this.view = v;
-    this.roofGroup.visible = v !== "lobby";
-    this.facade.visible = v === "outside" || v === "lobby";
+    this.applyCutaway();
     this.selected = null;
     this.idleSince = performance.now();
     this.tTarget.copy(this.homeTarget());
@@ -2382,10 +2405,35 @@ export class MissionScene {
     this.tTheta = Math.round(this.theta / (Math.PI * 2)) * Math.PI * 2; // face the front of the building
   }
 
+  /**
+   * What the view shows of the building. Looking into floor f is an architect's cutaway: the front comes off, and
+   * every level above f (ceiling, upper floors, roof, their robots) lifts away, so you look down into the floor.
+   */
+  private applyCutaway() {
+    const v = this.view;
+    const f = v[0] === "f" ? Number(v[1]) : 3;
+    this.roofGroup.visible = v !== "lobby";
+    this.facade.visible = v === "outside" || v === "lobby";
+    this.levels.forEach((g, k) => (g.visible = k <= f));
+    this.shaft.scale.y = f >= 3 ? 1 : (f + 1) / 3;
+    for (const p of this.pods) p.group.visible = p.floor <= f;
+  }
+
+  /** Where a floor's offices sit along the tower: their middle, and how wide they spread (with the room walls). */
+  private floorSpan(f: number) {
+    const xs = (Object.keys(FLOOR_OF) as CrewId[]).filter((id) => FLOOR_OF[id] === f).map((id) => PLACE_X[id]);
+    if (!xs.length) return { mid: 0, width: 16 };
+    const lo = Math.min(...xs);
+    const hi = Math.max(...xs);
+    return { mid: (lo + hi) / 2, width: hi - lo + 5.4 };
+  }
+
   private homeDist() {
     if (this.view === "outside") return this.portrait ? 62 : 44;
     if (this.view === "lobby") return this.portrait ? 30 : 21;
-    return this.portrait ? 41 : 21; // portrait: far enough back that both offices on the floor fit across the screen
+    // far enough back that every office on the floor fits across the screen (phones need more room)
+    const span = this.floorSpan(Number(this.view[1])).width;
+    return this.portrait ? Math.max(44, span * 1.85) : Math.max(25, span * 1.05);
   }
 
   // ---------- input ----------
@@ -2629,7 +2677,7 @@ export class MissionScene {
     if (this.ticker) this.ticker.tex.offset.x = (this.ticker.tex.offset.x + dt * 0.035) % 1;
     const focus = this.view[0] === "f" ? Number(this.view[1]) : -1;
     this.veils.forEach((v, f) => {
-      const want = focus >= 0 && f !== focus ? 0.62 : 0;
+      const want = focus >= 0 && f < focus ? 0.62 : 0;
       v.mat.opacity += (want - v.mat.opacity) * (1 - Math.pow(0.05, dt));
       v.mesh.visible = v.mat.opacity > 0.01;
     });
@@ -2642,7 +2690,8 @@ export class MissionScene {
       const inT = THREE.MathUtils.clamp((now - p.born) / 800, 0, 1);
       const back = 1 + 2.70158 * Math.pow(inT - 1, 3) + 1.70158 * Math.pow(inT - 1, 2);
       p.group.scale.setScalar(inT <= 0 ? 0.001 : Math.max(0.001, back));
-      p.group.visible = inT > 0;
+      // (and in a cutaway, the floors above the one in view are lifted away with their robots)
+      p.group.visible = inT > 0 && (this.view[0] !== "f" || p.floor <= Number(this.view[1]));
       p.hv += ((this.hover === p.id ? 1 : 0) - p.hv) * (1 - Math.pow(0.002, dt));
       const s = p.state;
       const isSel = this.selected === p.id;
