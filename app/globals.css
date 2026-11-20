@@ -581,6 +581,27 @@ body {
     filter: none;
   }
 }
+/* phones: smaller chips with just the name and the status dot, no blur behind them (costly on mobile GPUs) */
+@media (max-width: 640px) {
+  .mc-tag-chip {
+    height: 19px;
+    padding: 0 6px;
+    gap: 5px;
+    font-size: 10px;
+    backdrop-filter: none;
+    background: oklch(0.16 0.015 255 / 0.9);
+  }
+  .mc-tag-chip span {
+    display: none;
+  }
+  .mc-tag p {
+    max-width: 10rem;
+    font-size: 9.5px;
+  }
+  .mc-tag s {
+    height: 12px;
+  }
+}
 /* the agent inspector slides in from the side it lives on (the bottom on phones, the right on wide screens) */
 @keyframes mc-panel {
   from {

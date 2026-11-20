@@ -2277,7 +2277,8 @@ export class MissionScene {
   private homeTarget() {
     if (this.view === "outside") return new THREE.Vector3(0, 6, 36);
     if (this.view === "lobby") return HOME_TARGET.clone();
-    return new THREE.Vector3(0, FY(Number(this.view[1])) + 1.5, ROOM_Z);
+    // portrait: aim a little left so the floor sits right of the lift panel down the left edge of the screen
+    return new THREE.Vector3(this.portrait ? -1.6 : 0, FY(Number(this.view[1])) + 1.5, ROOM_Z);
   }
 
   private homePhi() {
@@ -2303,7 +2304,7 @@ export class MissionScene {
   private homeDist() {
     if (this.view === "outside") return this.portrait ? 62 : 44;
     if (this.view === "lobby") return this.portrait ? 30 : 21;
-    return this.portrait ? 34 : 21;
+    return this.portrait ? 41 : 21; // portrait: far enough back that both offices on the floor fit across the screen
   }
 
   // ---------- input ----------
@@ -2475,6 +2476,8 @@ export class MissionScene {
     const t = (now - this.t0) / 1000;
     // the opening crane is slow and steady (about five seconds); after that the camera answers quickly
     // (held at its first frame behind the loading curtain until the crew has arrived)
+    // never hold forever: if the crew data is slow or failing, the shot starts anyway after a few seconds
+    if (!this.introAt && t > 8) this.introAt = now;
     const it = this.introAt ? (now - this.introAt) / 1000 : 0;
     const crane = this.introOn && !this.reduce;
     const ease = crane && !this.introAt ? 0 : 1 - Math.pow(crane ? 0.42 : 0.0015, dt);

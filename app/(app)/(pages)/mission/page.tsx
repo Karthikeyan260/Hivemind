@@ -38,6 +38,13 @@ export default function MissionPage() {
   const [now, setNow] = useState(0);
   const [touring, setTouring] = useState(false);
   const [ready, setReady] = useState(false);
+  // the loading curtain never traps the page: it lifts when the crew arrives, on an error, or after 8 s regardless
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setLate(true), 8000);
+    return () => clearTimeout(t);
+  }, []);
+  const lifted = ready || late || error;
   const [listOpen, setListOpen] = useState(false);
   const [view, setView] = useState<MissionView>("outside");
   const [hover, setHover] = useState<{ id: CrewId; x: number; y: number } | null>(null);
@@ -130,7 +137,7 @@ export default function MissionPage() {
 
   return (
     // Sits inside the app frame: the sidebar (laptop) or title bar and tab bar (phone) stay visible.
-    <div data-hud={ready || failed ? "in" : "wait"} className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+3.25rem)] bottom-[var(--tabbar-h)] z-10 select-none overflow-hidden bg-[#04060d] text-white md:top-0 md:bottom-0 md:left-52">
+    <div data-hud={lifted || failed ? "in" : "wait"} className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+3.25rem)] bottom-[var(--tabbar-h)] z-10 select-none overflow-hidden bg-[#04060d] text-white md:top-0 md:bottom-0 md:left-52">
       <div ref={host} className="absolute inset-0" />
 
       {/* The lift panel: look at the tower from outside, into one of its floors, or down in the lobby hall. */}
@@ -234,13 +241,13 @@ export default function MissionPage() {
 
       {/* The loading curtain: lifts (a quick fade) the moment the scene is drawn, so the crane shot is the reveal. */}
       {!failed && (
-        <div aria-hidden={ready} className={`pointer-events-none absolute inset-0 z-[5] grid place-items-center bg-[#04060d] transition-opacity duration-700 ease-out ${ready ? "opacity-0" : "opacity-100"}`}>
+        <div aria-hidden={lifted} className={`pointer-events-none absolute inset-0 z-[5] grid place-items-center bg-[#04060d] transition-opacity duration-700 ease-out ${lifted ? "opacity-0" : "opacity-100"}`}>
           <div className="flex w-56 flex-col items-center gap-3">
             <span className="font-mono text-[11px] tracking-[0.5em] text-white/85">HIVEMIND</span>
             <span className="relative h-px w-full overflow-hidden bg-white/10">
               <span className="mc-scan absolute inset-y-0 left-0 w-2/5 bg-gradient-to-r from-transparent via-[#38d6f5] to-transparent" />
             </span>
-            <span role="status" className="font-mono text-[9.5px] tracking-[0.3em] text-white/45">{ready ? "" : "RAISING THE TOWER"}</span>
+            <span role="status" className="font-mono text-[9.5px] tracking-[0.3em] text-white/45">{lifted ? "" : "RAISING THE TOWER"}</span>
           </div>
         </div>
       )}
