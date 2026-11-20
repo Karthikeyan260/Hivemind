@@ -2352,8 +2352,8 @@ export class MissionScene {
   private homeTarget() {
     if (this.view === "outside") return new THREE.Vector3(0, 6, 36);
     if (this.view === "lobby") return HOME_TARGET.clone();
-    // portrait: aim a little left so the floor sits right of the lift panel down the left edge of the screen
-    return new THREE.Vector3(this.portrait ? -1.6 : 0, FY(Number(this.view[1])) + 1.5, ROOM_Z);
+    // portrait tablets: aim a little left so the floor clears the lift panel on the left edge (phones have it at the bottom)
+    return new THREE.Vector3(this.portrait && this.w >= 640 ? -1.6 : 0, FY(Number(this.view[1])) + 1.5, ROOM_Z);
   }
 
   private homePhi() {

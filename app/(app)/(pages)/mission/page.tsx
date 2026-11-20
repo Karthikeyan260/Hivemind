@@ -204,8 +204,8 @@ export default function MissionPage() {
       <div ref={host} className="absolute inset-0" />
 
       {/* The lift panel: look at the tower from outside, into one of its floors, or down in the lobby hall. */}
-      <nav aria-label="Floors" style={D(900)} className="mc-hud mc-in-left absolute top-1/2 left-3 z-10 w-14 -translate-y-1/2 border border-white/10 bg-[#0a0d14]/85 backdrop-blur-md sm:left-5">
-        <p className="border-b border-white/10 py-1 text-center font-mono text-[8.5px] tracking-[0.2em] text-white/40">LIFT</p>
+      <nav aria-label="Floors" style={D(900)} className="mc-hud mc-in-left absolute inset-x-3 bottom-[4.5rem] z-10 flex border border-white/10 bg-[#0a0d14]/85 backdrop-blur-md sm:inset-x-auto sm:top-1/2 sm:bottom-auto sm:left-5 sm:block sm:w-14 sm:-translate-y-1/2">
+        <p className="hidden border-b border-white/10 py-1 text-center font-mono text-[8.5px] tracking-[0.2em] text-white/40 sm:block">LIFT</p>
         {FLOOR_BUTTONS.map((f) => {
           // who is on this floor right now: one status light per agent, like the lamps on a real lift panel
           const here = f.floor === undefined ? [] : crew.filter((c) => FLOOR_OF[c.id] === f.floor);
@@ -219,7 +219,7 @@ export default function MissionPage() {
               aria-label={names ? `${f.label}: ${names}` : f.label}
               aria-keyshortcuts={f.key}
               title={`${names ? `${f.label}: ${names}` : f.label} (${f.key})`}
-              className="group flex w-full flex-col items-center gap-1 py-2 font-mono text-white/70 transition hover:text-[#38d6f5] focus-visible:outline-2 focus-visible:outline-[#38d6f5] aria-pressed:bg-[#38d6f5]/10 aria-pressed:text-[#38d6f5] [&+&]:border-t [&+&]:border-white/10"
+              className="group flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-1.5 font-mono text-white/70 transition hover:text-[#38d6f5] focus-visible:outline-2 focus-visible:outline-[#38d6f5] aria-pressed:bg-[#38d6f5]/10 aria-pressed:text-[#38d6f5] sm:w-full sm:py-2 [&+&]:border-l [&+&]:border-white/10 sm:[&+&]:border-t sm:[&+&]:border-l-0"
             >
               <span className={`grid h-7 min-w-7 place-items-center rounded-full border text-[10.5px] tracking-wider transition group-aria-pressed:border-[#38d6f5] group-aria-pressed:shadow-[0_0_10px_rgba(56,214,245,0.45)] ${f.floor === undefined ? "border-transparent px-1.5 text-[9px]" : "w-7 border-white/25"}`}>
                 {f.short}
@@ -367,7 +367,7 @@ export default function MissionPage() {
       {urgent && !chosen && (
         <button
           onClick={() => userPick(urgent.id)}
-          className="absolute bottom-[5.5rem] left-1/2 z-10 flex max-w-[92%] -translate-x-1/2 items-center gap-2.5 border border-amber-400/50 bg-amber-950/70 py-2 pr-4 pl-3 text-left text-sm backdrop-blur-md transition hover:bg-amber-900/70 focus-visible:outline-2 focus-visible:outline-amber-300"
+          className="absolute bottom-[8.75rem] left-1/2 z-10 flex max-w-[92%] sm:bottom-[5.5rem] -translate-x-1/2 items-center gap-2.5 border border-amber-400/50 bg-amber-950/70 py-2 pr-4 pl-3 text-left text-sm backdrop-blur-md transition hover:bg-amber-900/70 focus-visible:outline-2 focus-visible:outline-amber-300"
         >
           <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
           <span className="min-w-0 truncate">
@@ -378,7 +378,7 @@ export default function MissionPage() {
       )}
 
       {caption && (
-        <div key={caption.key} aria-live="polite" className="mc-hud mc-caption pointer-events-none absolute bottom-[5.75rem] left-20 z-[6] sm:left-24">
+        <div key={caption.key} aria-live="polite" className="mc-hud mc-caption pointer-events-none absolute bottom-[9rem] left-4 z-[6] sm:bottom-[5.75rem] sm:left-24">
           <p className="font-mono text-[9.5px] tracking-[0.3em] text-[#38d6f5] uppercase">Now viewing</p>
           <p className="mt-0.5 text-2xl font-semibold tracking-tight sm:text-3xl">{caption.title}</p>
           <p className="mt-0.5 text-xs text-white/65">{caption.sub}</p>
@@ -389,7 +389,7 @@ export default function MissionPage() {
       {chosen && (
         <div
           key={chosen.id}
-          className="mc-hud mc-panel absolute inset-x-3 bottom-[5.25rem] z-10 mx-auto max-h-[55%] max-w-sm overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-4 shadow-2xl backdrop-blur-xl lg:inset-x-auto lg:top-20 lg:right-4 lg:bottom-auto lg:mx-0 lg:max-h-[calc(100%-12rem)] lg:w-80"
+          className="mc-hud mc-panel absolute inset-x-3 bottom-[8.5rem] z-20 sm:bottom-[5.25rem] mx-auto max-h-[55%] max-w-sm overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-4 shadow-2xl backdrop-blur-xl lg:inset-x-auto lg:top-20 lg:right-4 lg:bottom-auto lg:mx-0 lg:max-h-[calc(100%-12rem)] lg:w-80"
           role="dialog"
           aria-label={`${chosen.name} inspector`}
         >
