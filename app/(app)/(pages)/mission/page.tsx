@@ -221,7 +221,7 @@ export default function MissionPage() {
               title={`${names ? `${f.label}: ${names}` : f.label} (${f.key})`}
               className="group flex w-full flex-col items-center gap-1 py-2 font-mono text-white/70 transition hover:text-[#38d6f5] focus-visible:outline-2 focus-visible:outline-[#38d6f5] aria-pressed:bg-[#38d6f5]/10 aria-pressed:text-[#38d6f5] [&+&]:border-t [&+&]:border-white/10"
             >
-              <span className={`grid size-7 place-items-center rounded-full border text-[10.5px] tracking-wider transition group-aria-pressed:border-[#38d6f5] group-aria-pressed:shadow-[0_0_10px_rgba(56,214,245,0.45)] ${f.floor === undefined ? "border-transparent text-[9px]" : "border-white/25"}`}>
+              <span className={`grid h-7 min-w-7 place-items-center rounded-full border text-[10.5px] tracking-wider transition group-aria-pressed:border-[#38d6f5] group-aria-pressed:shadow-[0_0_10px_rgba(56,214,245,0.45)] ${f.floor === undefined ? "border-transparent px-1.5 text-[9px]" : "w-7 border-white/25"}`}>
                 {f.short}
               </span>
               {here.length > 0 && (

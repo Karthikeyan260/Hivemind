@@ -597,6 +597,7 @@ export class MissionScene {
     this.buildCore();
     this.buildHall();
     this.buildBoard();
+    this.buildLobbyDressing();
     this.buildExterior();
     this.applyDaylight();
 
@@ -1143,25 +1144,59 @@ export class MissionScene {
   /** The big wall display behind the back row: a steel-framed screen on two legs, facing the floor. */
   private buildBoard() {
     const frameMat = new THREE.MeshStandardMaterial({ color: "#26282c", metalness: 0.7, roughness: 0.5 });
-    const wallMat = surface(new THREE.MeshStandardMaterial({ envMapIntensity: 0.6 }), "concrete_wall", 3, "#b9b4ac");
+    // a dark fluted feature wall (smoked oak slats on charcoal), washed by warm light from above and below
+    const wallMat = new THREE.MeshStandardMaterial({ color: "#1c1b1a", roughness: 0.7, envMapIntensity: 0.6 });
+    const slatMat = new THREE.MeshStandardMaterial({ color: "#3a2f27", roughness: 0.55, metalness: 0.05, envMapIntensity: 0.8 });
+    const washMat = new THREE.MeshBasicMaterial({ color: "#ffd2a0", toneMapped: false });
     const screenMat = new THREE.MeshBasicMaterial({ map: this.ensureBoard().tex, toneMapped: false });
     const wall = new THREE.Group();
     wall.position.set(0, 0, -19);
     // a board-formed concrete feature wall, the focal point of the floor
     const panel = new THREE.Mesh(new THREE.BoxGeometry(19, 12, 0.5), wallMat);
     panel.position.set(0, 6, -0.45);
-    const plinthStrip = new THREE.Mesh(new THREE.BoxGeometry(19, 0.12, 0.08), new THREE.MeshBasicMaterial({ color: "#d9d2c5" }));
-    plinthStrip.position.set(0, 0.06, -0.18);
+    const plinthStrip = new THREE.Mesh(new THREE.BoxGeometry(19, 0.05, 0.08), washMat);
+    plinthStrip.position.set(0, 0.06, -0.1);
+    const topStrip = new THREE.Mesh(new THREE.BoxGeometry(19, 0.05, 0.08), washMat);
+    topStrip.position.set(0, 11.95, -0.1);
+    const slatGeo = new THREE.BoxGeometry(0.16, 11.8, 0.14);
+    const slatCount = 54;
+    const slats = new THREE.InstancedMesh(slatGeo, slatMat, slatCount);
+    const m4 = new THREE.Matrix4();
+    for (let k = 0; k < slatCount; k++) slats.setMatrixAt(k, m4.makeTranslation(-9.3 + (k * 18.6) / (slatCount - 1), 6, -0.13));
+    slats.instanceMatrix.needsUpdate = true;
     // the monumental K (the interior one of the emblem's two places)
     // the operations display, mounted on the wall below it
     const frame = new THREE.Mesh(new THREE.BoxGeometry(12.6, 4.2, 0.22), frameMat);
     frame.position.y = 4.4;
     const screen = new THREE.Mesh(new THREE.PlaneGeometry(12.2, 3.96), screenMat);
     screen.position.set(0, 4.4, 0.12);
-    wall.add(panel, plinthStrip, frame, screen);
+    wall.add(panel, slats, plinthStrip, topStrip, frame, screen);
     this.scene.add(wall);
-    this.disposables.push(frameMat, wallMat, screenMat, panel.geometry, plinthStrip.geometry, plinthStrip.material as THREE.Material, frame.geometry, screen.geometry);
+    this.disposables.push(frameMat, wallMat, slatMat, washMat, slatGeo, screenMat, panel.geometry, plinthStrip.geometry, topStrip.geometry, frame.geometry, screen.geometry);
     this.drawBoard();
+  }
+
+  /**
+   * The lobby's centrepiece dressing: a polished terrazzo disc with glowing brass inlay rings under the coordination
+   * desk (the rings glow through the bloom pass; nothing here is a real light, so it costs nothing).
+   */
+  private buildLobbyDressing() {
+    const terrazzo = new THREE.MeshPhysicalMaterial({ color: "#2a2928", roughness: 0.42, clearcoat: 0.6, clearcoatRoughness: 0.25, envMapIntensity: 0.9 });
+    const brass = new THREE.MeshBasicMaterial({ color: "#d9a861", toneMapped: false });
+    const g = new THREE.Group();
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(6.6, 96), terrazzo);
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.y = 0.012;
+    disc.receiveShadow = true;
+    g.add(disc);
+    for (const [r0, r1] of [[6.55, 6.62], [5.9, 5.93]]) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 128), brass);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.016;
+      g.add(ring);
+    }
+    this.scene.add(g);
+    this.disposables.push(terrazzo, brass);
   }
 
   /**
