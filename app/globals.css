@@ -524,6 +524,37 @@ body {
     border-color: var(--c);
   }
 }
+/* a state change: a ring expands from the chip once (it reports a real change, so it plays every time) */
+.mc-tag::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 11px;
+  width: 100%;
+  height: 22px;
+  translate: -50% -50%;
+  border: 1px solid var(--c);
+  opacity: 0;
+  pointer-events: none;
+}
+.mc-tag.mc-pulse::before {
+  animation: mc-ring 1.1s cubic-bezier(0.23, 1, 0.32, 1) 2;
+}
+@keyframes mc-ring {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35, 1.9);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-tag.mc-pulse::before {
+    animation: fade-only 0.6s ease 2 reverse;
+  }
+}
 /* lit together with its robot: hovering either one highlights both */
 .mc-tag[data-hot="1"] {
   z-index: 1;

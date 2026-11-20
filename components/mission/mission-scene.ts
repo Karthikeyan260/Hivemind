@@ -498,6 +498,13 @@ export class MissionScene {
   private grade: ShaderPass | null = null;
   private reduce = false;
   private selLight: THREE.PointLight | null = null;
+  /** Warm light pools under the street lamps; they fade in at dusk. */
+  private poolMat: THREE.MeshBasicMaterial | null = null;
+  /** A brief flash on a floor's LED strip when one of its agents changes state (0 to 1, decaying). */
+  private stripFlash = [0, 0, 0];
+  /** The pointer over the canvas (-1 to 1), and the eased camera parallax it drives in the outside view. */
+  private ptr = new THREE.Vector2();
+  private par = new THREE.Vector2();
   /** Name tags floating over each office (HTML, positioned from the 3D scene every frame). */
   private tagLayer: HTMLDivElement | null = null;
   private tags = new Map<CrewId, { el: HTMLDivElement; x: number; y: number; on: boolean; wide: boolean; key: string }>();
@@ -524,7 +531,7 @@ export class MissionScene {
   private selected: CrewId | null = null;
   private hover: CrewId | null = null;
   private ray = new THREE.Raycaster();
-  private ptr = new THREE.Vector2();
+  private aim = new THREE.Vector2();
   private portrait = false;
   private mobile: boolean;
   private w = 1;
@@ -540,6 +547,7 @@ export class MissionScene {
   private tTarget = HOME_TARGET.clone();
   private follow = new THREE.Vector3();
   private tmp = new THREE.Vector3();
+  private tmp2 = new THREE.Vector2();
   private sepA = new THREE.Vector3();
   private sepB = new THREE.Vector3();
   private ema = 0.016;
@@ -613,6 +621,13 @@ export class MissionScene {
     this.ro.observe(canvas);
     this.resize();
     this.bind();
+    const track = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      const r = canvas.getBoundingClientRect();
+      this.aim.set(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1);
+    };
+    window.addEventListener("pointermove", track, { passive: true });
+    this.cleanup.push(() => window.removeEventListener("pointermove", track));
     if (canvas.parentElement) {
       const layer = document.createElement("div");
       layer.className = "mc-tags";
@@ -712,6 +727,7 @@ export class MissionScene {
     // lit things glow more as it gets dark: the LED strips, the lit floors and the sign carry the night shot
     if (this.bloom) this.bloom.strength = 0.2 + 0.45 * (1 - day) + 0.15 * dusk;
     if (this.grade) this.grade.uniforms.uWarm.value = 0.35 + 0.65 * dusk;
+    if (this.poolMat) this.poolMat.opacity = 0.85 * (1 - day);
     this.officeMat?.color.setScalar(0.35 + (1 - day) * 0.65);
     this.loadHdri(day > 0.5 ? "day" : "night");
     const hour = Math.floor(h);
@@ -1079,6 +1095,16 @@ export class MissionScene {
     // street lamps along the path and round the plaza
     for (let k = 0; k < 5; k++) for (const x of [-5.5, 5.5]) placeModel(sc, "streetLamp", { x, z: ZF + 22 + k * 7, yaw: x > 0 ? -Math.PI / 2 : Math.PI / 2, height: 4.2 });
     for (const x of [-21, 21]) placeModel(sc, "streetLamp", { x, z: ZF + 4, height: 4.2 });
+    // the pools of light they throw on the paving after dark (opacity follows the clock, see applyDaylight)
+    {
+      const pool = new THREE.MeshBasicMaterial({ map: radialTexture([[0, "rgba(255,206,140,0.9)"], [0.35, "rgba(255,190,120,0.35)"], [1, "rgba(255,180,110,0)"]]), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+      this.poolMat = pool;
+      this.disposables.push(pool, pool.map!);
+      const spots: Array<[number, number]> = [];
+      for (let k = 0; k < 5; k++) for (const x of [-4.6, 4.6]) spots.push([x, ZF + 22 + k * 7]);
+      spots.push([-21, ZF + 4.6], [21, ZF + 4.6]);
+      for (const [x, z] of spots) flat(6.5, 6.5, pool, x, 0.04, z).receiveShadow = false;
+    }
     // shrub hedges along the front of the building, planters and benches on the plaza
     for (let x = X0 + 1; x < X1; x += 1.6) if (Math.abs(x) > 7.5) placeModel(this.facade, "shrub", { x, z: ZF + 1.4, yaw: x * 1.7, height: 1.1 });
     for (const x of [-15, -9, 9, 15]) {
@@ -2417,6 +2443,14 @@ export class MissionScene {
       }
       const key = `${a.state}|${a.name}|${a.line}`;
       if (key === t.key) continue;
+      // a real state change (not the first fill): the tag sends out a ring and the floor's LED strip flashes
+      const was = t.el.dataset.state;
+      if (was && was !== a.state) {
+        t.el.classList.remove("mc-pulse");
+        void t.el.offsetWidth;
+        t.el.classList.add("mc-pulse");
+        this.stripFlash[FLOOR_OF[a.id]] = 1;
+      }
       t.key = key;
       t.el.dataset.state = a.state;
       t.el.querySelector("b")!.textContent = a.name;
@@ -2518,10 +2552,14 @@ export class MissionScene {
       }
     }
     this.target.lerp(this.tTarget, ease);
-    const th = this.theta + sway;
-    const sp = Math.sin(this.phi);
+    // outside, the view leans a touch toward the pointer (eased like a spring; never while dragging or on touch)
+    const lean = this.view === "outside" && !this.selected && !this.pointers.size && !this.reduce && !this.mobile;
+    this.par.lerp(lean ? this.tmp2.set(this.aim.x * 0.07, this.aim.y * 0.035) : this.tmp2.set(0, 0), 1 - Math.pow(0.08, dt));
+    const th = this.theta + sway - this.par.x;
+    const ph = this.phi + this.par.y;
+    const sp = Math.sin(ph);
     const look = this.look.copy(this.target).add(this.drift);
-    this.camera.position.set(look.x + this.dist * sp * Math.sin(th), look.y + this.dist * Math.cos(this.phi), look.z + this.dist * sp * Math.cos(th));
+    this.camera.position.set(look.x + this.dist * sp * Math.sin(th), look.y + this.dist * Math.cos(ph), look.z + this.dist * sp * Math.cos(th));
     this.camera.lookAt(look);
     this.placeTags();
     if (this.selLight) this.selLight.intensity += ((this.selected ? 9 : 0) - this.selLight.intensity) * (1 - Math.pow(0.02, dt));
@@ -2539,7 +2577,8 @@ export class MissionScene {
       const k = cur + (this.floorGlow[f] - cur) * fk;
       m.userData.k = k;
       m.color.set("#fff3df").multiplyScalar(k);
-      this.stripMats[f]?.color.set("#ffcf96").multiplyScalar(0.25 + 0.85 * k);
+      this.stripFlash[f] = Math.max(0, this.stripFlash[f] - dt * 0.7);
+      this.stripMats[f]?.color.set("#ffcf96").multiplyScalar(0.25 + 0.85 * k + 1.6 * this.stripFlash[f]);
     });
     if (this.grade && !this.reduce) this.grade.uniforms.uTime.value = t;
     if (this.ticker) this.ticker.tex.offset.x = (this.ticker.tex.offset.x + dt * 0.035) % 1;
