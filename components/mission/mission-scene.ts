@@ -2140,32 +2140,51 @@ export class MissionScene {
     this.link(null, id, 7);
   }
 
-  /** A lit path on the floor between two places (an agent's station, or the hub for null) for `seconds`. */
+  /**
+   * A lit path between two places (an agent's station, or the hub for null) for `seconds`. On one floor it runs
+   * straight across; between floors it runs to the lift, climbs (or drops) through the glass shaft as a beam of light,
+   * and carries on across the other floor to the office.
+   */
   private link(from: CrewId | null, to: CrewId | null, seconds: number) {
     const key = `${from}>${to}`;
     const until = performance.now() / 1000 + seconds;
-    const have = this.links.find((l) => l.key === key);
-    if (have) {
-      have.until = Math.max(have.until, until);
+    const have = this.links.filter((l) => l.key === key || l.key.startsWith(key + "|"));
+    if (have.length) {
+      for (const l of have) l.until = Math.max(l.until, until);
       return;
     }
     const at = (id: CrewId | null) => (id ? (this.pods.find((x) => x.id === id)?.group.position.clone() ?? null) : new THREE.Vector3());
     const a = at(from);
     const b = at(to);
     if (!a || !b) return;
-    if (Math.abs(a.y - b.y) > 0.5) return; // different floors: the visit shows as the robot taking the lift
-    const fy = a.y;
-    a.y = b.y = 0;
-    const dir = b.clone().sub(a);
-    const len = dir.length();
-    dir.normalize();
     // start and end just outside the room (or the hub's desk), not under it
     const sa = from ? 3.1 : 4.6;
     const sb = to ? 3.1 : 4.6;
-    if (len < sa + sb + 0.5) return;
-    const p0 = a.clone().addScaledVector(dir, sa);
-    const p1 = b.clone().addScaledVector(dir, -sb);
-    const L = p0.distanceTo(p1);
+    if (Math.abs(a.y - b.y) <= 0.5) {
+      this.flowStrip(key, a, b, sa, sb, a.y, until);
+      return;
+    }
+    // the lift: the hub reaches it from the lobby side, offices from its doors on their floor
+    const door = new THREE.Vector3(LIFT.x, 0, LIFT.doorZ + 0.2);
+    const lobbySide = new THREE.Vector3(LIFT.x, 0, LIFT.z - LIFT.hz - 0.4);
+    this.flowStrip(key + "|a", a, from ? door : lobbySide, sa, 0.1, a.y, until);
+    this.flowStrip(key + "|b", door, b, 0.1, sb, b.y, until);
+    const lo = Math.min(a.y, b.y);
+    const h = Math.abs(a.y - b.y) + 2.4;
+    const mat = new THREE.MeshBasicMaterial({ map: this.flowTexture(h), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
+    const geo = new THREE.PlaneGeometry(h, 0.7);
+    const beam = new THREE.Mesh(geo, mat);
+    beam.position.set(LIFT.x, lo + 0.2 + h / 2, LIFT.z);
+    beam.rotation.z = b.y > a.y ? Math.PI / 2 : -Math.PI / 2; // the flow runs along the strip: up, or down
+    const cross = new THREE.Mesh(geo, mat);
+    cross.rotation.x = Math.PI / 2;
+    beam.add(cross);
+    this.scene.add(beam);
+    this.links.push({ key: key + "|lift", mesh: beam, mat, until });
+  }
+
+  /** The flowing light texture, tiled to a strip `length` long (one shared source canvas, a clone per strip). */
+  private flowTexture(length: number) {
     if (!this.flowTex) {
       const c = document.createElement("canvas");
       c.width = 128;
@@ -2184,8 +2203,22 @@ export class MissionScene {
     }
     const tex = this.flowTex.clone();
     tex.needsUpdate = true;
-    tex.repeat.set(L / 1.6, 1);
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    tex.repeat.set(length / 1.6, 1);
+    return tex;
+  }
+
+  /** One straight lit strip on a floor at height `fy`, from just past `sa` out of `a` to `sb` short of `b`. */
+  private flowStrip(key: string, a0: THREE.Vector3, b0: THREE.Vector3, sa: number, sb: number, fy: number, until: number) {
+    const a = a0.clone().setY(0);
+    const b = b0.clone().setY(0);
+    const dir = b.clone().sub(a);
+    const len = dir.length();
+    dir.normalize();
+    if (len < sa + sb + 0.5) return;
+    const p0 = a.clone().addScaledVector(dir, sa);
+    const p1 = b.clone().addScaledVector(dir, -sb);
+    const L = p0.distanceTo(p1);
+    const mat = new THREE.MeshBasicMaterial({ map: this.flowTexture(L), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(L, 0.22), mat);
     mesh.position.copy(p0.clone().lerp(p1, 0.5)).setY(fy + 0.07);
     mesh.rotation.order = "YXZ";
