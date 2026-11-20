@@ -536,6 +536,13 @@ export class MissionScene {
   private tagLayer: HTMLDivElement | null = null;
   private tags = new Map<CrewId, { el: HTMLDivElement; x: number; y: number; on: boolean; wide: boolean; key: string }>();
   private tagV = new THREE.Vector3();
+  /** The tower's solid parts (slabs, walls, roof) that can hide an office's tag from the camera. */
+  private occluders: THREE.Mesh[] = [];
+  private occRay = new THREE.Raycaster();
+  private occFrame = 0;
+  private occHidden = new Set<CrewId>();
+  /** When an office was opened (its robot waves hello for a moment). */
+  private selAt = 0;
   /** True until the opening crane shot ends (or the visitor grabs the camera). */
   private introOn = true;
   /** When the crew first appeared (the loading curtain lifts then, and the crane shot starts). */
@@ -623,6 +630,7 @@ export class MissionScene {
     this.buildBoard();
     this.buildLobbyDressing();
     this.buildExterior();
+    for (const g of this.levels) for (const o of g.children) if ((o as THREE.Mesh).isMesh) this.occluders.push(o as THREE.Mesh);
     this.buildLife();
     this.applyDaylight();
 
@@ -2470,6 +2478,7 @@ export class MissionScene {
     if (sp) this.view = `f${sp.floor}` as MissionView; // a robot is looked at on its own floor, front cut away
     this.applyCutaway();
     this.selected = id;
+    this.selAt = performance.now();
     this.idleSince = performance.now();
     if (!id) {
       this.tTarget.copy(this.homeTarget());
@@ -2813,16 +2822,32 @@ export class MissionScene {
     if (!this.tagLayer || !this.tags.size) return;
     const focus = this.view[0] === "f" ? Number(this.view[1]) : -1;
     const showAll = this.view === "outside" && !this.introOn;
+    // the occlusion test runs every few frames (a handful of rays against the tower's own slabs and walls)
+    const check = this.occFrame++ % 6 === 0;
+    const live = check ? this.occluders.filter((m) => m.parent!.visible && m.parent!.position.y < 0.01) : [];
     for (const p of this.pods) {
       const t = this.tags.get(p.id);
       if (!t) continue;
-      const on = (showAll || p.floor === focus) && this.selected !== p.id;
+      let on = (showAll || p.floor === focus) && this.selected !== p.id;
       let x = t.x;
       let y = t.y;
       let vis = on;
       if (on) {
         p.group.getWorldPosition(this.tagV);
         this.tagV.y += 2.3; // head height: the chip then sits in the top of the office glass, under the slab
+        if (check) {
+          // hidden behind the building (the roof from above, a slab or wall at a steep angle)? then no tag
+          const dir = this.tagV.clone().sub(this.camera.position);
+          const far = dir.length();
+          this.occRay.set(this.camera.position, dir.normalize());
+          this.occRay.far = far - 0.4;
+          const hit = this.occRay.intersectObjects(live, false).length > 0;
+          if (hit) this.occHidden.add(p.id);
+          else this.occHidden.delete(p.id);
+        }
+        if (this.occHidden.has(p.id)) on = false;
+      }
+      if (on) {
         this.tagV.project(this.camera);
         vis = this.tagV.z < 1 && Math.abs(this.tagV.x) < 1.05 && Math.abs(this.tagV.y) < 1.05;
         x = Math.round((this.tagV.x * 0.5 + 0.5) * this.w);
@@ -2974,7 +2999,9 @@ export class MissionScene {
       // where is the viewer, from the robot's point of view?
       const local = p.rig.root.worldToLocal(this.tmp.copy(this.camera.position));
       const look = THREE.MathUtils.clamp(Math.atan2(local.x, local.z), -1.1, 1.1);
-      p.rig.pose(p.state, t, dt, p.phase, look, this.hover === p.id, p.cele > 0, p.act, p.walk);
+      // it waves hello when you hover it, and for a moment when you open its office
+      const hello = this.hover === p.id || (this.selected === p.id && now - this.selAt < 2600);
+      p.rig.pose(p.state, t, dt, p.phase, look, hello, p.cele > 0, p.act, p.walk);
       p.station.update(t, dt, p.act, p.state === "working");
       this.moveProp(p, s, t, dt);
       p.haloMat.color.copy(p.col);
