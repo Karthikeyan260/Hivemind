@@ -3,7 +3,7 @@
 import { ArrowUpRight, Camera, ChevronUp, Clock3, Loader2, Moon, Play, Send, Square, Sun, X } from "lucide-react";
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
-import { FLOOR_OF, FLOORS, MissionScene, type MissionView, type SkyMode } from "@/components/mission/mission-scene";
+import { FLOOR_OF, FLOORS, MissionScene, type MissionView, type SiteWeather, type SkyMode } from "@/components/mission/mission-scene";
 import { api, type HiveEvent, streamHivemind } from "@/lib/client-api";
 import { ago, type AgentState, type CrewAgent, type CrewId, type SystemStats } from "@/lib/mission";
 
@@ -61,6 +61,8 @@ export default function MissionPage() {
   const shownView = useRef<MissionView>("outside");
   const [hover, setHover] = useState<{ id: CrewId; x: number; y: number } | null>(null);
   const [sky, setSky] = useState<SkyMode>("live");
+  // the real weather at home (HIVEMIND's own weather source): clouds, rain and fog in the scene, and a small chip
+  const [wx, setWx] = useState<(SiteWeather & { temp_c: number; condition: string; place: string }) | null>(null);
   // photo mode: the HUD steps aside for a clean view of the building
   const [bare, setBare] = useState(false);
 
@@ -89,6 +91,28 @@ export default function MissionPage() {
   useEffect(() => {
     scene.current?.setSky(sky);
   }, [sky]);
+
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      api<{ place: string; current: { temp_c: number; condition: string; code: number; rain_mm: number; wind_kmh: number } }>("/api/tools/weather")
+        .then((w) => {
+          if (!live) return;
+          const c = w.current;
+          setWx({ code: c.code, rain_mm: c.rain_mm, wind_kmh: c.wind_kmh, temp_c: c.temp_c, condition: c.condition, place: w.place });
+        })
+        .catch(() => {}); // no weather: the scene keeps a fair sky and no chip shows
+    load();
+    const t = setInterval(load, 15 * 60_000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (wx) scene.current?.setWeather(wx);
+  }, [wx, ready]);
 
   // Keyboard: E outside, 2 / 1 / G the floors, L the lobby, T the tour, H photo mode, Esc to close (instant, no animation)
   useEffect(() => {
@@ -260,6 +284,11 @@ export default function MissionPage() {
             <button type="button" onClick={() => userPick(null)} className={BTN}>
               Overview
             </button>
+          )}
+          {wx && (
+            <span title={`Weather now in ${wx.place}: ${wx.condition}`} className="hidden h-9 items-center gap-1.5 border border-white/10 bg-[#0a0d14]/80 px-3 font-mono text-[10.5px] tracking-wider uppercase backdrop-blur-md md:flex">
+              {Math.round(wx.temp_c)}°<span className="max-w-[9rem] truncate text-white/55 normal-case">{wx.condition}</span>
+            </span>
           )}
           <button
             type="button"

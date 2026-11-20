@@ -40,6 +40,8 @@ const onFloor = (x: number, z: number, lvl: number) => {
   return inTower || (lvl === 0 && Math.hypot(x, z) < 29.5);
 };
 export type MissionView = "outside" | "lobby" | "f0" | "f1" | "f2";
+/** Real weather for the site (from HIVEMIND's own weather source): WMO code, rain now, wind. */
+export type SiteWeather = { code: number; rain_mm: number; wind_kmh: number };
 /** The sky: the real clock, or pinned to day or night to see the building either way. */
 export type SkyMode = "live" | "day" | "night";
 
@@ -509,6 +511,19 @@ export class MissionScene {
   /** The final colour grade: a film-like split tone and a fine grain over the whole frame. */
   private grade: ShaderPass | null = null;
   private reduce = false;
+  /** The living world: real-weather clouds, rain and fog, traffic on the road, birds over the tower. */
+  private overcast = 0;
+  private wind = 8;
+  private rainOn = 0;
+  private fogOn = 0;
+  private clouds: Array<{ s: THREE.Sprite; a: number; r: number; y: number; v: number }> = [];
+  private cloudMat: THREE.SpriteMaterial | null = null;
+  private rain: { seg: THREE.LineSegments; pos: Float32Array; mat: THREE.LineBasicMaterial; n: number } | null = null;
+  private cars: Array<{ g: THREE.Group; dir: number; x: number; v: number; lights: THREE.MeshBasicMaterial[] }> = [];
+  private carLights: THREE.MeshBasicMaterial[] = [];
+  private birds: Array<{ g: THREE.Group; l: THREE.Mesh; r: THREE.Mesh; ph: number; rad: number; h: number; sp: number }> = [];
+  private birdGroup = new THREE.Group();
+  private night = 0;
   private selLight: THREE.PointLight | null = null;
   /** Warm light pools under the street lamps; they fade in at dusk. */
   private poolMat: THREE.MeshBasicMaterial | null = null;
@@ -608,6 +623,7 @@ export class MissionScene {
     this.buildBoard();
     this.buildLobbyDressing();
     this.buildExterior();
+    this.buildLife();
     this.applyDaylight();
 
     if (!this.mobile) {
@@ -732,9 +748,10 @@ export class MissionScene {
     // 0 at night, 1 in full day, with an hour of twilight either side of 6:30 and 18:30
     const day = THREE.MathUtils.clamp(Math.min(h - 5.5, 19.5 - h) / 2, 0, 1);
     const dusk = day > 0 && day < 1 ? 1 - Math.abs(day - 0.5) * 2 : 0;
-    this.hemi.intensity = 0.32 + 0.5 * day;
+    this.hemi.intensity = (0.32 + 0.5 * day) * (1 - 0.2 * this.overcast);
     this.hemi.color.set(day > 0.5 ? "#e4ebf2" : "#9aa6c2");
-    this.key.intensity = 0.55 + 1.05 * day;
+    this.night = 1 - day;
+    this.key.intensity = (0.55 + 1.05 * day) * (1 - 0.45 * this.overcast);
     this.key.color.set(dusk > 0.3 ? "#ffc58f" : day > 0.5 ? "#fff4e4" : "#ffd6a8");
     this.rim.intensity = 0.25 + 0.5 * day;
     this.renderer.toneMappingExposure = 0.92 + 0.18 * day;
@@ -1394,8 +1411,13 @@ export class MissionScene {
     grad.addColorStop(1, "#121418");
     g.fillStyle = grad;
     g.fillRect(0, 0, W, H);
+    // an overcast sky greys out (real cloud cover; see setWeather)
+    if (this.overcast > 0.05) {
+      g.fillStyle = `rgba(${day > 0.5 ? "150,158,168" : "40,44,52"},${0.6 * this.overcast})`;
+      g.fillRect(0, 0, W, H * 0.52);
+    }
     // stars after dark (u = 0.75 faces the tower from the street, so the sky behind it gets them)
-    if (day < 0.6) {
+    if (day < 0.6 && this.overcast < 0.7) {
       let s = 11;
       const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
       for (let k = 0; k < 520; k++) {
@@ -2245,6 +2267,203 @@ export class MissionScene {
     }
   }
 
+  /**
+   * The site's real weather (HIVEMIND's own Open-Meteo source for your home city): cloud cover from the WMO code,
+   * rain when it is raining, fog when foggy, and the wind drives the clouds and slants the rain.
+   */
+  setWeather(w: SiteWeather) {
+    const c = w.code;
+    this.overcast = c === 0 ? 0 : c === 1 ? 0.2 : c === 2 ? 0.45 : c === 3 ? 0.8 : c >= 45 && c <= 48 ? 0.7 : c >= 51 ? 0.9 : 0.3;
+    this.rainOn = (c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95 || w.rain_mm > 0.1 ? Math.min(1, 0.45 + w.rain_mm / 4 + (c >= 95 ? 0.4 : 0)) : 0;
+    this.fogOn = c === 45 || c === 48 ? 1 : 0;
+    this.wind = Math.max(2, w.wind_kmh || 0);
+    this.skyHour = -1; // repaint the sky with the new cover
+    this.applyDaylight();
+  }
+
+  /** Clouds, traffic and birds (rain is built the first time it rains). */
+  private buildLife() {
+    // clouds: soft billboards in a ring round the site, high up, drifting with the wind
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const g = c.getContext("2d")!;
+    let seed = 3;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let k = 0; k < 14; k++) {
+      const x = 24 + rnd() * 80;
+      const y = 50 + (rnd() - 0.5) * 34;
+      const rr = 16 + rnd() * 22;
+      const gr = g.createRadialGradient(x, y, 0, x, y, rr);
+      gr.addColorStop(0, "rgba(255,255,255,0.55)");
+      gr.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 128, 128);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const cm = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, fog: false });
+    this.cloudMat = cm;
+    this.disposables.push(tex, cm);
+    const n = this.mobile ? 8 : 14;
+    for (let k = 0; k < n; k++) {
+      const sp = new THREE.Sprite(cm);
+      const sc = 26 + rnd() * 30;
+      sp.scale.set(sc * 1.8, sc * 0.7, 1);
+      const cl = { s: sp, a: rnd() * Math.PI * 2, r: 75 + rnd() * 40, y: 34 + rnd() * 22, v: 0.4 + rnd() * 0.6 };
+      sp.position.set(Math.cos(cl.a) * cl.r, cl.y, Math.sin(cl.a) * cl.r);
+      this.scene.add(sp);
+      this.clouds.push(cl);
+    }
+
+    // traffic: small cars driving both lanes of the road in front of the site, lights on after dark
+    const ROAD_Z = TOWER.zf + 56;
+    const paints = ["#c8ccd2", "#2c3440", "#8a1f24", "#e9e6df", "#1f4d6b"];
+    const glass = new THREE.MeshStandardMaterial({ color: "#1a222c", metalness: 0.6, roughness: 0.2 });
+    const tyre = new THREE.MeshStandardMaterial({ color: "#141414", roughness: 0.9 });
+    const head = new THREE.MeshBasicMaterial({ color: "#fff4dc", toneMapped: false });
+    const tail = new THREE.MeshBasicMaterial({ color: "#ff3b30", toneMapped: false });
+    this.carLights.push(head, tail);
+    this.disposables.push(glass, tyre, head, tail);
+    const nc = this.mobile ? 3 : 5;
+    for (let k = 0; k < nc; k++) {
+      const body = new THREE.MeshStandardMaterial({ color: paints[k % paints.length], metalness: 0.55, roughness: 0.35, envMapIntensity: 1.1 });
+      this.disposables.push(body);
+      const car = new THREE.Group();
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.75, 1.8), body);
+      hull.position.y = 0.6;
+      const cab = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.6), glass);
+      cab.position.set(-0.2, 1.25, 0);
+      car.add(hull, cab);
+      for (const wx of [-1.35, 1.35]) for (const wz of [-0.85, 0.85]) {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.25, 12), tyre);
+        w.rotation.x = Math.PI / 2;
+        w.position.set(wx, 0.34, wz);
+        car.add(w);
+      }
+      for (const lz of [-0.6, 0.6]) {
+        const h = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.36), head);
+        h.position.set(2.11, 0.7, lz);
+        const t = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.36), tail);
+        t.position.set(-2.11, 0.7, lz);
+        car.add(h, t);
+      }
+      const dir = k % 2 === 0 ? 1 : -1;
+      car.rotation.y = dir > 0 ? 0 : Math.PI;
+      car.position.set(0, 0.02, ROAD_Z + (dir > 0 ? 2.1 : -2.1));
+      this.scene.add(car);
+      this.cars.push({ g: car, dir, x: -110 + ((k * 47) % 220), v: 9 + (k % 3) * 2.5, lights: [head, tail] });
+    }
+
+    // birds: a small flock circling over the tower on fair days
+    const bm = new THREE.MeshBasicMaterial({ color: "#1e2328", side: THREE.DoubleSide });
+    const wing = new THREE.PlaneGeometry(0.7, 0.22);
+    wing.translate(0.35, 0, 0);
+    this.disposables.push(bm, wing);
+    this.scene.add(this.birdGroup);
+    for (let k = 0; k < (this.mobile ? 4 : 7); k++) {
+      const b = new THREE.Group();
+      const l = new THREE.Mesh(wing, bm);
+      const rr = new THREE.Mesh(wing, bm);
+      rr.scale.x = -1;
+      b.add(l, rr);
+      this.birdGroup.add(b);
+      this.birds.push({ g: b, l, r: rr, ph: k * 0.9, rad: 16 + (k % 3) * 3, h: 24 + (k % 4) * 1.2, sp: 0.16 + (k % 3) * 0.02 });
+    }
+  }
+
+  /** Rain streaks in a box over the site (built the first time it rains). */
+  private ensureRain() {
+    if (this.rain) return this.rain;
+    const n = this.mobile ? 600 : 1500;
+    const pos = new Float32Array(n * 6);
+    for (let k = 0; k < n; k++) {
+      const x = -45 + Math.random() * 90;
+      const y = Math.random() * 45;
+      const z = -10 + Math.random() * 100;
+      pos.set([x, y, z, x, y - 0.9, z], k * 6);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.LineBasicMaterial({ color: "#b9c7d6", transparent: true, opacity: 0, depthWrite: false });
+    const seg = new THREE.LineSegments(geo, mat);
+    seg.frustumCulled = false;
+    this.scene.add(seg);
+    this.disposables.push(mat);
+    this.rain = { seg, pos, mat, n };
+    return this.rain;
+  }
+
+  private updateLife(t: number, dt: number) {
+    const move = this.reduce ? 0 : 1;
+    // clouds
+    if (this.cloudMat) {
+      const want = 0.12 + 0.75 * this.overcast;
+      this.cloudMat.opacity += (want - this.cloudMat.opacity) * (1 - Math.pow(0.3, dt));
+      const grey = 1 - 0.55 * this.overcast - 0.6 * this.night;
+      this.cloudMat.color.setScalar(Math.max(0.12, grey));
+      for (const cl of this.clouds) {
+        cl.a += ((dt * this.wind * 0.0009 * cl.v) / (cl.r / 90)) * move;
+        cl.s.position.set(Math.cos(cl.a) * cl.r, cl.y, Math.sin(cl.a) * cl.r);
+      }
+    }
+    // rain
+    if (this.rainOn > 0 || this.rain) {
+      const rn = this.ensureRain();
+      rn.mat.opacity += ((this.rainOn && !this.reduce ? 0.35 + 0.3 * this.rainOn : 0) - rn.mat.opacity) * (1 - Math.pow(0.2, dt));
+      rn.seg.visible = rn.mat.opacity > 0.01;
+      if (rn.seg.visible) {
+        const fall = 24 * dt;
+        const slant = Math.min(0.5, this.wind / 60) * fall;
+        const a = rn.pos;
+        for (let k = 0; k < rn.n; k++) {
+          const i = k * 6;
+          a[i + 1] -= fall;
+          a[i] += slant;
+          if (a[i + 1] < 0) {
+            a[i] = -45 + Math.random() * 90;
+            a[i + 1] = 40 + Math.random() * 5;
+            a[i + 2] = -10 + Math.random() * 100;
+          }
+          a[i + 3] = a[i] - slant * 0.04;
+          a[i + 4] = a[i + 1] - 0.9;
+          a[i + 5] = a[i + 2];
+        }
+        (rn.seg.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
+      }
+    }
+    // fog: real fog pulls the haze in close
+    const fog = this.scene.fog as THREE.Fog | null;
+    if (fog) {
+      const near = 40 - 22 * this.fogOn - 8 * this.rainOn;
+      const far = 95 - 45 * this.fogOn - 20 * this.rainOn;
+      fog.near += (near - fog.near) * (1 - Math.pow(0.3, dt));
+      fog.far += (far - fog.far) * (1 - Math.pow(0.3, dt));
+    }
+    // traffic
+    for (const c of this.cars) {
+      c.x += c.dir * c.v * dt * move;
+      if (c.x > 115) c.x = -115;
+      if (c.x < -115) c.x = 115;
+      c.g.position.x = c.x;
+    }
+    const lit = 0.25 + 0.75 * Math.max(this.night, this.overcast * 0.6);
+    this.carLights[0]?.color.set("#fff4dc").multiplyScalar(lit * 1.4);
+    this.carLights[1]?.color.set("#ff3b30").multiplyScalar(lit * 1.2);
+    // birds: out on fair days only
+    const fair = this.night < 0.5 && this.rainOn === 0 && this.overcast < 0.85;
+    this.birdGroup.visible = fair;
+    if (fair) {
+      for (const b of this.birds) {
+        const a = b.ph + t * b.sp * (move || 0.0001);
+        b.g.position.set(Math.cos(a) * b.rad, b.h + Math.sin(t * 0.7 + b.ph) * 0.6, 20 + Math.sin(a) * b.rad);
+        b.g.rotation.y = -a; // fly along the circle
+        const flap = Math.sin(t * 9 + b.ph * 3) * 0.6 * move;
+        b.l.rotation.z = flap;
+        b.r.rotation.z = -flap;
+      }
+    }
+  }
+
   select(id: CrewId | null) {
     this.introOn = false;
     const sp = id ? this.pods.find((x) => x.id === id) : null;
@@ -2711,6 +2930,7 @@ export class MissionScene {
     const glow = this.coreGroup.userData.glow as THREE.MeshBasicMaterial | undefined;
     if (glow) glow.opacity = 0.25 + this.busy * (0.55 + Math.sin(t * 3) * 0.15);
     this.updateLinks(t, dt);
+    this.updateLife(t, dt);
     // floor lights ease toward their level; the LED band scrolls; the veils fade over the floors you aren't looking at
     const fk = 1 - Math.pow(0.3, dt);
     this.floorLights.forEach((m, f) => {
