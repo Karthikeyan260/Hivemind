@@ -497,6 +497,7 @@ export class MissionScene {
   /** The final colour grade: a film-like split tone and a fine grain over the whole frame. */
   private grade: ShaderPass | null = null;
   private reduce = false;
+  private selLight: THREE.PointLight | null = null;
   /** Name tags floating over each office (HTML, positioned from the 3D scene every frame). */
   private tagLayer: HTMLDivElement | null = null;
   private tags = new Map<CrewId, { el: HTMLDivElement; x: number; y: number; on: boolean; wide: boolean; key: string }>();
@@ -660,6 +661,11 @@ export class MissionScene {
     const core = new THREE.PointLight("#ffd9b0", 16, 18, 2);
     core.position.set(0, 4.6, 0);
     s.add(core);
+    // a soft cool light over the agent you picked (always present, at zero when nothing is picked, so the
+    // number of lights never changes and no shader has to recompile)
+    const sel = new THREE.PointLight("#cfeeff", 0, 7, 2);
+    this.selLight = sel;
+    s.add(sel);
   }
 
   /** Lights the hall with a real office HDRI (Poly Haven, CC0): the daytime one, or its night version. */
@@ -862,7 +868,6 @@ export class MissionScene {
     const glass = new THREE.MeshPhysicalMaterial({ color: "#7d93a3", metalness: 0.1, roughness: 0.05, transparent: true, opacity: 0.16, envMapIntensity: 1.4, depthWrite: false });
     const curtain = new THREE.MeshPhysicalMaterial({ color: "#8fa6b6", metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.16, envMapIntensity: 1.6, depthWrite: false });
     const concreteMat = surface(new THREE.MeshStandardMaterial({ envMapIntensity: 0.6 }), "concrete_wall", 5, "#d8d3cb");
-    const slabMat = surface(new THREE.MeshStandardMaterial({ envMapIntensity: 0.6 }), "concrete_wall", 10, "#e4e0d8");
     const granite = new THREE.MeshStandardMaterial({ color: "#3a3937", roughness: 0.35, metalness: 0.1, envMapIntensity: 1 });
     const alu = new THREE.MeshStandardMaterial({ color: "#9aa0a6", metalness: 0.9, roughness: 0.35 });
     const steel = new THREE.MeshStandardMaterial({ color: "#3a3c40", metalness: 0.8, roughness: 0.4 });
@@ -874,7 +879,7 @@ export class MissionScene {
     const white = new THREE.MeshBasicMaterial({ color: "#e8e6e0" });
     const lampLight = new THREE.MeshBasicMaterial({ color: "#ffe2b8" });
     const solar = new THREE.MeshStandardMaterial({ color: "#1b2636", metalness: 0.6, roughness: 0.2 });
-    this.disposables.push(glass, curtain, concreteMat, slabMat, granite, alu, steel, grass, pavers, pathMat, asphalt, lotMat, white, lampLight, solar);
+    this.disposables.push(glass, curtain, concreteMat, granite, alu, steel, grass, pavers, pathMat, asphalt, lotMat, white, lampLight, solar);
     let into: THREE.Object3D = sc;
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, ry = 0) => {
       const m = new THREE.Mesh(geo, mat);
@@ -915,14 +920,19 @@ export class MissionScene {
     const cx = (X0 + X1) / 2;
     const cz = (ZB + ZF) / 2;
     // the floor slabs (the ground floor is a polished concrete floor level with the lobby)
-    for (let fl = 1; fl <= 3; fl++) add(new THREE.BoxGeometry(W + 0.6, 0.38, ZF - ZB + 0.6), slabMat, cx, fl * FL + 0.19, cz);
-    const groundMat = surface(new THREE.MeshStandardMaterial({ envMapIntensity: 0.7 }), "concrete_floor", 6, "#cfcbc4");
-    this.disposables.push(groundMat);
-    flat(W, ZF - ZB, groundMat, cx, 0.014, cz);
-    for (const x of [X0, X1]) add(new THREE.BoxGeometry(0.6, H, ZF - ZB), concreteMat, x, H / 2, cz);
+    // inside, an architect's palette: warm white plaster walls and ceilings, pale polished floors with a soft sheen,
+    // so every floor reads bright and clean through the glass
+    const plaster = new THREE.MeshStandardMaterial({ color: "#efebe5", roughness: 0.92, envMapIntensity: 0.7 });
+    const ceiling = new THREE.MeshStandardMaterial({ color: "#f4f2ee", roughness: 0.95, envMapIntensity: 0.5 });
+    const finish = surface(new THREE.MeshPhysicalMaterial({ envMapIntensity: 0.9, clearcoat: 0.45, clearcoatRoughness: 0.3 }), "concrete_floor", 6, "#ece9e4");
+    this.disposables.push(plaster, ceiling, finish);
+    // slab faces: +x, -x, top (the floor above), bottom (the ceiling below), front, back
+    for (let fl = 1; fl <= 3; fl++) add(new THREE.BoxGeometry(W + 0.6, 0.38, ZF - ZB + 0.6), [plaster, plaster, finish, ceiling, plaster, plaster] as unknown as THREE.Material, cx, fl * FL + 0.19, cz);
+    flat(W, ZF - ZB, finish, cx, 0.014, cz);
+    for (const x of [X0, X1]) add(new THREE.BoxGeometry(0.6, H, ZF - ZB), plaster, x, H / 2, cz);
     add(new THREE.BoxGeometry(W + 0.6, 1.0, 0.5), concreteMat, cx, H + 0.6, ZF + 0.05); // parapet
     // the upper floors' back wall (the ground floor opens straight into the lobby hall)
-    add(new THREE.BoxGeometry(W, H - FL, 0.3), concreteMat, cx, FL + (H - FL) / 2, ZB);
+    add(new THREE.BoxGeometry(W, H - FL, 0.3), plaster, cx, FL + (H - FL) / 2, ZB);
     // ceiling lights: rows of panels under every slab, so each floor reads as a lit office from outside
     const panelMat = new THREE.MeshBasicMaterial({ color: "#fff3df", toneMapped: false, side: THREE.DoubleSide });
     this.disposables.push(panelMat);
@@ -2397,7 +2407,10 @@ export class MissionScene {
         const el = document.createElement("div");
         el.className = "mc-tag";
         el.innerHTML = '<button type="button" class="mc-tag-chip" tabindex="-1"><i></i><b></b><span></span></button><p></p><s></s>';
-        el.querySelector("button")!.addEventListener("click", () => this.hooks.onSelect(a.id));
+        const chip = el.querySelector("button")!;
+        chip.addEventListener("click", () => this.hooks.onSelect(a.id));
+        chip.addEventListener("pointerenter", () => (this.hover = a.id));
+        chip.addEventListener("pointerleave", () => this.hover === a.id && (this.hover = null));
         layer.appendChild(el);
         t = { el, x: -1, y: -1, on: false, wide: false, key: "" };
         this.tags.set(a.id, t);
@@ -2436,6 +2449,8 @@ export class MissionScene {
         t.on = vis;
         t.el.dataset.on = vis ? "1" : "0";
       }
+      const hot = this.hover === p.id;
+      if (hot !== (t.el.dataset.hot === "1")) t.el.dataset.hot = hot ? "1" : "0";
       const wide = focus >= 0;
       if (wide !== t.wide) {
         t.wide = wide;
@@ -2499,6 +2514,7 @@ export class MissionScene {
       if (sp) {
         sp.rig.root.getWorldPosition(this.follow);
         this.tTarget.set(this.follow.x, this.follow.y + 1.3, this.follow.z);
+        this.selLight?.position.set(this.follow.x, this.follow.y + 2.5, this.follow.z + 0.6);
       }
     }
     this.target.lerp(this.tTarget, ease);
@@ -2508,6 +2524,7 @@ export class MissionScene {
     this.camera.position.set(look.x + this.dist * sp * Math.sin(th), look.y + this.dist * Math.cos(this.phi), look.z + this.dist * sp * Math.cos(th));
     this.camera.lookAt(look);
     this.placeTags();
+    if (this.selLight) this.selLight.intensity += ((this.selected ? 9 : 0) - this.selLight.intensity) * (1 - Math.pow(0.02, dt));
 
 
     // the operations table's edge light: brighter (and breathing) while a command you gave is running

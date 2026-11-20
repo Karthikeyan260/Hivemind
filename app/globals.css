@@ -524,6 +524,14 @@ body {
     border-color: var(--c);
   }
 }
+/* lit together with its robot: hovering either one highlights both */
+.mc-tag[data-hot="1"] {
+  z-index: 1;
+}
+.mc-tag[data-hot="1"] .mc-tag-chip {
+  border-color: var(--c);
+  box-shadow: 0 0 0 1px var(--c), 0 0 18px -4px var(--c);
+}
 .mc-tag-chip:active {
   transform: scale(0.97);
 }
