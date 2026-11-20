@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowUpRight, ChevronUp, Loader2, Play, Send, Square, X } from "lucide-react";
+import { ArrowUpRight, Camera, ChevronUp, Clock3, Loader2, Moon, Play, Send, Square, Sun, X } from "lucide-react";
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
-import { FLOOR_OF, FLOORS, MissionScene, type MissionView } from "@/components/mission/mission-scene";
+import { FLOOR_OF, FLOORS, MissionScene, type MissionView, type SkyMode } from "@/components/mission/mission-scene";
 import { api, type HiveEvent, streamHivemind } from "@/lib/client-api";
 import { ago, type AgentState, type CrewAgent, type CrewId, type SystemStats } from "@/lib/mission";
 
@@ -60,6 +60,9 @@ export default function MissionPage() {
   const [caption, setCaption] = useState<{ key: number; title: string; sub: string } | null>(null);
   const shownView = useRef<MissionView>("outside");
   const [hover, setHover] = useState<{ id: CrewId; x: number; y: number } | null>(null);
+  const [sky, setSky] = useState<SkyMode>("live");
+  // photo mode: the HUD steps aside for a clean view of the building
+  const [bare, setBare] = useState(false);
 
   const pick = useCallback((id: CrewId | null) => {
     setOpen(id);
@@ -75,6 +78,41 @@ export default function MissionPage() {
     },
     [pick],
   );
+
+  const go = useCallback((v: MissionView) => {
+    setTouring(false);
+    setOpen(null);
+    setView(v);
+    scene.current?.setView(v);
+  }, []);
+
+  useEffect(() => {
+    scene.current?.setSky(sky);
+  }, [sky]);
+
+  // Keyboard: E outside, 2 / 1 / G the floors, L the lobby, T the tour, H photo mode, Esc to close (instant, no animation)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))) return;
+      const k = e.key.toLowerCase();
+      const to = FLOOR_BUTTONS.find((f) => f.key.toLowerCase() === k);
+      if (to) go(to.v);
+      else if (k === "t") {
+        if (touring) {
+          setTouring(false);
+          pick(null);
+        } else setTouring(true);
+      } else if (k === "h") setBare((b) => !b);
+      else if (k === "escape") {
+        if (open) userPick(null);
+        else setBare(false);
+      } else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [go, pick, userPick, touring, open]);
 
   // The tour: visit each robot in turn, anyone who needs you first.
   useEffect(() => {
@@ -162,11 +200,11 @@ export default function MissionPage() {
 
   return (
     // Sits inside the app frame: the sidebar (laptop) or title bar and tab bar (phone) stay visible.
-    <div data-hud={lifted || failed ? "in" : "wait"} className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+3.25rem)] bottom-[var(--tabbar-h)] z-10 select-none overflow-hidden bg-[#04060d] text-white md:top-0 md:bottom-0 md:left-52">
+    <div data-hud={lifted || failed ? "in" : "wait"} data-bare={bare ? "1" : "0"} className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+3.25rem)] bottom-[var(--tabbar-h)] z-10 select-none overflow-hidden bg-[#04060d] text-white md:top-0 md:bottom-0 md:left-52">
       <div ref={host} className="absolute inset-0" />
 
       {/* The lift panel: look at the tower from outside, into one of its floors, or down in the lobby hall. */}
-      <nav aria-label="Floors" style={D(900)} className="mc-in-left absolute top-1/2 left-3 z-10 w-14 -translate-y-1/2 border border-white/10 bg-[#0a0d14]/85 backdrop-blur-md sm:left-5">
+      <nav aria-label="Floors" style={D(900)} className="mc-hud mc-in-left absolute top-1/2 left-3 z-10 w-14 -translate-y-1/2 border border-white/10 bg-[#0a0d14]/85 backdrop-blur-md sm:left-5">
         <p className="border-b border-white/10 py-1 text-center font-mono text-[8.5px] tracking-[0.2em] text-white/40">LIFT</p>
         {FLOOR_BUTTONS.map((f) => {
           // who is on this floor right now: one status light per agent, like the lamps on a real lift panel
@@ -176,15 +214,11 @@ export default function MissionPage() {
             <button
               key={f.v}
               type="button"
-              onClick={() => {
-                setTouring(false);
-                setOpen(null);
-                setView(f.v);
-                scene.current?.setView(f.v);
-              }}
+              onClick={() => go(f.v)}
               aria-pressed={view === f.v}
               aria-label={names ? `${f.label}: ${names}` : f.label}
-              title={names ? `${f.label}: ${names}` : f.label}
+              aria-keyshortcuts={f.key}
+              title={`${names ? `${f.label}: ${names}` : f.label} (${f.key})`}
               className="group flex w-full flex-col items-center gap-1 py-2 font-mono text-white/70 transition hover:text-[#38d6f5] focus-visible:outline-2 focus-visible:outline-[#38d6f5] aria-pressed:bg-[#38d6f5]/10 aria-pressed:text-[#38d6f5] [&+&]:border-t [&+&]:border-white/10"
             >
               <span className={`grid size-7 place-items-center rounded-full border text-[10.5px] tracking-wider transition group-aria-pressed:border-[#38d6f5] group-aria-pressed:shadow-[0_0_10px_rgba(56,214,245,0.45)] ${f.floor === undefined ? "border-transparent text-[9px]" : "border-white/25"}`}>
@@ -206,7 +240,7 @@ export default function MissionPage() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#04060d]/80 to-transparent" />
 
       {/* Header: identity, what's going on, and the system bar (real counts only). */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 sm:p-5">
+      <div className="mc-hud pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 sm:p-5">
         <div className="min-w-0">
           <p style={D(300)} className="mc-in hud-label text-[#38d6f5]">HIVEMIND · MISSION CONTROL</p>
           <h1 style={D(380)} className="mc-in mt-1 text-lg font-semibold tracking-tight drop-shadow-[0_2px_14px_rgba(0,0,0,0.7)] sm:text-2xl">Your agents at work</h1>
@@ -227,6 +261,19 @@ export default function MissionPage() {
               Overview
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setSky((m) => SKY_NEXT[m])}
+            aria-label={`Sky: ${SKY_LABEL[sky]}. Switch to ${SKY_LABEL[SKY_NEXT[sky]]}`}
+            title={sky === "live" ? "Sky follows your clock. Click to see it by day" : `Showing the ${sky}. Click for ${SKY_LABEL[SKY_NEXT[sky]].toLowerCase()}`}
+            className={`${BTN} ${sky !== "live" ? "border-[#38d6f5]/60 text-[#38d6f5]" : ""}`}
+          >
+            {sky === "day" ? <Sun size={13} /> : sky === "night" ? <Moon size={13} /> : <Clock3 size={13} />}
+            <span className="hidden sm:inline">{SKY_LABEL[sky]}</span>
+          </button>
+          <button type="button" onClick={() => setBare(true)} aria-label="Photo mode: hide the panels (H)" title="Photo mode (H)" className={BTN}>
+            <Camera size={13} />
+          </button>
           {crew.length > 0 && (
             <button
               onClick={() => {
@@ -263,6 +310,12 @@ export default function MissionPage() {
             </div>
           );
         })()}
+
+      {bare && (
+        <button type="button" onClick={() => setBare(false)} className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 border border-white/15 bg-[#0a0d14]/70 px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-white/70 uppercase backdrop-blur-md transition hover:text-white active:scale-[0.97]">
+          Show panels · H
+        </button>
+      )}
 
       {/* The loading curtain: lifts (a quick fade) the moment the scene is drawn, so the crane shot is the reveal. */}
       {!failed && (
@@ -325,7 +378,7 @@ export default function MissionPage() {
       )}
 
       {caption && (
-        <div key={caption.key} aria-live="polite" className="mc-caption pointer-events-none absolute bottom-[5.75rem] left-20 z-[6] sm:left-24">
+        <div key={caption.key} aria-live="polite" className="mc-hud mc-caption pointer-events-none absolute bottom-[5.75rem] left-20 z-[6] sm:left-24">
           <p className="font-mono text-[9.5px] tracking-[0.3em] text-[#38d6f5] uppercase">Now viewing</p>
           <p className="mt-0.5 text-2xl font-semibold tracking-tight sm:text-3xl">{caption.title}</p>
           <p className="mt-0.5 text-xs text-white/65">{caption.sub}</p>
@@ -336,7 +389,7 @@ export default function MissionPage() {
       {chosen && (
         <div
           key={chosen.id}
-          className="mc-panel absolute inset-x-3 bottom-[5.25rem] z-10 mx-auto max-h-[55%] max-w-sm overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-4 shadow-2xl backdrop-blur-xl lg:inset-x-auto lg:top-20 lg:right-4 lg:bottom-auto lg:mx-0 lg:max-h-[calc(100%-12rem)] lg:w-80"
+          className="mc-hud mc-panel absolute inset-x-3 bottom-[5.25rem] z-10 mx-auto max-h-[55%] max-w-sm overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-4 shadow-2xl backdrop-blur-xl lg:inset-x-auto lg:top-20 lg:right-4 lg:bottom-auto lg:mx-0 lg:max-h-[calc(100%-12rem)] lg:w-80"
           role="dialog"
           aria-label={`${chosen.name} inspector`}
         >
@@ -386,13 +439,15 @@ export default function MissionPage() {
   );
 }
 
-const FLOOR_BUTTONS: Array<{ v: MissionView; short: string; label: string; floor?: number }> = [
-  { v: "outside", short: "EXT", label: "The building from outside" },
-  { v: "f2", short: "2", label: "Floor 2", floor: 2 },
-  { v: "f1", short: "1", label: "Floor 1", floor: 1 },
-  { v: "f0", short: "G", label: "Ground floor", floor: 0 },
-  { v: "lobby", short: "LOBBY", label: "The lobby hall: the K and the coordination desk" },
+const FLOOR_BUTTONS: Array<{ v: MissionView; short: string; label: string; key: string; floor?: number }> = [
+  { v: "outside", short: "EXT", label: "The building from outside", key: "E" },
+  { v: "f2", short: "2", label: "Floor 2", key: "2", floor: 2 },
+  { v: "f1", short: "1", label: "Floor 1", key: "1", floor: 1 },
+  { v: "f0", short: "G", label: "Ground floor", key: "G", floor: 0 },
+  { v: "lobby", short: "LOBBY", label: "The lobby hall: the K and the coordination desk", key: "L" },
 ];
+const SKY_NEXT: Record<SkyMode, SkyMode> = { live: "day", day: "night", night: "live" };
+const SKY_LABEL: Record<SkyMode, string> = { live: "Live sky", day: "Day", night: "Night" };
 
 const BTN =
   "flex h-9 items-center gap-1.5 border border-white/10 bg-[#0a0d14]/80 px-3 font-mono text-[10.5px] tracking-wider uppercase backdrop-blur-md transition hover:border-[#38d6f5]/60 hover:text-[#38d6f5] active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-[#38d6f5]";
@@ -487,7 +542,7 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
   }
 
   return (
-    <div style={D(760)} className="mc-in absolute right-[4.75rem] bottom-3 left-3 z-20 sm:right-auto sm:bottom-4 sm:left-1/2 sm:w-[min(42rem,calc(100%-11rem))] sm:-translate-x-1/2">
+    <div style={D(760)} className="mc-hud mc-in absolute right-[4.75rem] bottom-3 left-3 z-20 sm:right-auto sm:bottom-4 sm:left-1/2 sm:w-[min(42rem,calc(100%-11rem))] sm:-translate-x-1/2">
       {shown && (steps.length > 0 || reply) && (
         <div className="mb-2 max-h-[38vh] overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-3 text-xs backdrop-blur-xl">
           <div className="mb-2 flex items-center justify-between">

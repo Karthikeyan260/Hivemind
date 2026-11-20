@@ -709,6 +709,11 @@ body {
     opacity: 1;
   }
 }
+/* photo mode: the panels and tags step aside (instantly, since it is often toggled from the keyboard) */
+[data-bare="1"] .mc-hud,
+[data-bare="1"] .mc-tags {
+  visibility: hidden;
+}
 /* the loading curtain: a thin scan line sweeping under the wordmark */
 @keyframes mc-scan {
   from {

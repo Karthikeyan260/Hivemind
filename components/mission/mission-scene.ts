@@ -40,6 +40,8 @@ const onFloor = (x: number, z: number, lvl: number) => {
   return inTower || (lvl === 0 && Math.hypot(x, z) < 29.5);
 };
 export type MissionView = "outside" | "lobby" | "f0" | "f1" | "f2";
+/** The sky: the real clock, or pinned to day or night to see the building either way. */
+export type SkyMode = "live" | "day" | "night";
 
 /**
  * The final grade, applied after tone mapping (so it works in display colour): an architectural-render split tone
@@ -477,6 +479,7 @@ export class MissionScene {
   private skyCtx!: CanvasRenderingContext2D;
   private skyTex!: THREE.CanvasTexture;
   private skyHour = -1;
+  private skyMode: SkyMode = "live";
   private board!: { ctx: CanvasRenderingContext2D; tex: THREE.CanvasTexture };
   private crew: CrewAgent[] = [];
   /** HIVEMIND's latest actions (from the activity log), shown on the operations board. */
@@ -714,7 +717,8 @@ export class MissionScene {
    * and at night the hall runs on its own lamps. Redrawn once a minute at most.
    */
   private applyDaylight(date = new Date()) {
-    const h = date.getHours() + date.getMinutes() / 60;
+    // the sky switch: live follows the clock; day and night pin a representative hour (the look only)
+    const h = this.skyMode === "day" ? 13 : this.skyMode === "night" ? 23 : date.getHours() + date.getMinutes() / 60;
     // 0 at night, 1 in full day, with an hour of twilight either side of 6:30 and 18:30
     const day = THREE.MathUtils.clamp(Math.min(h - 5.5, 19.5 - h) / 2, 0, 1);
     const dusk = day > 0 && day < 1 ? 1 - Math.abs(day - 0.5) * 2 : 0;
@@ -2324,6 +2328,12 @@ export class MissionScene {
   }
 
   /** Outside, the lobby hall, or one floor of the tower seen through its glass front. */
+  setSky(m: SkyMode) {
+    this.skyMode = m;
+    this.skyHour = -1; // repaint the sky
+    this.applyDaylight();
+  }
+
   setView(v: MissionView) {
     this.introOn = false;
     this.view = v;
