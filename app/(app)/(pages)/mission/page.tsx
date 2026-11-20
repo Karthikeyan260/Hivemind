@@ -32,7 +32,10 @@ const PILL: Record<AgentState, string> = {
 const EXAMPLES = ["Remind me to stretch at 4 pm", "What's on my plate today?", "Find remote React jobs posted this week", "Build me a simple habit tracker app", "Brief me on today's AI news"];
 /** Stagger delay for one piece of the HUD as it settles in after the opening shot. */
 const D = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
-type Step = { key: string; text: string; status: "run" | "ok" | "error" | "info" };
+/** One line of the mission log; `at` is ms since the command was sent, `who` the agent whose tool it is. */
+type Step = { key: string; text: string; status: "run" | "ok" | "error" | "info"; at: number; who?: string };
+/** Seconds as the log's clock shows them: 4.2s, then 1:05 past a minute. */
+const clock = (ms: number) => (ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`);
 
 export default function MissionPage() {
   const host = useRef<HTMLDivElement>(null);
@@ -524,6 +527,16 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
   const [prefer, setPrefer] = useState<CrewId | "">("");
   const [shown, setShown] = useState(false);
   const convo = useRef<string | null>(null);
+  // the log's clock: when the command went out, and a ticking "now" while it runs
+  const t0 = useRef(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [failedRun, setFailedRun] = useState(false);
+  useEffect(() => {
+    if (!busy) return;
+    const t = setInterval(() => setElapsed(performance.now() - t0.current), 100);
+    return () => clearInterval(t);
+  }, [busy]);
+  const since = () => Math.round(performance.now() - t0.current);
   // the placeholder cycles through examples while the box is empty (a hint of what the agents can do)
   const [ex, setEx] = useState(-1);
   useEffect(() => {
@@ -536,9 +549,12 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
     const msg = text.trim();
     if (!msg || busy) return;
     const hint = crew.find((c) => c.id === prefer);
+    t0.current = performance.now();
+    setElapsed(0);
+    setFailedRun(false);
     setBusy(true);
     setShown(true);
-    setSteps([{ key: "you", text: msg, status: "info" }]);
+    setSteps([{ key: "you", text: msg, status: "info", at: 0 }]);
     setReply("");
     setLinks([]);
     setText("");
@@ -547,23 +563,28 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
       await streamHivemind({ message: hint ? `${msg}\n\n(Preferably with ${hint.name}: ${hint.role.toLowerCase()}.)` : msg, conversation_id: convo.current }, (e: HiveEvent) => {
         if (e.type === "meta") convo.current = e.conversation_id;
         else if (e.type === "delta") setReply((r) => r + e.text);
-        else if (e.type === "agent") setSteps((s) => [...s, { key: `a${s.length}`, text: `Handed to the ${e.name} agent`, status: "info" }]);
+        else if (e.type === "agent") setSteps((s) => [...s, { key: `a${s.length}`, text: `Handed to the ${e.name} agent`, status: "info", at: since() }]);
         else if (e.type === "tool") {
           const who = TOOL_AGENT.find(([re]) => re.test(e.tool))?.[1];
           if (e.status === "run" && who) scene.current?.signal(who);
-          const name = who ? crew.find((c) => c.id === who)?.name : null;
-          const label = `${e.tool.replace(/_/g, " ")}${name ? ` · ${name}` : ""}`;
+          const name = who ? crew.find((c) => c.id === who)?.name : undefined;
+          const label = e.tool.replace(/_/g, " ");
           setSteps((s) => {
             const i = s.findIndex((x) => x.key === `t-${e.tool}` && x.status === "run");
             if (i >= 0) return s.map((x, k) => (k === i ? { ...x, status: e.status } : x));
-            return [...s, { key: `t-${e.tool}`, text: label, status: e.status }];
+            return [...s, { key: `t-${e.tool}`, text: label, status: e.status, at: since(), who: name }];
           });
         } else if (e.type === "action" && e.href) setLinks((l) => [...l, { label: e.label, href: e.href! }]);
-        else if (e.type === "error") setSteps((s) => [...s, { key: `e${s.length}`, text: e.message, status: "error" }]);
+        else if (e.type === "error") {
+          setFailedRun(true);
+          setSteps((s) => [...s, { key: `e${s.length}`, text: e.message, status: "error", at: since() }]);
+        }
       });
     } catch (err) {
-      setSteps((s) => [...s, { key: "err", text: err instanceof Error ? err.message : "Something went wrong.", status: "error" }]);
+      setFailedRun(true);
+      setSteps((s) => [...s, { key: "err", text: err instanceof Error ? err.message : "Something went wrong.", status: "error", at: since() }]);
     } finally {
+      setElapsed(performance.now() - t0.current);
       setBusy(false);
       scene.current?.setBusy(false);
       onDone();
@@ -573,26 +594,65 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
   return (
     <div style={D(760)} className="mc-hud mc-in absolute right-[4.75rem] bottom-3 left-3 z-20 sm:right-auto sm:bottom-4 sm:left-1/2 sm:w-[min(42rem,calc(100%-11rem))] sm:-translate-x-1/2">
       {shown && (steps.length > 0 || reply) && (
-        <div className="mb-2 max-h-[38vh] overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-3 text-xs backdrop-blur-xl">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="hud-label">MISSION LOG {busy ? "· RUNNING" : "· DONE"}</span>
-            <button type="button" onClick={() => setShown(false)} aria-label="Hide the mission log" className="-m-1 grid size-7 place-items-center text-white/60 hover:text-white">
-              <X size={14} />
-            </button>
+        <div className="relative mb-2 max-h-[38vh] overflow-y-auto border border-white/10 bg-[#0a0d14]/92 text-xs shadow-2xl backdrop-blur-xl">
+          {/* while it runs, a scan line sweeps along the top edge */}
+          <span aria-hidden className="pointer-events-none sticky top-0 z-10 block h-px w-full overflow-hidden bg-white/5">
+            {busy && <span className="mc-scan absolute inset-y-0 left-0 w-2/5 bg-gradient-to-r from-transparent via-[#38d6f5] to-transparent" />}
+          </span>
+          <div className="flex items-center justify-between gap-2 border-b border-white/8 px-3 py-2">
+            <span className="flex items-center gap-2">
+              <span className="hud-label">MISSION LOG</span>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-1.5 py-px font-mono text-[9px] tracking-[0.16em] uppercase ${busy ? "border-[#38d6f5]/40 bg-[#38d6f5]/10 text-[#7fe6fa]" : failedRun ? "border-rose-400/40 bg-rose-400/10 text-rose-200" : "border-emerald-300/40 bg-emerald-300/10 text-emerald-200"}`}
+              >
+                <span className={`size-1 rounded-full ${busy ? "animate-pulse bg-[#38d6f5]" : failedRun ? "bg-rose-400" : "bg-emerald-300"}`} />
+                {busy ? "Running" : failedRun ? "Stopped" : "Done"}
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="font-mono text-[10.5px] text-white/55 tabular-nums" aria-label={`Elapsed ${clock(elapsed)}`}>
+                {clock(elapsed)}
+              </span>
+              <button type="button" onClick={() => setShown(false)} aria-label="Hide the mission log" className="-m-1 grid size-7 place-items-center text-white/60 hover:text-white">
+                <X size={14} />
+              </button>
+            </span>
           </div>
-          <ol className="space-y-1">
+          <ol className="relative px-3 pt-2.5 pb-1" aria-live="polite">
+            {/* the rail the steps hang on */}
+            <span aria-hidden className="absolute top-4 bottom-3 left-[17px] w-px bg-gradient-to-b from-[#38d6f5]/50 via-white/12 to-white/5" />
             {steps.map((s) => (
-              <li key={s.key} className="flex items-start gap-2">
-                <span className="mt-0.5 w-3 shrink-0 text-center">
-                  {s.status === "run" ? <Loader2 size={11} className="animate-spin text-[#38d6f5]" /> : s.status === "ok" ? <span className="text-emerald-300">✓</span> : s.status === "error" ? <span className="text-rose-300">!</span> : <span className="text-white/40">›</span>}
+              <li key={s.key} className="mc-step relative flex items-start gap-2.5 pb-2">
+                <span
+                  aria-hidden
+                  className={`relative z-[1] mt-[3px] grid size-[11px] shrink-0 place-items-center rounded-full border bg-[#0a0d14] ${
+                    s.status === "run"
+                      ? "mc-node-run border-[#38d6f5]"
+                      : s.status === "ok"
+                        ? "border-emerald-300/80"
+                        : s.status === "error"
+                          ? "border-rose-400"
+                          : s.key === "you"
+                            ? "border-white/70"
+                            : "border-white/25"
+                  }`}
+                >
+                  <span className={`size-[5px] rounded-full ${s.status === "run" ? "bg-[#38d6f5]" : s.status === "ok" ? "bg-emerald-300" : s.status === "error" ? "bg-rose-400" : s.key === "you" ? "bg-white" : "bg-white/30"}`} />
                 </span>
-                <span className={s.key === "you" ? "text-white" : s.status === "error" ? "text-rose-200" : "text-white/70"}>{s.text}</span>
+                <span className="min-w-0 flex-1 leading-snug">
+                  <span className={s.key === "you" ? "text-[13px] text-white" : s.status === "error" ? "text-rose-200" : s.status === "run" ? "text-white/90" : "text-white/65"}>{s.text}</span>
+                  {s.who && <span className="ml-1.5 inline-flex items-center rounded-sm border border-[#38d6f5]/35 bg-[#38d6f5]/8 px-1 font-mono text-[9px] tracking-wider text-[#7fe6fa] uppercase">{s.who}</span>}
+                  {s.status === "run" && <span className="ml-1.5 text-[10px] text-[#7fe6fa]/70">working…</span>}
+                </span>
+                <span className="shrink-0 font-mono text-[9.5px] text-white/30 tabular-nums">{s.at > 0 ? `+${clock(s.at)}` : "sent"}</span>
               </li>
             ))}
           </ol>
-          {reply && <p className="mt-2 border-t border-white/10 pt-2 text-[13px] leading-relaxed whitespace-pre-wrap text-white/90">{reply}</p>}
+          {(reply || (busy && steps.length > 0)) && (
+            <p className={`mx-3 mb-3 border-t border-white/10 pt-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-white/90 ${busy ? "mc-caret" : ""}`}>{reply}</p>
+          )}
           {links.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
+            <div className="mx-3 -mt-1 mb-3 flex flex-wrap gap-1.5">
               {links.map((l) => (
                 <Link key={l.href + l.label} href={l.href} className="border border-white/15 px-2 py-1 text-[11px] text-[#38d6f5] hover:border-[#38d6f5]/60">
                   {l.label}
@@ -607,7 +667,7 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
           e.preventDefault();
           void send();
         }}
-        className="flex items-center gap-1.5 border border-white/12 bg-[#0a0d14]/92 p-1.5 shadow-2xl backdrop-blur-xl focus-within:border-[#38d6f5]/50"
+        className={`flex items-center gap-1.5 border bg-[#0a0d14]/92 p-1.5 shadow-2xl backdrop-blur-xl transition-[border-color,box-shadow] duration-500 focus-within:border-[#38d6f5]/50 ${busy ? "border-[#38d6f5]/45 shadow-[0_0_28px_rgba(56,214,245,0.16)]" : "border-white/12"}`}
       >
         <button type="button" onClick={onAgents} className="flex h-9 shrink-0 items-center gap-1 px-2 font-mono text-[10px] tracking-wider text-white/70 uppercase hover:text-[#38d6f5]" aria-label="Show all agents">
           <ChevronUp size={14} /> {active}/{crew.length}

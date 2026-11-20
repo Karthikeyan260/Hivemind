@@ -755,6 +755,47 @@ body {
     opacity: 1;
   }
 }
+/* the mission log: each step slides onto the rail; a running step's node breathes; the reply types with a caret */
+@keyframes mc-step {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+    filter: blur(2px);
+  }
+}
+.mc-step {
+  animation: mc-step 380ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes mc-node {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.8 0.13 210 / 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 6px oklch(0.8 0.13 210 / 0);
+  }
+}
+.mc-node-run {
+  animation: mc-node 1.2s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+}
+.mc-caret::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: oklch(0.8 0.13 210);
+  animation: caret 1s steps(1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-step {
+    animation: fade-only 200ms ease both;
+  }
+  .mc-node-run,
+  .mc-caret::after {
+    animation: none;
+  }
+}
 html,
 body {
   overscroll-behavior: none;
