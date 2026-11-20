@@ -2162,12 +2162,17 @@ export class MissionScene {
     this.busyOn = on;
   }
 
-  /** Your command just used this agent's tool: a lit path runs from the hub to its station, and the station flashes. */
+  /**
+   * Your command just used this agent's tool: a lit path runs from the hub to its station, the station flashes, and
+   * the robot gets up and walks to the coordination desk in the lobby (taking the lift from upstairs), then back.
+   * Not while it is asleep or needs you, or already out on an errand.
+   */
   signal(id: CrewId) {
     const p = this.pods.find((x) => x.id === id);
     if (!p) return;
     p.burst = 1;
     this.link(null, id, 7);
+    this.startErrand(p, null, "Called to the desk for your command");
   }
 
   /**
