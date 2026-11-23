@@ -331,14 +331,23 @@ export default function MissionPage() {
           if (!a) return null;
           const w = typeof window === "undefined" ? 1200 : window.innerWidth;
           return (
-            <div className="pointer-events-none absolute z-20 w-60 border border-white/10 bg-[#0a0d14]/90 p-3 text-xs shadow-xl backdrop-blur-md" style={{ left: Math.max(8, Math.min(hover.x + 16, w - 250)), top: hover.y + 16 }}>
-              <p className="flex items-center gap-2 font-medium">
-                <span className={`size-2 rounded-full ${DOT[a.state]}`} />
-                {a.name}
-                <span className="font-mono text-[10px] tracking-wider text-white/55 uppercase">{WORD[a.state]}</span>
-              </p>
-              <p className="mt-1.5 leading-snug text-white/80">{a.line}</p>
-              <p className="mt-1.5 text-[10px] text-white/45">Click for details</p>
+            <div key={a.id} className="mc-hover pointer-events-none absolute z-20 w-64 border border-white/10 bg-[#0a0d14]/92 text-xs shadow-xl backdrop-blur-md" style={{ left: Math.max(8, Math.min(hover.x + 16, w - 264)), top: hover.y + 16 }}>
+              <div className="flex items-center justify-between gap-2 border-b border-white/8 px-3 py-2">
+                <span className="flex min-w-0 items-center gap-2">
+                  <StatusLight state={a.state} />
+                  <span className="truncate text-[13px] font-medium">{a.name}</span>
+                </span>
+                <span className={`shrink-0 rounded-full border px-1.5 py-px font-mono text-[8.5px] tracking-wider uppercase ${PILL[a.state]}`}>{WORD[a.state]}</span>
+              </div>
+              <div className="px-3 py-2">
+                <p className="font-mono text-[9px] tracking-[0.18em] text-white/40 uppercase">
+                  {FLOORS[FLOOR_OF[a.id]]} · {a.role}
+                </p>
+                <p className="mt-1 leading-snug text-white/85">{a.line}</p>
+                <p className="mt-2 flex items-center gap-1 text-[10px] text-[#7fe6fa]/70">
+                  Click to open <ArrowUpRight size={11} />
+                </p>
+              </div>
             </div>
           );
         })()}
@@ -375,9 +384,12 @@ export default function MissionPage() {
         <div className="absolute inset-0 z-30" role="dialog" aria-modal="true" aria-label="Agents">
           <button type="button" aria-label="Close" onClick={() => setListOpen(false)} className="absolute inset-0 bg-black/55" />
           <div className="sheet-up absolute inset-x-0 bottom-0 flex max-h-[75%] flex-col border-t border-white/10 bg-[#0a0d14] sm:inset-x-auto sm:bottom-4 sm:left-4 sm:w-80 sm:border">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-              <span className="hud-label">
-                AGENTS · {active} OF {crew.length} ACTIVE
+            <div className="flex items-start justify-between border-b border-white/10 px-4 py-3">
+              <span>
+                <span className="hud-label block">
+                  CREW · {active} OF {crew.length} ACTIVE
+                </span>
+                <StateCounts crew={crew} />
               </span>
               <button type="button" onClick={() => setListOpen(false)} aria-label="Close" className="-mr-2 grid size-9 place-items-center text-white/70">
                 <X size={16} />
@@ -702,30 +714,80 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
   );
 }
 
-/** Every agent as a row: status dot, name, what it is doing, when it last did something. */
-function AgentList({ crew, open, now, onPick }: { crew: CrewAgent[]; open: CrewId | null; now: number; onPick: (id: CrewId) => void }) {
+/** A status light: working agents get a soft ping ring, anyone who needs you blinks. */
+function StatusLight({ state }: { state: AgentState }) {
   return (
-    <ul className="list-in min-h-0 flex-1 divide-y divide-white/8 overflow-y-auto overscroll-contain">
-      {crew.map((c) => (
-        <li key={c.id}>
-          <button
-            type="button"
-            onClick={() => onPick(c.id)}
-            aria-pressed={open === c.id}
-            className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[#38d6f5] ${open === c.id ? "bg-[#38d6f5]/10" : "hover:bg-white/5 active:bg-white/10"}`}
-          >
-            <span className={`mt-1.5 size-2 shrink-0 rounded-full ${DOT[c.state]} ${c.state === "alert" ? "animate-pulse" : ""}`} />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-baseline justify-between gap-2">
-                <span className="truncate text-sm font-medium">{c.name}</span>
-                <span className="shrink-0 font-mono text-[9.5px] tracking-wider text-white/50 uppercase">{WORD[c.state]}</span>
+    <span className="relative grid size-2 shrink-0 place-items-center">
+      {state === "working" && <span className="absolute inset-0 animate-ping rounded-full bg-emerald-300/50 motion-reduce:hidden" />}
+      <span className={`size-2 rounded-full ${DOT[state]} ${state === "alert" ? "animate-pulse" : ""}`} />
+    </span>
+  );
+}
+
+/** How many agents are in each state, as small pills (only the states someone is in). */
+function StateCounts({ crew }: { crew: CrewAgent[] }) {
+  const order: AgentState[] = ["alert", "working", "idle", "sleeping"];
+  return (
+    <span className="mt-1.5 flex flex-wrap gap-1">
+      {order.map((s) => {
+        const n = crew.filter((c) => c.state === s).length;
+        return n ? (
+          <span key={s} className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[9px] tracking-wider uppercase ${PILL[s]}`}>
+            <span className="tabular-nums">{n}</span> {WORD[s]}
+          </span>
+        ) : null;
+      })}
+    </span>
+  );
+}
+
+/** The crew roster: floor by floor, top floor first (as the tower stands), each agent with its light, state and latest line. */
+function AgentList({ crew, open, now, onPick }: { crew: CrewAgent[]; open: CrewId | null; now: number; onPick: (id: CrewId) => void }) {
+  const floors = [2, 1, 0].map((f) => ({ f, here: crew.filter((c) => FLOOR_OF[c.id] === f) })).filter((x) => x.here.length);
+  return (
+    <ul className="list-in min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
+      {floors.flatMap(({ f, here }) => [
+        <li key={`floor-${f}`} className="sticky top-0 z-[1] flex items-center gap-2 bg-[#0a0d14]/95 px-4 pt-3 pb-1.5 font-mono text-[9px] tracking-[0.22em] text-white/45 uppercase backdrop-blur">
+          <span className="grid h-4 min-w-4 place-items-center rounded-full border border-white/20 px-1 text-[8.5px] text-white/65">{f === 0 ? "G" : f}</span>
+          {FLOORS[f]}
+          <span className="h-px flex-1 bg-gradient-to-r from-white/12 to-transparent" />
+          <span className="tracking-[0.12em] text-white/35 tabular-nums">
+            {here.filter((c) => c.state !== "sleeping").length}/{here.length} awake
+          </span>
+        </li>,
+        ...here.map((c) => (
+          <li key={c.id} className="px-2">
+            <button
+              type="button"
+              onClick={() => onPick(c.id)}
+              aria-pressed={open === c.id}
+              className={`group relative flex w-full items-start gap-3 rounded-sm px-2.5 py-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-[#38d6f5] ${open === c.id ? "bg-[#38d6f5]/10" : "hover:bg-white/[0.04] active:bg-white/[0.08]"}`}
+            >
+              {/* the selected agent gets a lit edge */}
+              <span aria-hidden className={`absolute inset-y-2 left-0 w-0.5 rounded-full bg-[#38d6f5] shadow-[0_0_8px_#38d6f5] transition-opacity ${open === c.id ? "opacity-100" : "opacity-0"}`} />
+              <span className="mt-1.5">
+                <StatusLight state={c.state} />
               </span>
-              <span className="block truncate text-xs text-white/65">{c.line}</span>
-              {c.at && now > 0 && <span className="block text-[10.5px] text-white/40">{ago(c.at.length === 10 ? `${c.at}T12:00:00Z` : c.at, now)}</span>}
-            </span>
-          </button>
-        </li>
-      ))}
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-medium transition-colors group-hover:text-white">{c.name}</span>
+                  <span className={`shrink-0 rounded-full border px-1.5 py-px font-mono text-[8.5px] tracking-wider uppercase ${PILL[c.state]}`}>{WORD[c.state]}</span>
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-white/65">{c.line}</span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-white/38">
+                  <span className="truncate">{c.role}</span>
+                  {c.at && now > 0 && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span className="shrink-0">{ago(c.at.length === 10 ? `${c.at}T12:00:00Z` : c.at, now)}</span>
+                    </>
+                  )}
+                </span>
+              </span>
+            </button>
+          </li>
+        )),
+      ])}
     </ul>
   );
 }
