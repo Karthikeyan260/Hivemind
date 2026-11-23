@@ -33,6 +33,10 @@ const EXAMPLES = ["Remind me to stretch at 4 pm", "What's on my plate today?", "
 /** Stagger delay for one piece of the HUD as it settles in after the opening shot. */
 const D = (ms: number) => ({ "--d": `${ms}ms` }) as CSSProperties;
 /** One line of the mission log; `at` is ms since the command was sent, `who` the agent whose tool it is. */
+/** A live notice: an agent's state change (with its agent, so a click opens it) or a new activity line. */
+type Toast = { id: number; text: string; sub?: string; state?: AgentState; agent?: CrewId };
+const TOAST_MS = 5200;
+const CHANGED: Record<AgentState, string> = { working: "started working", idle: "is ready", sleeping: "went to sleep", alert: "needs you" };
 type Step = { key: string; text: string; status: "run" | "ok" | "error" | "info"; at: number; who?: string };
 /** Seconds as the log's clock shows them: 4.2s, then 1:05 past a minute. */
 const clock = (ms: number) => (ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`);
@@ -68,8 +72,18 @@ export default function MissionPage() {
   const [wx, setWx] = useState<(SiteWeather & { temp_c: number; condition: string; place: string }) | null>(null);
   // photo mode: the HUD steps aside for a clean view of the building
   const [bare, setBare] = useState(false);
+  // live notices: an agent changing state, or a new line in the activity feed, slides in at the top right
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastId = useRef(0);
+  const prevStates = useRef<Map<CrewId, AgentState> | null>(null);
+  const seenFeed = useRef<Set<string> | null>(null);
+  const notify = useCallback((t: Omit<Toast, "id">) => {
+    const id = ++toastId.current;
+    setToasts((s) => [...s.slice(-2), { ...t, id }]);
+    setTimeout(() => setToasts((s) => s.filter((x) => x.id !== id)), TOAST_MS);
+  }, []);
 
-  const pick = useCallback((id: CrewId | null) => {
+  const pick =useCallback((id: CrewId | null) => {
     setOpen(id);
     if (id) setView(`f${FLOOR_OF[id]}` as MissionView); // picking an agent takes you to its floor
     scene.current?.select(id);
@@ -187,6 +201,18 @@ export default function MissionPage() {
       api<Mission>("/api/mission")
         .then((m) => {
           if (!live) return;
+          // what changed since the last look (nothing on the first load: that is just how things are)
+          const was = prevStates.current;
+          if (was)
+            for (const c of m.crew) {
+              const before = was.get(c.id);
+              if (before && before !== c.state) notify({ text: `${c.name} ${CHANGED[c.state]}`, sub: c.line, state: c.state, agent: c.id });
+            }
+          prevStates.current = new Map(m.crew.map((c) => [c.id, c.state]));
+          const feed = m.activity ?? [];
+          const seen = seenFeed.current;
+          if (seen) for (const a of feed.filter((x) => !seen.has(x.at + x.message)).slice(0, 2)) notify({ text: a.message });
+          seenFeed.current = new Set(feed.map((x) => x.at + x.message));
           latest.current = m.crew;
           feedRef.current = m.activity ?? [];
           setMission(m);
@@ -203,7 +229,7 @@ export default function MissionPage() {
       live = false;
       clearInterval(t);
     };
-  }, []);
+  }, [notify]);
 
   useEffect(() => {
     if (view === shownView.current) return; // only on a real change (also safe when effects run twice)
@@ -420,6 +446,38 @@ export default function MissionPage() {
           <ArrowUpRight size={15} className="shrink-0 text-amber-200" />
         </button>
       )}
+
+      {/* Live notices: newest at the bottom; each drains a thin bar as it times out. */}
+      <ol aria-live="polite" className={`mc-hud pointer-events-none absolute inset-x-3 top-[9.5rem] z-20 flex flex-col items-end gap-2 sm:inset-x-auto sm:top-20 sm:right-4 sm:w-72 ${chosen ? "lg:right-[21.5rem]" : ""}`}>
+        {toasts.map((t) => {
+          const body = (
+            <>
+              <span className="flex items-start gap-2.5 px-3 py-2.5">
+                <span className="mt-[5px]">{t.state ? <StatusLight state={t.state} /> : <span className="block size-2 rounded-full bg-[#38d6f5] shadow-[0_0_6px_#38d6f5]" />}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-mono text-[8.5px] tracking-[0.2em] text-white/40 uppercase">{t.agent ? "Status" : "Activity"}</span>
+                  <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-snug text-white/90">{t.text}</span>
+                  {t.sub && <span className="mt-0.5 block truncate text-[11px] text-white/50">{t.sub}</span>}
+                </span>
+                {t.agent && <ArrowUpRight size={13} className="mt-0.5 shrink-0 text-white/40 transition group-hover:text-[#38d6f5]" />}
+              </span>
+              <span aria-hidden className="mc-drain absolute inset-x-0 bottom-0 h-px origin-left bg-[#38d6f5]/60" style={{ animationDuration: `${TOAST_MS}ms` }} />
+            </>
+          );
+          const cls = "mc-toast group relative block w-full overflow-hidden border border-white/10 bg-[#0a0d14]/92 text-left shadow-2xl backdrop-blur-xl";
+          return (
+            <li key={t.id} className="pointer-events-auto w-full max-w-xs">
+              {t.agent ? (
+                <button type="button" onClick={() => userPick(t.agent!)} className={`${cls} transition-colors hover:border-[#38d6f5]/45 focus-visible:outline-2 focus-visible:outline-[#38d6f5]`}>
+                  {body}
+                </button>
+              ) : (
+                <div className={cls}>{body}</div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
 
       {caption && (
         <div key={caption.key} aria-live="polite" className="mc-hud mc-caption pointer-events-none absolute bottom-[9rem] left-4 z-[6] sm:bottom-[5.75rem] sm:left-24">
