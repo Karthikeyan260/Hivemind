@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Bell, Camera, ChevronLeft, Download, Globe, Hammer, Newspaper, Radar, ChevronRight, ChevronUp, Clock3, Keyboard, Loader2, Moon, Pause, Play, Send, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUpRight, Bell, Camera, Check, ChevronLeft, ChevronRight, ChevronUp, Clock3, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Download, Globe, Hammer, Keyboard, Loader2, Moon, Newspaper, Pause, Play, Radar, Send, Sparkles, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { Ambience } from "@/components/mission/ambience";
 import { festivalOn } from "@/lib/pet-looks";
 import Link from "next/link";
@@ -94,6 +94,8 @@ export default function MissionPage() {
   }, []);
   // the keyboard sheet (?), and the lift panel's lit car
   const [help, setHelp] = useState(false);
+  // the "needs you" banner put off: hidden until that agent says something new
+  const [later, setLater] = useState<string | null>(null);
   // the floor map: the scene moves its dots each frame
   const mapRef = useRef<HTMLDivElement>(null);
   // lets the agent panel hand a job to the console ("Give a job": that agent picked, cursor in the box)
@@ -438,6 +440,10 @@ export default function MissionPage() {
           )}
           {wx && (
             <span title={`Weather now in ${wx.place}: ${wx.condition}`} className="hidden h-9 items-center gap-1.5 border border-white/10 bg-[#0a0d14]/80 px-3 font-mono text-[10.5px] tracking-wider uppercase backdrop-blur-md md:flex">
+              {(() => {
+                const W = weatherIcon(wx.code);
+                return <W size={13} className="text-[#7fe6fa]" aria-hidden />;
+              })()}
               {Math.round(wx.temp_c)}°<span className="max-w-[9rem] truncate text-white/55 normal-case">{wx.condition}</span>
             </span>
           )}
@@ -598,17 +604,29 @@ export default function MissionPage() {
         </div>
       )}
 
-      {urgent && !chosen && (
-        <button
-          onClick={() => userPick(urgent.id)}
-          className="absolute bottom-[8.75rem] left-1/2 z-10 flex max-w-[92%] sm:bottom-[5.5rem] -translate-x-1/2 items-center gap-2.5 border border-amber-400/50 bg-amber-950/70 py-2 pr-4 pl-3 text-left text-sm backdrop-blur-md transition hover:bg-amber-900/70 focus-visible:outline-2 focus-visible:outline-amber-300"
+      {urgent && !chosen && later !== urgent.id + urgent.line && (
+        // something needs you: the agent, what it says, open it or put it off (until it says something new)
+        <div
+          role="status"
+          className="mc-toast absolute bottom-[8.75rem] left-1/2 z-10 flex w-[min(30rem,92%)] -translate-x-1/2 items-center gap-3 overflow-hidden border border-rose-400/40 bg-[#1a0d12]/90 py-2 pr-2 pl-2.5 text-sm shadow-2xl backdrop-blur-md sm:bottom-[5.5rem]"
+          style={{ boxShadow: "inset 3px 0 0 #fb7185, 0 25px 50px -12px rgba(0,0,0,0.6)" }}
         >
-          <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
-          <span className="min-w-0 truncate">
-            <b className="font-medium">{urgent.name}</b> <span className="text-white/75">{urgent.line}</span>
+          <span className="scale-[0.8]">
+            <Avatar id={urgent.id} state={urgent.state} />
           </span>
-          <ArrowUpRight size={15} className="shrink-0 text-amber-200" />
-        </button>
+          <span className="min-w-0 flex-1">
+            <span className="block font-mono text-[9px] tracking-[0.2em] text-rose-300 uppercase">Needs you</span>
+            <span className="block truncate">
+              <b className="font-medium">{urgent.name}</b> <span className="text-white/75">{urgent.line}</span>
+            </span>
+          </span>
+          <button type="button" onClick={() => userPick(urgent.id)} className="flex h-8 shrink-0 items-center gap-1 bg-rose-400 px-3 text-xs font-medium text-[#1a0d12] transition hover:brightness-110 active:scale-[0.97]">
+            Open <ArrowUpRight size={13} />
+          </button>
+          <button type="button" onClick={() => setLater(urgent.id + urgent.line)} className="h-8 shrink-0 px-2 text-xs text-white/55 transition hover:text-white" title="Hide this until it says something new">
+            Later
+          </button>
+        </div>
       )}
 
       {/* The keyboard sheet: every shortcut on one card (? to open, Esc or a click outside to close). */}
@@ -1196,25 +1214,93 @@ function CommandConsole({ crew, scene, api, onDone, onAgents, active }: { crew: 
           aria-label="Command for your agents"
           className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm text-white placeholder:text-white/40 focus:outline-none"
         />
-        <select
-          value={prefer}
-          onChange={(e) => setPrefer(e.target.value as CrewId | "")}
-          aria-label="Suggest an agent"
-          className="hidden h-9 border-l border-white/10 bg-transparent px-2 text-xs text-white/70 focus:outline-none sm:block"
-        >
-          <option value="" className="bg-[#0a0d14]">
-            Auto-assign
-          </option>
-          {crew.map((c) => (
-            <option key={c.id} value={c.id} className="bg-[#0a0d14]">
-              {c.name}
-            </option>
-          ))}
-        </select>
+        <AgentPicker crew={crew} value={prefer} onChange={setPrefer} />
         <button type="submit" disabled={busy || !text.trim()} aria-label="Send mission" className="grid size-9 shrink-0 place-items-center bg-[#38d6f5] text-[#04060d] transition hover:brightness-110 active:scale-[0.96] disabled:opacity-40">
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
         </button>
       </form>
+    </div>
+  );
+}
+
+/** Which icon shows the weather (WMO code): sun, a little cloud, cloud, fog, drizzle, rain, snow, storm. */
+function weatherIcon(code: number) {
+  if (code >= 95) return CloudLightning;
+  if (code >= 71 && code <= 77) return CloudSnow;
+  if (code >= 61 || (code >= 80 && code <= 82)) return CloudRain;
+  if (code >= 51) return CloudDrizzle;
+  if (code === 45 || code === 48) return CloudFog;
+  if (code === 3) return Cloud;
+  if (code >= 1) return CloudSun;
+  return Sun;
+}
+
+/**
+ * Who a command should go to: "Auto-assign" or one agent, as a small popover above the command box (each agent with
+ * its tool icon and state light). Escape or a click elsewhere closes it.
+ */
+function AgentPicker({ crew, value, onChange }: { crew: CrewAgent[]; value: CrewId | ""; onChange: (v: CrewId | "") => void }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("pointerdown", away);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  const cur = crew.find((c) => c.id === value);
+  const pick = (v: CrewId | "") => {
+    onChange(v);
+    setOpen(false);
+  };
+  return (
+    <div ref={box} className="relative hidden border-l border-white/10 sm:block">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label={`Send to: ${cur ? cur.name : "auto-assign"}`} className="flex h-9 items-center gap-1.5 px-2.5 text-xs text-white/75 transition hover:text-white">
+        {cur ? (
+          (() => {
+            const I = TOOL_ICON[cur.id];
+            return <I size={13} className="text-[#7fe6fa]" />;
+          })()
+        ) : (
+          <Sparkles size={13} className="text-white/45" />
+        )}
+        <span className="max-w-[7rem] truncate">{cur ? cur.name : "Auto-assign"}</span>
+        <ChevronUp size={12} className={`text-white/40 transition-transform ${open ? "" : "rotate-180"}`} />
+      </button>
+      {open && (
+        <ul role="listbox" aria-label="Send to" className="mc-hover absolute right-0 bottom-full mb-2 w-60 overflow-hidden border border-white/10 bg-[#0a0d14]/96 py-1 shadow-2xl backdrop-blur-xl">
+          <li>
+            <button type="button" role="option" aria-selected={!value} onClick={() => pick("")} className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs transition ${!value ? "bg-[#38d6f5]/10 text-[#7fe6fa]" : "text-white/80 hover:bg-white/5"}`}>
+              <Sparkles size={14} className="shrink-0 text-white/50" />
+              <span className="flex-1">
+                Auto-assign
+                <span className="block text-[10.5px] text-white/40">HIVEMIND picks the right agent</span>
+              </span>
+              {!value && <Check size={13} />}
+            </button>
+          </li>
+          <li aria-hidden className="mx-3 my-1 h-px bg-white/8" />
+          {crew.map((c) => {
+            const I = TOOL_ICON[c.id];
+            const on = value === c.id;
+            return (
+              <li key={c.id}>
+                <button type="button" role="option" aria-selected={on} onClick={() => pick(c.id)} className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs transition ${on ? "bg-[#38d6f5]/10 text-[#7fe6fa]" : "text-white/80 hover:bg-white/5"}`}>
+                  <I size={14} className="shrink-0 text-white/55" />
+                  <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                  <StatusLight state={c.state} />
+                  {on && <Check size={13} />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
