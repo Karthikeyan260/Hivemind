@@ -651,7 +651,8 @@ export function Garden3D({ onFail, asked = null, bedtimeAsk = false, askedSeason
         <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/35 to-transparent" />
 
         {/* Title: a quiet line about the hour and season, the name, and how the garden is doing. */}
-        <div className="pointer-events-none absolute top-5 left-5 max-w-[calc(100%-13.5rem)] sm:top-8 sm:left-9 sm:max-w-none">
+        {/* phones: under the toolbar, full width (beside it the title got squeezed into a narrow column) */}
+        <div className="pointer-events-none absolute top-[4.75rem] left-5 max-w-[calc(100%-2.5rem)] sm:top-8 sm:left-9 sm:max-w-none">
           <p className="font-mono text-[10px] tracking-[0.34em] text-white/75 uppercase drop-shadow">
             {bedtime ? "🌙 Bedtime" : `${PHASE_ICON[phase]} ${PHASE_NAME[phase]}`} · {season}
           </p>

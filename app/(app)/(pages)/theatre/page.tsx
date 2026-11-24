@@ -185,11 +185,11 @@ export default function TheatrePage() {
 
   return (
     <div className="fixed inset-0 z-[350] overflow-y-auto bg-[#07070b] text-white [scrollbar-width:thin]">
-      <header className="sticky top-0 z-20 flex items-center gap-3 bg-gradient-to-b from-[#07070b] via-[#07070b]/90 to-transparent px-4 py-3 sm:px-8">
+      <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-3 gap-y-2.5 bg-gradient-to-b from-[#07070b] via-[#07070b]/90 to-transparent px-4 py-3 sm:px-8">
         <Link href="/" aria-label="Back" className="grid size-9 shrink-0 place-items-center rounded-full text-white/80 hover:bg-white/10">
           <ArrowLeft size={19} />
         </Link>
-        <span className="flex items-center gap-2 font-serif text-lg tracking-wide sm:text-xl">
+        <span className="flex items-center gap-2 font-serif text-lg tracking-wide whitespace-nowrap sm:text-xl">
           <Clapperboard size={20} className="text-rose-400" />
           <span>
             Friends <span className="text-rose-400">Theatre</span>
@@ -232,13 +232,13 @@ export default function TheatrePage() {
           <Radio size={14} className={listen === "listening" ? "animate-pulse" : ""} />
           <span className="hidden sm:inline">{listen === "listening" ? "Listening" : "Voice"}</span>
         </button>
-        <label className="relative w-36 sm:w-64">
+        <label className="relative order-last w-full sm:order-none sm:w-64">
           <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-white/45" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search films" className="h-9 w-full rounded-full border border-white/15 bg-white/8 pr-3 pl-9 text-sm outline-none placeholder:text-white/40 focus:border-rose-300/70" />
         </label>
       </header>
 
-      <div className="sticky top-14 z-10 space-y-2 bg-gradient-to-b from-[#07070b] via-[#07070b]/90 to-transparent pb-4">
+      <div className="sticky top-[6.6rem] z-10 space-y-2 bg-gradient-to-b sm:top-14 from-[#07070b] via-[#07070b]/90 to-transparent pb-4">
         <nav aria-label="Categories" className="flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:px-8 [&::-webkit-scrollbar]:hidden">
           {GROUPS.map((g) => (
             <button key={g.id} onClick={() => setGroup(g.id)} aria-pressed={group === g.id} className={`h-8 shrink-0 rounded-full border px-3.5 text-xs ${group === g.id ? "border-white bg-white text-black" : "border-white/20 bg-black/40 text-white/80 backdrop-blur hover:bg-white/10"}`}>
