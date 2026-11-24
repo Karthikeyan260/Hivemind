@@ -44,16 +44,23 @@ export default function WeeklyPage() {
           <section className="border border-line bg-sunken/40 p-5">
             <h2 className="hud-label mb-4">Day by day</h2>
             <div className="grid grid-cols-7 gap-2">
-              {w.days.map((d) => {
+              {w.days.map((d, i) => {
                 const pct = d.scheduled ? (d.done / d.scheduled) * 100 : 0;
+                const today = i === w.days.length - 1;
+                // full days glow green, partial ones the data blue, misses stay empty
+                const color = pct >= 100 ? "var(--ok)" : "var(--data)";
                 return (
                   <div key={d.date} className="flex flex-col items-center gap-1.5" title={`${d.date}: ${d.done} of ${d.scheduled} habits`}>
                     <span className="h-5 text-base leading-5">{d.mood ? FACES[d.mood - 1] : ""}</span>
-                    <div className="flex h-24 w-full items-end bg-data/10">
-                      <div className="bar-rise w-full bg-data" style={{ height: `${pct}%`, boxShadow: pct ? "0 0 8px var(--data)" : undefined }} />
+                    <div className={cx("relative flex h-24 w-full items-end overflow-hidden rounded-md bg-data/[0.07]", today && "outline outline-1 outline-offset-2 outline-data/50")}>
+                      <span aria-hidden className="absolute inset-x-0 top-1/2 border-t border-dashed border-white/10" />
+                      <div
+                        className="bar-rise w-full rounded-t-[3px]"
+                        style={{ height: `${pct}%`, background: `linear-gradient(to top, color-mix(in oklch, ${color} 55%, transparent), ${color})`, boxShadow: pct ? `0 0 10px color-mix(in oklch, ${color} 60%, transparent)` : undefined }}
+                      />
                     </div>
                     <span className="font-mono text-[10px] tabular-nums text-soft">{d.scheduled ? `${d.done}/${d.scheduled}` : "–"}</span>
-                    <span className="hud-label text-[9.5px]">{d.weekday}</span>
+                    <span className={cx("hud-label text-[9.5px]", today && "text-data")}>{today ? "Today" : d.weekday}</span>
                   </div>
                 );
               })}

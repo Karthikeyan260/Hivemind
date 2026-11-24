@@ -35,7 +35,14 @@ export default function SettingsPage() {
                   {note && ` · ${note}`}
                 </div>
               </div>
-              <span className={p.isConfigured() ? "text-green-600" : "text-red-500"}>
+              <span
+                className={
+                  p.isConfigured()
+                    ? "inline-flex items-center gap-1.5 rounded-full border border-ok/40 bg-ok/10 px-2.5 py-0.5 font-mono text-[10.5px] text-ok"
+                    : "inline-flex items-center gap-1.5 rounded-full border border-alert/50 bg-alert/10 px-2.5 py-0.5 font-mono text-[10.5px] text-alert"
+                }
+              >
+                <span className={`size-1.5 rounded-full ${p.isConfigured() ? "bg-ok" : "bg-alert"}`} />
                 {p.isConfigured() ? "key set" : "missing key"}
               </span>
             </li>

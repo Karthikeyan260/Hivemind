@@ -3,7 +3,7 @@
 import { Check, CircleAlert, ExternalLink, Globe, Hand, Loader2, MonitorPlay, Play, RotateCcw, Square, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, Textarea } from "@/components/ui";
+import { Badge, Button, cx, Empty, ErrorText, PageHeader } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { api, timeAgo, useFetch, WEB_TASK_EVENT } from "@/lib/client-api";
 
@@ -215,10 +215,22 @@ function WebTasks() {
         </p>
       )}
 
-      <section className="mb-6 space-y-2 rounded-xl border border-line bg-panel p-4">
-        <Textarea rows={2} placeholder="What should I do on the web?" value={goal} onChange={(e) => setGoal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && start()} />
-        <div className="flex flex-wrap items-center gap-2">
-          <Input className="min-w-0 flex-1" placeholder="Start at URL (optional)" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <section className="mb-6 space-y-2 rounded-2xl border border-line bg-panel p-4 transition-colors focus-within:border-data/50">
+        <textarea
+          rows={2}
+          placeholder="What should I do on the web?"
+          aria-label="What should I do on the web?"
+          value={goal}
+          onChange={(e) => setGoal(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && start()}
+          className="w-full resize-none bg-transparent text-[15px] leading-relaxed placeholder:text-faint focus:outline-none"
+        />
+        <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          <span className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-sunken/60 px-2.5 transition-colors focus-within:border-data/60">
+            <Globe size={14} className="shrink-0 text-faint" />
+            <input placeholder="Start at a URL (optional)" aria-label="Start at a URL (optional)" value={url} onChange={(e) => setUrl(e.target.value)} className="h-9 min-w-0 flex-1 bg-transparent text-sm placeholder:text-faint focus:outline-none" />
+          </span>
+          <span className="hidden font-mono text-[10px] text-faint sm:inline">Ctrl+Enter</span>
           <Button onClick={() => start()} disabled={busy || goal.trim().length < 3 || list.data?.configured === false}>
             {busy ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />} Start
           </Button>
