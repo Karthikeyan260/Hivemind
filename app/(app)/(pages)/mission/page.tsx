@@ -383,6 +383,11 @@ export default function MissionPage() {
               <SystemBar stats={stats} active={active} />
             </div>
           )}
+          {mission && now > 0 && (
+            <div style={D(620)} className="mc-in hidden md:block">
+              <DayTrack activity={mission.activity ?? []} now={now} />
+            </div>
+          )}
         </div>
         <div style={D(640)} className="mc-in pointer-events-auto flex shrink-0 items-center gap-2">
           <span className="hidden h-9 items-center gap-2 border border-white/10 bg-[#0a0d14]/80 px-3 font-mono sm:flex text-[10.5px] tracking-wider uppercase backdrop-blur-md">
@@ -813,6 +818,52 @@ function SystemBar({ stats, active }: { stats: SystemStats; active: number }) {
           <span className="text-[9px] tracking-[0.16em] uppercase opacity-75">{k}</span>
         </span>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Today on one line: a 24-hour track with a tick for each of the latest activity events that happened today (Mission
+ * Control is sent the latest few, not the whole day), and a lit marker at the current time. Hover a tick for what it was.
+ */
+function DayTrack({ activity, now }: { activity: Array<{ message: string; at: string }>; now: number }) {
+  const d = new Date(now);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const pct = (ms: number) => ((ms - start) / 864e5) * 100;
+  const today = activity.map((a) => ({ ...a, ms: new Date(a.at).getTime() })).filter((a) => a.ms >= start && a.ms <= now);
+  const hm = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className="pointer-events-auto mt-2.5 w-[26rem] max-w-full" aria-label={`Today: ${today.length} of the latest events happened today`}>
+      <div className="mb-1 flex items-center justify-between font-mono text-[8.5px] tracking-[0.2em] text-white/40 uppercase">
+        <span>Today · latest events</span>
+        <span className="tabular-nums text-[#7fe6fa]/80">{hm(now)}</span>
+      </div>
+      <div className="relative h-5">
+        <span aria-hidden className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/12" />
+        {/* the part of the day already gone */}
+        <span aria-hidden className="absolute top-1/2 left-0 h-px -translate-y-1/2 bg-gradient-to-r from-[#38d6f5]/10 to-[#38d6f5]/50" style={{ width: `${pct(now)}%` }} />
+        {[6, 12, 18].map((h) => (
+          <span key={h} aria-hidden className="absolute top-1/2 h-1.5 w-px -translate-y-1/2 bg-white/20" style={{ left: `${(h / 24) * 100}%` }} />
+        ))}
+        {today.map((a, i) => (
+          <span key={a.at + i} className="group absolute top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ left: `${pct(a.ms)}%` }}>
+            <span tabIndex={0} aria-label={`${hm(a.ms)}: ${a.message}`} className="block h-3 w-[3px] rounded-full bg-amber-200/80 transition group-hover:scale-y-150 group-hover:bg-amber-100 focus-visible:outline-1 focus-visible:outline-[#38d6f5]" />
+            <span className="pointer-events-none absolute top-full left-1/2 z-10 mt-1.5 hidden w-56 -translate-x-1/2 border border-white/10 bg-[#0a0d14]/95 px-2 py-1.5 text-[11px] leading-snug text-white/85 shadow-xl group-focus-within:block group-hover:block">
+              <span className="font-mono text-[9.5px] text-[#7fe6fa]">{hm(a.ms)}</span> {a.message}
+            </span>
+          </span>
+        ))}
+        <span aria-hidden className="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#38d6f5] shadow-[0_0_10px_#38d6f5]" style={{ left: `${pct(now)}%` }}>
+          <span className="absolute inset-0 animate-ping rounded-full bg-[#38d6f5]/60 motion-reduce:hidden" />
+        </span>
+      </div>
+      <div aria-hidden className="relative mt-0.5 h-3 font-mono text-[8px] text-white/30">
+        {[0, 6, 12, 18, 24].map((h) => (
+          <span key={h} className="absolute -translate-x-1/2" style={{ left: `${(h / 24) * 100}%` }}>
+            {String(h).padStart(2, "0")}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
