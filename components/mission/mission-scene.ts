@@ -148,7 +148,13 @@ type Pod = {
   hv: number;
 };
 
-export type MissionHooks = { onSelect: (id: CrewId | null) => void; onHover: (id: CrewId | null, x: number, y: number) => void; onReady?: () => void };
+export type MissionHooks = {
+  onSelect: (id: CrewId | null) => void;
+  onHover: (id: CrewId | null, x: number, y: number) => void;
+  onReady?: () => void;
+  /** A lightning strike in a real thunderstorm (the page plays the thunder, if sound is on). */
+  onBolt?: () => void;
+};
 
 /** A small floating tool that says what this agent does: clock, radar, globe, moon, paper, bell, hammer. */
 function makeProp(id: CrewId, tone: THREE.Color, track: Array<{ dispose(): void }>): THREE.Group {
@@ -478,6 +484,12 @@ export class MissionScene {
   private concrete: THREE.CanvasTexture | null = null;
   private key!: THREE.DirectionalLight;
   private rim!: THREE.DirectionalLight;
+  /** Thunderstorms (WMO 95-99): lightning now and then, a cold flash over the whole site. */
+  private storm = false;
+  private bolt: THREE.DirectionalLight | null = null;
+  private boltAt = -10;
+  private nextBolt = 6;
+  private bloomBase = 0.4;
   private skyCtx!: CanvasRenderingContext2D;
   private skyTex!: THREE.CanvasTexture;
   private skyHour = -1;
@@ -777,7 +789,8 @@ export class MissionScene {
     this.rim.intensity = 0.25 + 0.5 * day;
     this.renderer.toneMappingExposure = 0.92 + 0.18 * day;
     // lit things glow more as it gets dark: the LED strips, the lit floors and the sign carry the night shot
-    if (this.bloom) this.bloom.strength = 0.2 + 0.45 * (1 - day) + 0.15 * dusk;
+    this.bloomBase = 0.2 + 0.45 * (1 - day) + 0.15 * dusk;
+    if (this.bloom) this.bloom.strength = this.bloomBase;
     if (this.grade) this.grade.uniforms.uWarm.value = 0.35 + 0.65 * dusk;
     if (this.poolMat) this.poolMat.opacity = 0.85 * (1 - day);
     this.officeMat?.color.setScalar(0.35 + (1 - day) * 0.65);
@@ -2305,6 +2318,7 @@ export class MissionScene {
     this.overcast = c === 0 ? 0 : c === 1 ? 0.2 : c === 2 ? 0.45 : c === 3 ? 0.8 : c >= 45 && c <= 48 ? 0.7 : c >= 51 ? 0.9 : 0.3;
     this.rainOn = (c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95 || w.rain_mm > 0.1 ? Math.min(1, 0.45 + w.rain_mm / 4 + (c >= 95 ? 0.4 : 0)) : 0;
     this.fogOn = c === 45 || c === 48 ? 1 : 0;
+    this.storm = c >= 95;
     this.wind = Math.max(2, w.wind_kmh || 0);
     this.skyHour = -1; // repaint the sky with the new cover
     this.applyDaylight();
@@ -2479,6 +2493,7 @@ export class MissionScene {
     this.carLights[0]?.color.set("#fff4dc").multiplyScalar(lit * 1.4);
     this.carLights[1]?.color.set("#ff3b30").multiplyScalar(lit * 1.2);
     this.updateMeteor(t);
+    this.updateBolt(t);
     // birds: out on fair days only
     const fair = this.night < 0.5 && this.rainOn === 0 && this.overcast < 0.85;
     this.birdGroup.visible = fair;
@@ -2492,6 +2507,35 @@ export class MissionScene {
         b.r.rotation.z = -flap;
       }
     }
+  }
+
+  /**
+   * Lightning in a real thunderstorm: every 7 to 22 seconds a cold flash lights the site, with a quick second flicker,
+   * and the page is told (it plays the thunder a moment later when sound is on). Off with reduced motion.
+   */
+  private updateBolt(t: number) {
+    if (!this.storm || this.reduce) {
+      if (this.bolt && this.bolt.intensity) {
+        this.bolt.intensity = 0;
+        if (this.bloom) this.bloom.strength = this.bloomBase;
+      }
+      return;
+    }
+    if (!this.bolt) {
+      this.bolt = new THREE.DirectionalLight("#dfe8ff", 0);
+      this.bolt.position.set(-30, 80, -20);
+      this.scene.add(this.bolt);
+    }
+    if (t >= this.nextBolt) {
+      this.boltAt = t;
+      this.nextBolt = t + 7 + Math.random() * 15;
+      this.hooks.onBolt?.();
+    }
+    const a = t - this.boltAt;
+    // two strokes: a bright one, a short gap, a weaker one, then gone
+    const k = a < 0.12 ? 1 - a / 0.12 : a > 0.2 && a < 0.42 ? 0.6 * (1 - (a - 0.2) / 0.22) : 0;
+    this.bolt.intensity = k * 5;
+    if (this.bloom) this.bloom.strength = this.bloomBase + k * 0.25;
   }
 
   /**

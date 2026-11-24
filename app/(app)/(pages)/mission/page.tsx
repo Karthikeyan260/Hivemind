@@ -250,7 +250,7 @@ export default function MissionPage() {
     host.current.appendChild(el);
     let s: MissionScene;
     try {
-      s = new MissionScene(el, { onSelect: userPick, onHover: (id, x, y) => setHover(id ? { id, x, y } : null), onReady: () => setReady(true) });
+      s = new MissionScene(el, { onSelect: userPick, onHover: (id, x, y) => setHover(id ? { id, x, y } : null), onReady: () => setReady(true), onBolt: () => amb.current?.thunder() });
     } catch {
       el.remove();
       setTimeout(() => setFailed(true));

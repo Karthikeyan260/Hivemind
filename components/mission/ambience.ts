@@ -108,6 +108,34 @@ export class Ambience {
     this.windLfo.gain.setTargetAtTime(wind * 0.25, t, 1.5);
   }
 
+  /** Thunder after a lightning flash: a low rumble that arrives a second or two later and rolls away. */
+  thunder() {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const src = ctx.createBufferSource();
+    const len = ctx.sampleRate * 4;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+      d[i] = last * 3.5;
+    }
+    src.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 170;
+    const g = ctx.createGain();
+    const at = ctx.currentTime + 0.8 + Math.random() * 1.4; // light arrives first
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(1.6, at + 0.18);
+    g.gain.setTargetAtTime(0, at + 0.5, 0.9);
+    src.connect(lp).connect(g).connect(this.master);
+    src.start(ctx.currentTime);
+    src.stop(at + 4);
+  }
+
   /** Quiet while the tab is hidden, back when it returns. */
   pause(on: boolean) {
     if (!this.ctx) return;
