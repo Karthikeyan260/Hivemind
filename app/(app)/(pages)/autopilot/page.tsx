@@ -4,7 +4,7 @@ import { Bell, BookOpen, Briefcase, Check, Compass, ExternalLink, FolderKanban, 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Badge, Button, cx, Empty, ErrorText, PageHeader, Select } from "@/components/ui";
+import { Badge, Button, cx, Empty, ErrorText, PageHeader } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { unlocksAction } from "@/lib/agents/intent";
 import { api, armAsk, BRAIN_CHANGED, timeAgo, useFetch } from "@/lib/client-api";
@@ -133,44 +133,48 @@ export default function AutopilotPage() {
       />
 
       {f && (
-        <section className="mb-6 flex flex-wrap items-center gap-x-5 gap-y-3 rounded-xl border border-line bg-panel p-4 text-sm">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={f.settings.enabled} onChange={(e) => setSettings({ enabled: e.target.checked })} />
-            Run on its own
-          </label>
-          <label className="flex max-w-full flex-wrap items-center gap-2 text-soft">
-            every
-            <Select value={f.settings.every_hours} onChange={(e) => setSettings({ every_hours: +e.target.value })} disabled={!f.settings.enabled}>
-              {[1, 2, 3, 4, 6, 12, 24].map((h) => (
-                <option key={h} value={h}>
-                  {h} h
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex max-w-full flex-wrap items-center gap-2 text-soft">
-            between
-            <Select aria-label="Start hour" value={f.settings.start_hour} onChange={(e) => setSettings({ start_hour: +e.target.value })} disabled={!f.settings.enabled}>
-              {Array.from({ length: 24 }, (_, h) => (
-                <option key={h} value={h}>
-                  {String(h).padStart(2, "0")}:00
-                </option>
-              ))}
-            </Select>
-            and
-            <Select aria-label="End hour" value={f.settings.end_hour} onChange={(e) => setSettings({ end_hour: +e.target.value })} disabled={!f.settings.enabled}>
-              {Array.from({ length: 24 }, (_, h) => h + 1).map((h) => (
-                <option key={h} value={h}>
-                  {String(h % 24).padStart(2, "0")}:00
-                </option>
-              ))}
-            </Select>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={f.settings.push} onChange={(e) => setSettings({ push: e.target.checked })} />
-            Notify me when it&apos;s urgent
-          </label>
-          <span className="ml-auto font-mono text-[11px] text-faint">{f.lastRun ? `last run ${timeAgo(f.lastRun)}` : "never run yet"}</span>
+        <section className="mb-6 overflow-hidden rounded-xl border border-line bg-panel">
+          {/* status: is it on, when it last ran, what is waiting */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line px-4 py-3.5">
+            <Toggle on={f.settings.enabled} onChange={(v) => setSettings({ enabled: v })} label="Run on its own" />
+            <span className="flex items-center gap-2 font-mono text-[11px] text-faint">
+              <span className={cx("size-1.5 rounded-full", f.running || running ? "animate-pulse bg-core" : f.settings.enabled ? "bg-ok" : "bg-line-strong")} />
+              {f.running || running ? "thinking now" : f.lastRun ? `last run ${timeAgo(f.lastRun)}` : "never run yet"}
+            </span>
+            <span className="ml-auto font-mono text-[11px] text-soft">
+              <span className="text-fg">{open.length}</span> waiting for you
+            </span>
+          </div>
+          {/* the schedule */}
+          <div className={cx("flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3.5 text-sm transition-opacity", !f.settings.enabled && "pointer-events-none opacity-45")} aria-disabled={!f.settings.enabled}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[10px] tracking-[0.16em] text-faint uppercase">Every</span>
+              <div className="flex rounded-lg border border-line p-0.5" role="radiogroup" aria-label="How often">
+                {[1, 2, 3, 4, 6, 12, 24].map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    role="radio"
+                    aria-checked={f.settings.every_hours === h}
+                    onClick={() => setSettings({ every_hours: h })}
+                    className={cx("rounded-md px-2 py-1 font-mono text-[11px] transition-colors", f.settings.every_hours === h ? "bg-core text-core-ink" : "text-soft hover:text-fg")}
+                  >
+                    {h}h
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-soft">
+              <span className="font-mono text-[10px] tracking-[0.16em] text-faint uppercase">Between</span>
+              <HourPill label="Start hour" value={f.settings.start_hour} hours={Array.from({ length: 24 }, (_, h) => h)} onChange={(h) => setSettings({ start_hour: h })} />
+              <span className="text-faint">–</span>
+              <HourPill label="End hour" value={f.settings.end_hour} hours={Array.from({ length: 24 }, (_, h) => h + 1)} onChange={(h) => setSettings({ end_hour: h })} />
+            </div>
+            <span className="sm:ml-auto">
+              <Toggle on={f.settings.push} onChange={(v) => setSettings({ push: v })} label="Notify me when urgent" small />
+            </span>
+          </div>
+          {f.runs.length > 0 && <RunStrip runs={f.runs} />}
         </section>
       )}
 
@@ -237,14 +241,19 @@ export default function AutopilotPage() {
       )}
 
       {hidden > 0 && (
-        <button type="button" onClick={() => setShowAll(!showAll)} className="mt-4 font-mono text-[11px] uppercase tracking-wider text-data hover:underline">
-          {showAll ? "Hide done & dismissed" : `Show ${hidden} done & dismissed`}
+        <button
+          type="button"
+          onClick={() => setShowAll(!showAll)}
+          aria-expanded={showAll}
+          className="mt-4 inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 font-mono text-[11px] tracking-wider text-soft uppercase transition hover:border-data/60 hover:text-data"
+        >
+          <Check size={12} /> {showAll ? "Hide done & dismissed" : `Show ${hidden} done & dismissed`}
         </button>
       )}
 
       {f?.runs.length ? (
         <details className="mt-8 text-sm">
-          <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-faint">Recent runs</summary>
+          <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-faint">All recent runs</summary>
           <ul className="mt-2 space-y-1 font-mono text-[11.5px] text-soft">
             {f.runs.map((r) => (
               <li key={r.at}>
@@ -254,6 +263,56 @@ export default function AutopilotPage() {
           </ul>
         </details>
       ) : null}
+    </div>
+  );
+}
+
+/** A switch (role="switch") with its label. */
+function Toggle({ on, onChange, label, small }: { on: boolean; onChange: (v: boolean) => void; label: string; small?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className={cx("group flex items-center gap-2.5 text-left text-sm", small ? "text-soft" : "font-medium")}>
+      <span className={cx("relative h-5 w-9 shrink-0 rounded-full border transition-colors", on ? "border-core bg-core/80" : "border-line-strong bg-raised")}>
+        <span className={cx("absolute top-1/2 size-3.5 -translate-y-1/2 rounded-full bg-white shadow transition-[left] duration-200", on ? "left-[18px]" : "left-[2px]")} />
+      </span>
+      {label}
+    </button>
+  );
+}
+
+/** An hour picker styled as a pill (still a real select underneath, for keyboards and phones). */
+function HourPill({ label, value, hours, onChange }: { label: string; value: number; hours: number[]; onChange: (h: number) => void }) {
+  return (
+    <span className="relative inline-flex items-center rounded-full border border-line bg-raised/60 px-3 py-1 font-mono text-xs text-fg transition-colors focus-within:border-data/60 hover:border-line-strong">
+      {String(value % 24).padStart(2, "0")}:00
+      <select aria-label={label} value={value} onChange={(e) => onChange(+e.target.value)} className="absolute inset-0 cursor-pointer opacity-0">
+        {hours.map((h) => (
+          <option key={h} value={h}>
+            {String(h % 24).padStart(2, "0")}:00
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
+/** The latest runs as small bars: height is how much it found, red when the run failed. Oldest on the left. */
+function RunStrip({ runs }: { runs: Feed["runs"] }) {
+  const list = [...runs].slice(0, 16).reverse();
+  const max = Math.max(1, ...list.map((r) => r.found));
+  return (
+    <div className="flex items-end gap-3 border-t border-line px-4 pt-3 pb-3.5">
+      <span className="shrink-0 pb-0.5 font-mono text-[10px] tracking-[0.16em] text-faint uppercase">Runs</span>
+      <div className="flex h-8 flex-1 items-end gap-1" aria-label={`Last ${list.length} runs`}>
+        {list.map((r) => (
+          <span
+            key={r.at}
+            title={`${timeAgo(r.at)} · ${r.manual ? "manual" : "scheduled"} · ${(r.ms / 1000).toFixed(1)}s · ${r.error ? `failed: ${r.error}` : `${r.found} new`}`}
+            className={cx("w-full max-w-4 rounded-sm transition-opacity hover:opacity-80", r.error ? "bg-alert/80" : r.found ? "bg-core/80" : "bg-line-strong")}
+            style={{ height: r.error ? "100%" : `${Math.max(12, (r.found / max) * 100)}%` }}
+          />
+        ))}
+      </div>
+      <span className="shrink-0 pb-0.5 font-mono text-[10px] text-faint">newest {timeAgo(list[list.length - 1].at)}</span>
     </div>
   );
 }

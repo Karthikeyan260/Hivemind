@@ -10,6 +10,7 @@ import { api, useFetch } from "@/lib/client-api";
 
 const DAY_SETS = { daily: [0, 1, 2, 3, 4, 5, 6], weekdays: [1, 2, 3, 4, 5], weekends: [0, 6] } as const;
 const DAY_LABEL = ["S", "M", "T", "W", "T", "F", "S"];
+const DAY_NAME = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 export default function HabitsPage() {
   return (
@@ -139,13 +140,15 @@ function Habits() {
                     />
                   ))}
                 </div>
-                <div className="mt-1.5 flex gap-1 font-mono text-[9.5px] text-faint">
+                {/* its schedule: which weekdays it repeats on, and when */}
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5 font-mono text-[9.5px] text-faint" aria-label={`Repeats on ${h.days.map((d) => DAY_NAME[d]).join(", ")}${h.times.length ? ` at ${h.times.join(", ")}` : ""}`}>
+                  <span className="mr-0.5 tracking-[0.16em] uppercase">Repeats</span>
                   {DAY_LABEL.map((l, i) => (
-                    <span key={i} className={h.days.includes(i) ? "text-soft" : "opacity-40"}>
+                    <span key={i} aria-hidden className={cx("grid size-[18px] place-items-center rounded-full border", h.days.includes(i) ? "border-ok/50 bg-ok/15 text-ok" : "border-line text-faint/50")}>
                       {l}
                     </span>
                   ))}
-                  <span className="ml-auto">{h.times.length > 3 ? `${h.times.length}× a day` : h.times.join(" · ")}</span>
+                  {h.times.length > 0 && <span className="ml-1 text-soft">· {h.times.length > 3 ? `${h.times.length}× a day` : h.times.join(" · ")}</span>}
                 </div>
               </li>
             ))}

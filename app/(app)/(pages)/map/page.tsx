@@ -5,7 +5,7 @@ import type * as Leaflet from "leaflet";
 import { Car, Footprints, LocateFixed, Loader2, MapPin, Navigation, Search, Smartphone } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { Button, cx, ErrorText, Input, PageHeader } from "@/components/ui";
+import { Button, cx, ErrorText, PageHeader } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { timeAgo } from "@/lib/client-api";
 import { getFix, point, type Fix } from "@/lib/location";
@@ -37,6 +37,8 @@ function MapView() {
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [route, setRoute] = useState<Route | null>(null);
   const [busy, setBusy] = useState(false);
+  // location switched off in the browser: a small note by the button, not a page-wide error
+  const [locOff, setLocOff] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dest, setDest] = useState(params.get("to") ?? "");
   const near = params.get("near");
@@ -67,9 +69,10 @@ function MapView() {
     setError(null);
     const f = await getFix(0);
     if (!f) {
-      setError("Location is off for this site. Allow it in the browser (the lock icon by the address) and tap Locate me.");
+      setLocOff(true);
       return null;
     }
+    setLocOff(false);
     setFix(f);
     void fetch(`/api/places?op=where&at=${point(f)}`)
       .then((r) => r.json())
@@ -227,6 +230,11 @@ function MapView() {
         <Button size="sm" variant="ghost" onClick={() => void locate()}>
           <LocateFixed size={13} /> Locate me
         </Button>
+        {locOff && !fix && (
+          <span className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs text-amber-200" role="status">
+            <MapPin size={12} /> Location is off. Allow it from the lock icon by the address, then tap Locate me.
+          </span>
+        )}
         {fix && (
           <span className="text-sm">
             <MapPin size={13} className="mr-1 inline text-data" />
@@ -245,16 +253,28 @@ function MapView() {
       </div>
 
       <form
-        className="mb-3 flex gap-2"
+        className="mb-3 flex items-center gap-2 rounded-xl border border-line bg-panel p-1.5 pl-3.5 transition-colors focus-within:border-data/60"
         onSubmit={(e) => {
           e.preventDefault();
           if (dest.trim()) go({ to: dest.trim(), mode });
         }}
       >
-        <Input placeholder="Way to… (e.g. AGS Cinemas Villivakkam)" value={dest} onChange={(e) => setDest(e.target.value)} />
-        <Button type="submit" disabled={!dest.trim() || !fix}>
+        <Navigation size={16} className="shrink-0 text-faint" />
+        <input
+          placeholder="Way to… (e.g. AGS Cinemas Villivakkam)"
+          aria-label="Destination"
+          value={dest}
+          onChange={(e) => setDest(e.target.value)}
+          className="h-9 min-w-0 flex-1 bg-transparent text-sm placeholder:text-faint focus:outline-none"
+        />
+        <button
+          type="submit"
+          disabled={!dest.trim() || !fix}
+          title={!fix ? "Needs your location first" : undefined}
+          className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-core px-3.5 text-sm font-medium text-core-ink transition hover:brightness-110 active:scale-[0.97] disabled:bg-raised disabled:text-faint"
+        >
           <Search size={14} /> Go
-        </Button>
+        </button>
       </form>
 
       <ErrorText error={error} />
@@ -262,7 +282,7 @@ function MapView() {
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         {/* isolate: the map's own layers (z-index 400+) stay inside this box, under the phone's tab bar. */}
         <div className="relative isolate overflow-hidden rounded-xl border border-line">
-          <div ref={box} className="h-[58vh] min-h-[320px] w-full bg-sunken" />
+          <div ref={box} className="hm-map h-[58vh] min-h-[320px] w-full bg-sunken" />
           {busy && (
             <div className="absolute right-3 top-3 z-[500] flex items-center gap-1.5 bg-[#0b1016]/90 px-2 py-1 text-xs text-soft">
               <Loader2 size={12} className="animate-spin" /> working…
@@ -318,6 +338,14 @@ function MapView() {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {!route && !places && (
+            // nothing open yet: say what the side column is for, so the map never has an empty neighbour
+            <div className="rounded-xl border border-dashed border-line bg-panel/50 p-4 text-sm text-soft">
+              <MapPin size={16} className="mb-2 text-data" />
+              Pick a place type above to see what&apos;s near you, or type where you want to go for the way there.
             </div>
           )}
 

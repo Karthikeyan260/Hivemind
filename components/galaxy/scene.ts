@@ -1196,13 +1196,26 @@ export class GalaxyScene {
       .filter((e) => e.p)
       .sort((a, z) => (a.id === this.focusedProject ? -1 : z.id === this.focusedProject ? 1 : a.dist - z.dist));
     const placed: { x: number; y: number; w: number; h: number }[] = [];
+    const now = performance.now();
     for (const { id, el, s, dist } of entries) {
       const lw = el.offsetWidth || 120;
       const lh = el.offsetHeight || 18;
       const rect = { x: s.x - lw / 2 - 4, y: s.y + 18 - 2, w: lw + 8, h: lh + 4 };
       const offscreen = s.behind || s.x < 0 || s.x > w || s.y < 0 || s.y > h - 40;
       const clash = placed.some((r) => rect.x < r.x + r.w && rect.x + rect.w > r.x && rect.y < r.y + r.h && rect.y + rect.h > r.y);
-      const visible = !offscreen && (!clash || id === this.focusedProject);
+      const want = !offscreen && (!clash || id === this.focusedProject);
+      // a label only switches once the new answer has held for a moment, so labels don't flicker (and leave
+      // half-faded ghosts piled on each other) as the galaxy turns; going off-screen switches at once
+      let visible = el.dataset.shown === "1";
+      if (want === visible || offscreen) {
+        delete el.dataset.flip;
+        visible = want;
+      } else if (!el.dataset.flip) el.dataset.flip = String(now);
+      else if (now - Number(el.dataset.flip) > 450) {
+        delete el.dataset.flip;
+        visible = want;
+      }
+      el.dataset.shown = visible ? "1" : "0";
       if (visible) placed.push(rect);
       const fade = Math.max(0.35, Math.min(1, 280 / dist - 0.15));
       el.style.transform = `translate(${s.x}px, ${s.y}px) translate(-50%, 18px)`;

@@ -204,6 +204,34 @@ body {
 }
 
 /* ───── Bridge (galaxy + HUD) ───── */
+/* the Map page: OpenStreetMap's tiles turned to a dark map (same tiles, inverted), and dark controls */
+.hm-map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7);
+}
+.hm-map.leaflet-container {
+  background: oklch(0.16 0.012 250);
+  font-family: inherit;
+}
+.hm-map .leaflet-bar {
+  border: 1px solid oklch(1 0 0 / 0.12);
+  box-shadow: 0 6px 20px -8px rgb(0 0 0 / 0.6);
+}
+.hm-map .leaflet-bar a {
+  background: oklch(0.2 0.012 250 / 0.92);
+  color: oklch(0.85 0.01 250);
+  border-bottom-color: oklch(1 0 0 / 0.1);
+}
+.hm-map .leaflet-bar a:hover {
+  background: oklch(0.26 0.014 250);
+  color: oklch(0.95 0 0);
+}
+.hm-map .leaflet-control-attribution {
+  background: oklch(0.16 0.012 250 / 0.75);
+  color: oklch(0.7 0.01 250);
+}
+.hm-map .leaflet-control-attribution a {
+  color: oklch(0.8 0.08 230);
+}
 .galaxy-label {
   position: absolute;
   left: 0;
@@ -216,7 +244,7 @@ body {
   color: oklch(0.88 0.08 75);
   padding: 2px 7px;
   border: 1px solid oklch(0.8 0.14 72 / 0.28);
-  background: oklch(0.155 0.012 250 / 0.55);
+  background: oklch(0.155 0.012 250 / 0.88);
   cursor: pointer;
   transition: color 150ms, border-color 150ms, background-color 150ms, opacity 300ms;
   will-change: transform;

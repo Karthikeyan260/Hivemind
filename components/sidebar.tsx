@@ -82,7 +82,7 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
           )}
         </nav>
         {canLock && (
-          <button onClick={lock} className="mx-3 mb-4 flex shrink-0 items-center gap-3 rounded-md px-3 py-2 text-sm text-faint hover:bg-raised/60 hover:text-fg">
+          <button onClick={lock} className="mx-3 mb-4 flex shrink-0 items-center gap-3 rounded-md border-t border-line/60 px-3 pt-2.5 pb-2 text-sm text-faint hover:bg-raised/60 hover:text-fg">
             <Lock size={16} strokeWidth={1.75} /> Lock
           </button>
         )}
