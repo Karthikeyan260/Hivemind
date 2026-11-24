@@ -79,6 +79,8 @@ export default function MissionPage() {
   const [bare, setBare] = useState(false);
   // the keyboard sheet (?), and the lift panel's lit car
   const [help, setHelp] = useState(false);
+  // lets the agent panel hand a job to the console ("Give a job": that agent picked, cursor in the box)
+  const consoleApi = useRef<ConsoleApi | null>(null);
   // ambient sound: off until you turn it on (hum always; rain and wind from the real weather)
   const [sound, setSound] = useState(false);
   const amb = useRef<Ambience | null>(null);
@@ -380,9 +382,12 @@ export default function MissionPage() {
             {error ? "Offline" : `Live · ${crew.length}`}
           </span>
           {chosen && (
-            <button type="button" onClick={() => userPick(null)} className={BTN}>
-              Overview
-            </button>
+            // phones close the panel with its own ×; the header has no room to spare there
+            <span className="hidden sm:contents">
+              <button type="button" onClick={() => userPick(null)} className={BTN}>
+                Overview
+              </button>
+            </span>
           )}
           {wx && (
             <span title={`Weather now in ${wx.place}: ${wx.condition}`} className="hidden h-9 items-center gap-1.5 border border-white/10 bg-[#0a0d14]/80 px-3 font-mono text-[10.5px] tracking-wider uppercase backdrop-blur-md md:flex">
@@ -409,9 +414,11 @@ export default function MissionPage() {
           >
             {sound ? <Volume2 size={13} /> : <VolumeX size={13} />}
           </button>
-          <button type="button" onClick={() => setBare(true)} aria-label="Photo mode: hide the panels (H)" title="Photo mode (H)" className={BTN}>
-            <Camera size={13} />
-          </button>
+          <span className="hidden sm:contents">
+            <button type="button" onClick={() => setBare(true)} aria-label="Photo mode: hide the panels (H)" title="Photo mode (H)" className={BTN}>
+              <Camera size={13} />
+            </button>
+          </span>
           <span className="hidden lg:contents">
             <button type="button" onClick={() => setHelp(true)} aria-label="Keyboard shortcuts (?)" title="Keyboard shortcuts (?)" className={BTN}>
               <Keyboard size={13} />
@@ -684,15 +691,24 @@ export default function MissionPage() {
               </ol>
             </>
           )}
-          <Link href={chosen.href} className="mt-4 flex h-10 items-center justify-center gap-1.5 bg-core text-sm font-medium text-black transition hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-core">
-            Open {chosen.name} <ArrowUpRight size={15} />
-          </Link>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => consoleApi.current?.assign(chosen.id)}
+              className="flex h-10 items-center justify-center gap-1.5 border border-[#38d6f5]/40 bg-[#38d6f5]/10 text-sm font-medium text-[#7fe6fa] transition hover:border-[#38d6f5]/70 hover:bg-[#38d6f5]/15 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-[#38d6f5]"
+            >
+              <Send size={13} /> Give a job
+            </button>
+            <Link href={chosen.href} className="flex h-10 items-center justify-center gap-1.5 bg-core text-sm font-medium text-black transition hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-core">
+              Open {chosen.name} <ArrowUpRight size={15} />
+            </Link>
+          </div>
           <p className="mt-2 text-[10.5px] leading-snug text-white/40">Start, pause or change this agent from its own page. Model and token use aren&apos;t recorded for background jobs.</p>
         </div>
       )}
 
       {/* The command console: talk to HIVEMIND; the agents it uses light up in the hall. */}
-      {!failed && <CommandConsole crew={crew} scene={scene} onDone={() => reload.current()} onAgents={() => setListOpen(true)} active={active} />}
+      {!failed && <CommandConsole crew={crew} scene={scene} api={consoleApi} onDone={() => reload.current()} onAgents={() => setListOpen(true)} active={active} />}
     </div>
   );
 }
@@ -752,13 +768,29 @@ function SystemBar({ stats, active }: { stats: SystemStats; active: number }) {
  * its agents took the job, each tool it ran, and the answer. Tools that belong to a background agent light that
  * agent's station and a path to it from the hub.
  */
-function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewAgent[]; scene: React.RefObject<MissionScene | null>; onDone: () => void; onAgents: () => void; active: number }) {
+type ConsoleApi = { assign: (id: CrewId) => void };
+
+function CommandConsole({ crew, scene, api, onDone, onAgents, active }: { crew: CrewAgent[]; scene: React.RefObject<MissionScene | null>; api: React.RefObject<ConsoleApi | null>; onDone: () => void; onAgents: () => void; active: number }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [steps, setSteps] = useState<Step[]>([]);
   const [reply, setReply] = useState("");
   const [links, setLinks] = useState<Array<{ label: string; href: string }>>([]);
   const [prefer, setPrefer] = useState<CrewId | "">("");
+  const input = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    api.current = {
+      assign: (id) => {
+        setPrefer(id);
+        input.current?.focus();
+      },
+    };
+    return () => {
+      api.current = null;
+    };
+  }, [api]);
+  const hinted = crew.find((c) => c.id === prefer);
   const [shown, setShown] = useState(false);
   const convo = useRef<string | null>(null);
   // the log's clock: when the command went out, and a ticking "now" while it runs
@@ -896,6 +928,26 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
           )}
         </div>
       )}
+      {/* ideas to start from: shown while the empty box has focus (a tap fills it in) */}
+      {focused && !text && !busy && (
+        <div className="mb-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] sm:flex-wrap [&::-webkit-scrollbar]:hidden" aria-label="Suggestions">
+          {EXAMPLES.map((x, i) => (
+            <button
+              key={x}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setText(x);
+                input.current?.focus();
+              }}
+              style={{ animationDelay: `${i * 40}ms` }}
+              className="mc-chip shrink-0 border border-white/12 bg-[#0a0d14]/88 px-2.5 py-1.5 text-[11.5px] whitespace-nowrap text-white/75 backdrop-blur-md transition hover:border-[#38d6f5]/50 hover:text-white active:scale-[0.97]"
+            >
+              {x}
+            </button>
+          ))}
+        </div>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -906,10 +958,22 @@ function CommandConsole({ crew, scene, onDone, onAgents, active }: { crew: CrewA
         <button type="button" onClick={onAgents} className="flex h-9 shrink-0 items-center gap-1 px-2 font-mono text-[10px] tracking-wider text-white/70 uppercase hover:text-[#38d6f5]" aria-label="Show all agents">
           <ChevronUp size={14} /> {active}/{crew.length}
         </button>
+        {hinted && (
+          // which agent this goes to (on phones, where the picker is hidden)
+          <span className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-[#38d6f5]/40 bg-[#38d6f5]/10 pr-1 pl-2 font-mono text-[10px] tracking-wider text-[#7fe6fa] uppercase sm:hidden">
+            {hinted.name}
+            <button type="button" onClick={() => setPrefer("")} aria-label={`Don't prefer ${hinted.name}`} className="grid size-5 place-items-center text-[#7fe6fa]/70">
+              <X size={11} />
+            </button>
+          </span>
+        )}
         <input
+          ref={input}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={ex < 0 ? "Command your agents… What should we accomplish?" : `Try: ${EXAMPLES[ex]}`}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={hinted ? `What should ${hinted.name} do?` : ex < 0 ? "Command your agents… What should we accomplish?" : `Try: ${EXAMPLES[ex]}`}
           aria-label="Command for your agents"
           className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm text-white placeholder:text-white/40 focus:outline-none"
         />
