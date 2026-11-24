@@ -490,6 +490,9 @@ export class MissionScene {
   private boltAt = -10;
   private nextBolt = 6;
   private bloomBase = 0.4;
+  /** Clay lamps (agal vilakku) for Karthigai Deepam and Deepavali: along the entrance steps and the roof's front edge. */
+  private diyas: { flames: THREE.InstancedMesh; ground: THREE.Group; roof: THREE.Group; spots: THREE.Vector3[]; mat: THREE.MeshBasicMaterial } | null = null;
+  private festival: string | null = null;
   private skyCtx!: CanvasRenderingContext2D;
   private skyTex!: THREE.CanvasTexture;
   private skyHour = -1;
@@ -2324,6 +2327,82 @@ export class MissionScene {
     this.applyDaylight();
   }
 
+  /**
+   * A festival from HIVEMIND's own calendar (lib/pet-looks): on the lamp festivals (Karthigai Deepam, Deepavali) rows
+   * of clay lamps are lit along the entrance steps and the roof's front edge. Anything else, or none, puts them away.
+   */
+  setFestival(id: string | null) {
+    this.festival = id;
+    const on = id === "karthigai" || id === "deepavali";
+    if (on && !this.diyas) this.buildDiyas();
+    if (this.diyas) this.diyas.ground.visible = this.diyas.roof.visible = on;
+  }
+
+  private buildDiyas() {
+    const clay = new THREE.MeshStandardMaterial({ color: "#a4532c", roughness: 0.85 });
+    const mat = new THREE.MeshBasicMaterial({ color: "#ffb347", toneMapped: false });
+    const bowl = new THREE.CylinderGeometry(0.15, 0.09, 0.08, 10);
+    const flame = new THREE.ConeGeometry(0.04, 0.16, 8);
+    flame.translate(0, 0.08, 0);
+    this.disposables.push(clay, mat, bowl, flame);
+    const ZF = TOWER.zf;
+    const groundSpots: THREE.Vector3[] = [];
+    // along the front edge of each entrance step
+    for (let st = 0; st < 3; st++) {
+      const half = (12 - st * 0.8) / 2 - 0.35;
+      const y = 0.14 + st * 0.14;
+      const z = ZF + 6.2 - st * 0.7 + 0.38;
+      for (let x = -half; x <= half + 0.01; x += 0.95) groundSpots.push(new THREE.Vector3(x, y, z));
+    }
+    const roofSpots: THREE.Vector3[] = [];
+    for (let x = TOWER.x0 + 0.6; x <= TOWER.x1 - 0.6; x += 1.4) roofSpots.push(new THREE.Vector3(x, FLOOR_H * 3 + 1.1, ZF + 0.12));
+    const place = (spots: THREE.Vector3[], parent: THREE.Object3D) => {
+      const g = new THREE.Group();
+      const bowls = new THREE.InstancedMesh(bowl, clay, spots.length);
+      const m = new THREE.Matrix4();
+      spots.forEach((v, i) => bowls.setMatrixAt(i, m.makeTranslation(v.x, v.y + 0.04, v.z)));
+      g.add(bowls);
+      parent.add(g);
+      return g;
+    };
+    const ground = place(groundSpots, this.scene);
+    const roof = place(roofSpots, this.levels[3]);
+    // the flames: one instanced mesh per row, so the roof's follow the roof when the cutaway lifts it
+    const spots = [...groundSpots, ...roofSpots];
+    const flames = new THREE.InstancedMesh(flame, mat, groundSpots.length);
+    const roofFlames = new THREE.InstancedMesh(flame, mat, roofSpots.length);
+    ground.add(flames);
+    roof.add(roofFlames);
+    flames.userData.spots = groundSpots;
+    roofFlames.userData.spots = roofSpots;
+    ground.userData.flames = flames;
+    roof.userData.flames = roofFlames;
+    this.diyas = { flames, ground, roof, spots, mat };
+  }
+
+  /** The lamps' flames sway and flicker, each on its own beat, and glow brighter after dark. */
+  private updateDiyas(t: number) {
+    const d = this.diyas;
+    if (!d || !d.ground.visible) return;
+    d.mat.color.set("#ffb347").multiplyScalar(0.9 + 1.6 * this.night);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const sc = new THREE.Vector3();
+    const e = new THREE.Euler();
+    for (const g of [d.ground, d.roof]) {
+      const fl = g.userData.flames as THREE.InstancedMesh;
+      const spots = fl.userData.spots as THREE.Vector3[];
+      spots.forEach((v, i) => {
+        const f = this.reduce ? 1 : 0.85 + 0.15 * Math.sin(t * 11 + i * 2.3) + 0.08 * Math.sin(t * 23 + i);
+        sc.set(1, f, 1);
+        e.set(0, 0, this.reduce ? 0 : Math.sin(t * 3 + i) * 0.12);
+        q.setFromEuler(e);
+        fl.setMatrixAt(i, m.compose(new THREE.Vector3(v.x, v.y + 0.08, v.z), q, sc));
+      });
+      fl.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   /** Clouds, traffic and birds (rain is built the first time it rains). */
   private buildLife() {
     // clouds: soft billboards in a ring round the site, high up, drifting with the wind
@@ -2494,6 +2573,7 @@ export class MissionScene {
     this.carLights[1]?.color.set("#ff3b30").multiplyScalar(lit * 1.2);
     this.updateMeteor(t);
     this.updateBolt(t);
+    this.updateDiyas(t);
     // birds: out on fair days only
     const fair = this.night < 0.5 && this.rainOn === 0 && this.overcast < 0.85;
     this.birdGroup.visible = fair;

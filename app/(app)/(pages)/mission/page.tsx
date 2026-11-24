@@ -2,6 +2,7 @@
 
 import { ArrowUpRight, Camera, ChevronLeft, ChevronRight, ChevronUp, Clock3, Keyboard, Loader2, Moon, Pause, Play, Send, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { Ambience } from "@/components/mission/ambience";
+import { festivalOn } from "@/lib/pet-looks";
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FLOOR_OF, FLOORS, MissionScene, type MissionView, type SiteWeather, type SkyMode } from "@/components/mission/mission-scene";
@@ -176,6 +177,12 @@ export default function MissionPage() {
   useEffect(() => {
     if (wx) scene.current?.setWeather(wx);
   }, [wx, ready]);
+
+  // a festival today (HIVEMIND's own calendar): the lamp festivals light clay lamps on the tower
+  const fest = now > 0 ? festivalOn(localDate(now)) : null;
+  useEffect(() => {
+    scene.current?.setFestival(fest?.id ?? null);
+  }, [fest?.id, ready]);
 
   useEffect(() => {
     const s = scene.current;
@@ -409,6 +416,11 @@ export default function MissionPage() {
               <button type="button" onClick={() => userPick(null)} className={BTN}>
                 Overview
               </button>
+            </span>
+          )}
+          {fest && (
+            <span title={`Today: ${fest.name}`} className="hidden h-9 items-center gap-1.5 border px-3 font-mono text-[10.5px] tracking-wider uppercase backdrop-blur-md md:flex" style={{ borderColor: `${fest.glow}66`, color: fest.glow, background: "rgba(10,13,20,0.8)" }}>
+              {fest.id === "karthigai" || fest.id === "deepavali" ? "🪔" : "✦"} {fest.name}
             </span>
           )}
           {wx && (
@@ -811,6 +823,11 @@ const FLOOR_BUTTONS: Array<{ v: MissionView; short: string; label: string; key: 
   { v: "f0", short: "G", label: "Ground floor", key: "G", floor: 0 },
   { v: "lobby", short: "LOBBY", label: "The lobby hall: the K and the coordination desk", key: "L" },
 ];
+/** A timestamp as a local calendar date ("2026-11-24"), the form the festival calendar uses. */
+const localDate = (ms: number) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 /** The floor map's rows, top to bottom, and where each takes the camera. */
 const MAP_ROWS: Array<{ v: MissionView; short: string; label: string }> = [
   { v: "f2", short: "2", label: "Floor 2" },
