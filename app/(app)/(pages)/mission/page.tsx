@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowUpRight, Camera, ChevronUp, Clock3, Keyboard, Loader2, Moon, Play, Send, Square, Sun, X } from "lucide-react";
+import { ArrowUpRight, Camera, ChevronUp, Clock3, Keyboard, Loader2, Moon, Play, Send, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
+import { Ambience } from "@/components/mission/ambience";
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FLOOR_OF, FLOORS, MissionScene, type MissionView, type SiteWeather, type SkyMode } from "@/components/mission/mission-scene";
@@ -74,6 +75,9 @@ export default function MissionPage() {
   const [bare, setBare] = useState(false);
   // the keyboard sheet (?), and the lift panel's lit car
   const [help, setHelp] = useState(false);
+  // ambient sound: off until you turn it on (hum always; rain and wind from the real weather)
+  const [sound, setSound] = useState(false);
+  const amb = useRef<Ambience | null>(null);
   const liftRef = useRef<HTMLElement>(null);
   const [car, setCar] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   // live notices: an agent changing state, or a new line in the activity feed, slides in at the top right
@@ -135,6 +139,24 @@ export default function MissionPage() {
     if (wx) scene.current?.setWeather(wx);
   }, [wx, ready]);
 
+  useEffect(() => {
+    if (!sound) return;
+    const a = new Ambience();
+    amb.current = a;
+    a.start(null);
+    const onVis = () => a.pause(document.hidden);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      a.stop();
+      amb.current = null;
+    };
+  }, [sound]);
+
+  useEffect(() => {
+    amb.current?.setWeather(wx);
+  }, [wx, sound]);
+
   // Keyboard: E outside, 2 / 1 / G the floors, L the lobby, T the tour, H photo mode, Esc to close (instant, no animation)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -151,6 +173,7 @@ export default function MissionPage() {
           pick(null);
         } else setTouring(true);
       } else if (k === "h") setBare((b) => !b);
+      else if (k === "m") setSound((s) => !s);
       else if (k === "escape") {
         if (open) userPick(null);
         else setBare(false);
@@ -357,6 +380,16 @@ export default function MissionPage() {
           >
             {sky === "day" ? <Sun size={13} /> : sky === "night" ? <Moon size={13} /> : <Clock3 size={13} />}
             <span className="hidden sm:inline">{SKY_LABEL[sky]}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSound((s) => !s)}
+            aria-pressed={sound}
+            aria-label={sound ? "Ambient sound on. Turn it off (M)" : "Ambient sound: the tower's hum, and rain when it is raining at home (M)"}
+            title={sound ? "Sound on (M)" : "Ambient sound (M)"}
+            className={`${BTN} aria-pressed:border-[#38d6f5]/60 aria-pressed:text-[#38d6f5]`}
+          >
+            {sound ? <Volume2 size={13} /> : <VolumeX size={13} />}
           </button>
           <button type="button" onClick={() => setBare(true)} aria-label="Photo mode: hide the panels (H)" title="Photo mode (H)" className={BTN}>
             <Camera size={13} />
@@ -619,7 +652,7 @@ const FLOOR_BUTTONS: Array<{ v: MissionView; short: string; label: string; key: 
 /** The keyboard sheet, grouped: what each key does on this page. */
 const KEYS: Array<[string, Array<[string[], string]>]> = [
   ["Move", [[["E"], "Outside the tower"], [["2"], "Floor 2"], [["1"], "Floor 1"], [["G"], "Ground floor"], [["L"], "The lobby hall"]]],
-  ["View", [[["T"], "Start or stop the tour"], [["H"], "Photo mode"], [["Esc"], "Close / leave photo mode"], [["?"], "This sheet"]]],
+  ["View", [[["T"], "Start or stop the tour"], [["H"], "Photo mode"], [["M"], "Ambient sound"],[["Esc"], "Close / leave photo mode"], [["?"], "This sheet"]]],
 ];
 const SKY_NEXT: Record<SkyMode, SkyMode> = { live: "day", day: "night", night: "live" };
 const SKY_LABEL: Record<SkyMode, string> = { live: "Live sky", day: "Day", night: "Night" };
