@@ -166,15 +166,50 @@ function ComicDay() {
       )}
 
       {!!d?.dates.length && (
-        <div className="mt-6">
-          <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-faint">Earlier comics</h3>
-          <div className="flex flex-wrap gap-1.5">
-            {d.dates.slice(0, 30).map((x) => (
-              <button key={x} type="button" onClick={() => setDate(x)} className={cx("border px-2 py-1 font-mono text-[11px]", x === day ? "border-core text-core" : "border-line text-soft hover:border-data hover:text-data")}>
-                {pretty(x)}
-              </button>
-            ))}
-          </div>
+        <div className="mt-8">
+          <h3 className="mb-3 font-mono text-[11px] uppercase tracking-wider text-faint">
+            Earlier comics · {d.dates.length} {d.dates.length === 1 ? "issue" : "issues"}
+          </h3>
+          {/* each saved day as a little comic-book cover, grouped by month (newest first) */}
+          {Object.entries(
+            d.dates.slice(0, 60).reduce<Record<string, string[]>>((acc, x) => {
+              const m = new Date(`${x}T12:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+              (acc[m] ??= []).push(x);
+              return acc;
+            }, {}),
+          ).map(([month, list]) => (
+            <section key={month} className="mb-5">
+              <p className="mb-2 text-xs font-medium text-soft">{month}</p>
+              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-5 lg:grid-cols-6">
+                {list.map((x) => {
+                  const t = new Date(`${x}T12:00:00`);
+                  const issue = d.dates.length - d.dates.indexOf(x);
+                  const tint = Object.values(MOOD)[t.getDate() % 6];
+                  return (
+                    <button
+                      key={x}
+                      type="button"
+                      onClick={() => setDate(x)}
+                      aria-label={`Comic for ${pretty(x)}`}
+                      aria-pressed={x === day}
+                      className={cx(
+                        "group relative aspect-[3/4] overflow-hidden border-[3px] border-black text-left text-black shadow-[3px_3px_0_0_rgba(0,0,0,0.55)] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_0_rgba(0,0,0,0.55)] motion-reduce:hover:translate-y-0",
+                        x === day && "ring-2 ring-core ring-offset-2 ring-offset-[var(--bg)]",
+                      )}
+                      style={{ background: `radial-gradient(${tint.dot} 1.2px, transparent 1.3px) 0 0/8px 8px, ${tint.bg}` }}
+                    >
+                      <span className="absolute top-1.5 left-1.5 bg-black px-1 font-mono text-[9px] font-bold text-white">#{issue}</span>
+                      <span className="absolute inset-x-0 bottom-0 bg-white/85 px-1.5 py-1.5" style={{ fontFamily: "'Comic Sans MS','Comic Neue',ui-rounded,system-ui,sans-serif" }}>
+                        <span className="block text-[10px] font-bold uppercase leading-none tracking-wide">{t.toLocaleDateString("en-IN", { weekday: "short" })}</span>
+                        <span className="block text-xl font-black leading-tight">{t.getDate()}</span>
+                        <span className="block text-[10px] uppercase leading-none">{t.toLocaleDateString("en-IN", { month: "short" })}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </div>
