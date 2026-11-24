@@ -1,13 +1,13 @@
 "use client";
 
-import { Check, Copy, Loader2, Trash2 } from "lucide-react";
+import { ArrowRight, BookOpenCheck, Check, Copy, FileText, KeyRound, Loader2, Mail, MessagesSquare, Target, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Gauge, Holo } from "@/components/bridge/holo";
 import { MasterResume, TailoredResume } from "@/components/career/resume";
 import { summarizeAnalysis, useVoiceActions } from "@/components/voice/provider";
-import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, Textarea } from "@/components/ui";
+import { Badge, Button, cx, ErrorText, Input, PageHeader, Textarea } from "@/components/ui";
 import { api, fmtDate, useFetch } from "@/lib/client-api";
 
 type Analysis = {
@@ -174,6 +174,9 @@ function Career() {
               <Input placeholder="Company (optional)" value={company} onChange={(e) => setCompany(e.target.value)} />
             </div>
             <Textarea rows={12} required placeholder="Paste the full job description here…" value={jd} onChange={(e) => setJd(e.target.value)} />
+            {jd.trim().length > 0 && jd.trim().length < 80 && (
+              <p className="font-mono text-[10.5px] text-faint">Paste {80 - jd.trim().length} more characters of the job description to analyse it.</p>
+            )}
             <Button type="submit" disabled={busy || jd.trim().length < 80} className="w-full">
               {busy ? (
                 <>
@@ -229,7 +232,54 @@ function Career() {
               </div>
             </Holo>
           ) : (
-            <Empty>Paste a job description to see your fit score, ATS keyword match, tailored summary, resume bullets, cover letter and interview prep.</Empty>
+            // nothing analysed yet: what an analysis gives you (no made-up scores)
+            <div className="min-w-0 rounded-xl border border-dashed border-line bg-panel/40 p-6">
+              <div className="flex flex-wrap items-center gap-6">
+                {[
+                  { label: "FIT", tone: "var(--core)" },
+                  { label: "ATS %", tone: "var(--data)" },
+                ].map((g) => (
+                  <div key={g.label} className="flex flex-col items-center gap-1" aria-hidden>
+                    <svg width="64" height="64" viewBox="0 0 64 64">
+                      <circle cx="32" cy="32" r="24" fill="none" stroke="var(--line)" strokeWidth="5" />
+                      <circle cx="32" cy="32" r="24" fill="none" stroke={g.tone} strokeOpacity="0.35" strokeWidth="5" strokeDasharray="4 6" />
+                      <text x="32" y="37" textAnchor="middle" className="fill-faint font-mono text-[14px]">
+                        –
+                      </text>
+                    </svg>
+                    <span className="font-mono text-[9.5px] tracking-widest text-faint">{g.label}</span>
+                  </div>
+                ))}
+                <div className="min-w-0 flex-1 basis-56">
+                  <p className="font-medium">Your match report appears here</p>
+                  <p className="mt-1 text-sm text-soft">Paste a job description on the left. HIVEMIND scores it against your real resume, projects and skills, in under 10 seconds.</p>
+                </div>
+              </div>
+              <ul className="mt-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {[
+                  { icon: Target, title: "Fit score", text: "How well you match, with the evidence" },
+                  { icon: KeyRound, title: "ATS keywords", text: "Matched and missing, at a glance" },
+                  { icon: FileText, title: "Tailored resume", text: "A PDF built for this role" },
+                  { icon: Mail, title: "Cover letter", text: "Written from your real work" },
+                  { icon: MessagesSquare, title: "Interview prep", text: "Likely questions, with hints" },
+                  { icon: BookOpenCheck, title: "Learning plan", text: "How to close each gap" },
+                ].map((x) => (
+                  <li key={x.title} className="flex gap-3 rounded-lg border border-line bg-panel/70 p-3">
+                    <x.icon size={16} className="mt-0.5 shrink-0 text-core" />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">{x.title}</span>
+                      <span className="block text-xs text-soft">{x.text}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {history.data?.[0] && (
+                <Link href={`/career?open=${history.data[0].id}`} className="mt-5 inline-flex items-center gap-2 text-sm text-data hover:underline">
+                  Open your latest: {history.data[0].role}
+                  {history.data[0].company ? ` @ ${history.data[0].company}` : ""} <ArrowRight size={14} />
+                </Link>
+              )}
+            </div>
           )
         ) : (
           <div id="career-result" className="min-w-0 scroll-mt-16 list-in space-y-4">
