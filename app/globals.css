@@ -814,6 +814,23 @@ body {
     transition: none;
   }
 }
+/* photo mode's shutter: a short white flash */
+@keyframes mc-shutter {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.mc-shutter {
+  animation: mc-shutter 420ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-shutter {
+    display: none;
+  }
+}
 /* the tour strip's bar: fills over one stop */
 @keyframes mc-tour {
   from {

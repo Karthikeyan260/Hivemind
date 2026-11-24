@@ -3328,6 +3328,13 @@ export class MissionScene {
     else this.renderer.render(this.scene, this.camera);
   }
 
+  /** A picture of the scene as it is now (drawn fresh, so the buffer is still there to read), as a PNG data URL. */
+  snapshot(): string {
+    if (this.composer) this.composer.render(0);
+    else this.renderer.render(this.scene, this.camera);
+    return this.renderer.domElement.toDataURL("image/png");
+  }
+
   dispose() {
     this.dead = true;
     for (const l of this.links) {

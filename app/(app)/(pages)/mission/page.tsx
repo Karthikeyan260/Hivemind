@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Camera, ChevronLeft, ChevronRight, ChevronUp, Clock3, Keyboard, Loader2, Moon, Pause, Play, Send, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUpRight, Camera, ChevronLeft, Download, ChevronRight, ChevronUp, Clock3, Keyboard, Loader2, Moon, Pause, Play, Send, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { Ambience } from "@/components/mission/ambience";
 import { festivalOn } from "@/lib/pet-looks";
 import Link from "next/link";
@@ -80,6 +80,18 @@ export default function MissionPage() {
   const [wx, setWx] = useState<(SiteWeather & { temp_c: number; condition: string; place: string }) | null>(null);
   // photo mode: the HUD steps aside for a clean view of the building
   const [bare, setBare] = useState(false);
+  // photo mode can save the view as a picture (P); a counter keys the shutter flash
+  const [shot, setShot] = useState(0);
+  const savePicture = useCallback(() => {
+    const url = scene.current?.snapshot();
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    const d = new Date();
+    a.download = `hivemind-tower-${localDate(d.getTime())}-${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}.png`;
+    a.click();
+    setShot((n) => n + 1);
+  }, []);
   // the keyboard sheet (?), and the lift panel's lit car
   const [help, setHelp] = useState(false);
   // the floor map: the scene moves its dots each frame
@@ -226,6 +238,7 @@ export default function MissionPage() {
       } else if (touring && (k === "arrowleft" || k === "arrowright")) stepTour(k === "arrowright" ? 1 : -1);
       else if (k === "h") setBare((b) => !b);
       else if (k === "m") setSound((s) => !s);
+      else if (k === "p" && bare) savePicture();
       else if (k === "escape") {
         if (open) userPick(null);
         else setBare(false);
@@ -234,7 +247,7 @@ export default function MissionPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, pick, userPick, touring, open, help, startTour, stepTour]);
+  }, [go, pick, userPick, touring, open, help, startTour, stepTour, bare, savePicture]);
 
   // The lift car: a lit block that slides to the pressed floor button (measured, so it fits both the column and the phone bar).
   useLayoutEffect(() => {
@@ -505,10 +518,17 @@ export default function MissionPage() {
         })()}
 
       {bare && (
-        <button type="button" onClick={() => setBare(false)} className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 border border-white/15 bg-[#0a0d14]/70 px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-white/70 uppercase backdrop-blur-md transition hover:text-white active:scale-[0.97]">
-          Show panels · H
-        </button>
+        <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 gap-2">
+          <button type="button" onClick={savePicture} className="flex items-center gap-1.5 border border-[#38d6f5]/45 bg-[#0a0d14]/70 px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-[#7fe6fa] uppercase backdrop-blur-md transition hover:border-[#38d6f5]/80 active:scale-[0.97]">
+            <Download size={12} /> Save picture · P
+          </button>
+          <button type="button" onClick={() => setBare(false)} className="border border-white/15 bg-[#0a0d14]/70 px-3 py-1.5 font-mono text-[10px] tracking-[0.2em] text-white/70 uppercase backdrop-blur-md transition hover:text-white active:scale-[0.97]">
+            Show panels · H
+          </button>
+        </div>
       )}
+      {/* the shutter: a quick white flash when a picture is taken */}
+      {shot > 0 && <div key={shot} aria-hidden className="mc-shutter pointer-events-none absolute inset-0 z-30 bg-white" />}
 
       {/* The loading curtain: lifts (a quick fade) the moment the scene is drawn, so the crane shot is the reveal. */}
       {!failed && (
@@ -841,7 +861,7 @@ const TOUR_BTN = "grid size-7 place-items-center text-white/65 transition hover:
 /** The keyboard sheet, grouped: what each key does on this page. */
 const KEYS: Array<[string, Array<[string[], string]>]> = [
   ["Move", [[["E"], "Outside the tower"], [["2"], "Floor 2"], [["1"], "Floor 1"], [["G"], "Ground floor"], [["L"], "The lobby hall"]]],
-  ["View", [[["T"], "Start or stop the tour"], [["←", "→"], "Tour: back / on"],[["H"], "Photo mode"], [["M"], "Ambient sound"],[["Esc"], "Close / leave photo mode"], [["?"], "This sheet"]]],
+  ["View", [[["T"], "Start or stop the tour"], [["←", "→"], "Tour: back / on"],[["H"], "Photo mode"], [["P"], "Save a picture (photo mode)"], [["M"], "Ambient sound"],[["Esc"], "Close / leave photo mode"], [["?"], "This sheet"]]],
 ];
 const SKY_NEXT: Record<SkyMode, SkyMode> = { live: "day", day: "night", night: "live" };
 const SKY_LABEL: Record<SkyMode, string> = { live: "Live sky", day: "Day", night: "Night" };
