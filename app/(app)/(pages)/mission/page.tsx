@@ -67,6 +67,8 @@ export default function MissionPage() {
   }, []);
   const lifted = ready || late || error;
   const [listOpen, setListOpen] = useState(false);
+  // the sheet has two tabs: the crew, and the logbook of the latest activity
+  const [sheetTab, setSheetTab] = useState<"crew" | "log">("crew");
   const [view, setView] = useState<MissionView>("outside");
   // a lower-third caption names where the camera just went (not on the first view: the opening shot owns that)
   const [caption, setCaption] = useState<{ key: number; title: string; sub: string } | null>(null);
@@ -385,7 +387,14 @@ export default function MissionPage() {
           )}
           {mission && now > 0 && (
             <div style={D(620)} className="mc-in hidden md:block">
-              <DayTrack activity={mission.activity ?? []} now={now} />
+              <DayTrack
+                activity={mission.activity ?? []}
+                now={now}
+                onOpen={() => {
+                  setSheetTab("log");
+                  setListOpen(true);
+                }}
+              />
             </div>
           )}
         </div>
@@ -515,26 +524,44 @@ export default function MissionPage() {
         <div className="absolute inset-0 z-30" role="dialog" aria-modal="true" aria-label="Agents">
           <button type="button" aria-label="Close" onClick={() => setListOpen(false)} className="absolute inset-0 bg-black/55" />
           <div className="sheet-up absolute inset-x-0 bottom-0 flex max-h-[75%] flex-col border-t border-white/10 bg-[#0a0d14] sm:inset-x-auto sm:bottom-4 sm:left-4 sm:w-80 sm:border">
-            <div className="flex items-start justify-between border-b border-white/10 px-4 py-3">
-              <span>
-                <span className="hud-label block">
-                  CREW · {active} OF {crew.length} ACTIVE
-                </span>
-                <StateCounts crew={crew} />
-              </span>
-              <button type="button" onClick={() => setListOpen(false)} aria-label="Close" className="-mr-2 grid size-9 place-items-center text-white/70">
+            <div className="flex items-center justify-between border-b border-white/10 pr-2 pl-2">
+              <div role="tablist" aria-label="Show" className="relative flex">
+                {(["crew", "log"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    aria-selected={sheetTab === tab}
+                    onClick={() => setSheetTab(tab)}
+                    className={`relative px-3 py-3 font-mono text-[10px] tracking-[0.2em] uppercase transition-colors ${sheetTab === tab ? "text-[#7fe6fa]" : "text-white/45 hover:text-white/75"}`}
+                  >
+                    {tab === "crew" ? `Crew · ${active}/${crew.length}` : `Activity · ${(mission?.activity ?? []).length}`}
+                    <span aria-hidden className={`absolute inset-x-3 -bottom-px h-0.5 bg-[#38d6f5] shadow-[0_0_8px_#38d6f5] transition-opacity ${sheetTab === tab ? "opacity-100" : "opacity-0"}`} />
+                  </button>
+                ))}
+              </div>
+              <button type="button" onClick={() => setListOpen(false)} aria-label="Close" className="grid size-9 place-items-center text-white/70">
                 <X size={16} />
               </button>
             </div>
-            <AgentList
-              crew={crew}
-              open={open}
-              now={now}
-              onPick={(id) => {
-                setListOpen(false);
-                userPick(id);
-              }}
-            />
+            {sheetTab === "crew" ? (
+              <>
+                <div className="border-b border-white/8 px-4 pt-1 pb-2.5">
+                  <StateCounts crew={crew} />
+                </div>
+                <AgentList
+                  crew={crew}
+                  open={open}
+                  now={now}
+                  onPick={(id) => {
+                    setListOpen(false);
+                    userPick(id);
+                  }}
+                />
+              </>
+            ) : (
+              <Logbook activity={mission?.activity ?? []} now={now} />
+            )}
           </div>
         </div>
       )}
@@ -760,7 +787,19 @@ export default function MissionPage() {
       )}
 
       {/* The command console: talk to HIVEMIND; the agents it uses light up in the hall. */}
-      {!failed && <CommandConsole crew={crew} scene={scene} api={consoleApi} onDone={() => reload.current()} onAgents={() => setListOpen(true)} active={active} />}
+      {!failed && (
+        <CommandConsole
+          crew={crew}
+          scene={scene}
+          api={consoleApi}
+          onDone={() => reload.current()}
+          onAgents={() => {
+            setSheetTab("crew");
+            setListOpen(true);
+          }}
+          active={active}
+        />
+      )}
     </div>
   );
 }
@@ -822,11 +861,43 @@ function SystemBar({ stats, active }: { stats: SystemStats; active: number }) {
   );
 }
 
+/** The logbook: the latest activity, newest first, split into today and earlier, each with its time and how long ago. */
+function Logbook({ activity, now }: { activity: Array<{ message: string; at: string }>; now: number }) {
+  if (!activity.length) return <p className="px-4 py-6 text-center text-xs text-white/50">Nothing recorded yet.</p>;
+  const d = new Date(now);
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const groups = [
+    { label: "Today", rows: activity.filter((a) => Date.parse(a.at) >= start) },
+    { label: "Earlier", rows: activity.filter((a) => Date.parse(a.at) < start) },
+  ].filter((g) => g.rows.length);
+  return (
+    <ol className="list-in min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3">
+      {groups.flatMap((g) => [
+        <li key={g.label} className="sticky top-0 z-[1] bg-[#0a0d14]/95 pt-3 pb-1.5 font-mono text-[9px] tracking-[0.22em] text-white/40 uppercase backdrop-blur">
+          {g.label}
+        </li>,
+        ...g.rows.map((a, i) => {
+          const t = new Date(a.at);
+          return (
+            <li key={a.at + i} className="relative border-l border-white/12 py-2 pl-4">
+              <span aria-hidden className={`absolute top-3.5 -left-[3.5px] size-1.5 rounded-full ${g.label === "Today" && i === 0 ? "bg-[#38d6f5] shadow-[0_0_6px_#38d6f5]" : "bg-white/30"}`} />
+              <p className="text-[12.5px] leading-snug text-white/85">{a.message}</p>
+              <p className="mt-0.5 font-mono text-[9.5px] text-white/40">
+                {g.label === "Today" ? t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : t.toLocaleDateString([], { day: "numeric", month: "short" })} · {now > 0 ? ago(a.at, now) : ""}
+              </p>
+            </li>
+          );
+        }),
+      ])}
+    </ol>
+  );
+}
+
 /**
  * Today on one line: a 24-hour track with a tick for each of the latest activity events that happened today (Mission
  * Control is sent the latest few, not the whole day), and a lit marker at the current time. Hover a tick for what it was.
  */
-function DayTrack({ activity, now }: { activity: Array<{ message: string; at: string }>; now: number }) {
+function DayTrack({ activity, now, onOpen }: { activity: Array<{ message: string; at: string }>; now: number; onOpen: () => void }) {
   const d = new Date(now);
   const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const pct = (ms: number) => ((ms - start) / 864e5) * 100;
@@ -835,7 +906,9 @@ function DayTrack({ activity, now }: { activity: Array<{ message: string; at: st
   return (
     <div className="pointer-events-auto mt-2.5 w-[26rem] max-w-full" aria-label={`Today: ${today.length} of the latest events happened today`}>
       <div className="mb-1 flex items-center justify-between font-mono text-[8.5px] tracking-[0.2em] text-white/40 uppercase">
-        <span>Today · latest events</span>
+        <button type="button" onClick={onOpen} className="tracking-[0.2em] uppercase transition-colors hover:text-[#7fe6fa]" title="Open the activity logbook">
+          Today · latest events ›
+        </button>
         <span className="tabular-nums text-[#7fe6fa]/80">{hm(now)}</span>
       </div>
       <div className="relative h-5">
