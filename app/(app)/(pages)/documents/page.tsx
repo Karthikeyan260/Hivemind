@@ -2,8 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
-import { Upload } from "lucide-react";
-import { Badge, Button, cx, Empty, ErrorText, PageHeader, ProjectSelect } from "@/components/ui";
+import { BookOpen, FileSpreadsheet, FileText, FileType2, Loader2, Trash2, UploadCloud, X } from "lucide-react";
+import { cx, Empty, ErrorText, PageHeader } from "@/components/ui";
 import { api, fmtDate, type Project, useFetch } from "@/lib/client-api";
 
 type Doc = {
@@ -17,6 +17,15 @@ type Doc = {
   created_at: string;
 };
 type DocDetail = Doc & { chunks: { chunk_index: number; content: string; metadata: { page?: number } }[] };
+
+/** A file type's icon and colour. */
+function kindOf(t: string) {
+  const x = t.toLowerCase();
+  if (x.includes("pdf")) return { icon: FileType2, tone: "text-rose-300 border-rose-400/40 bg-rose-400/10", label: "PDF" };
+  if (x.includes("doc")) return { icon: FileText, tone: "text-sky-300 border-sky-400/40 bg-sky-400/10", label: "Word" };
+  if (x.includes("csv")) return { icon: FileSpreadsheet, tone: "text-emerald-300 border-emerald-400/40 bg-emerald-400/10", label: "CSV" };
+  return { icon: FileText, tone: "text-soft border-line bg-raised/50", label: x.includes("md") || x.includes("markdown") ? "Markdown" : "Text" };
+}
 
 export default function DocumentsPage() {
   return (
@@ -36,6 +45,7 @@ function Documents() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
 
   async function upload(file: File) {
     setBusy(true);
@@ -65,9 +75,29 @@ function Documents() {
     <div className="mx-auto max-w-6xl">
       <PageHeader eyebrow="Knowledge" title="Documents" subtitle="PDF, TXT, Markdown, DOCX, CSV up to 4MB. Text is chunked and embedded for search." />
 
-      <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-line bg-panel p-4">
-        <label className={cx("inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-core px-3 py-2 text-sm font-medium text-core-ink", busy && "pointer-events-none opacity-50")}>
-          <Upload size={14} /> Upload a document
+      {/* the drop zone: drop a file on it, or click to choose one */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!busy) setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f && !busy) void upload(f);
+        }}
+        className={cx("mb-6 flex flex-wrap items-center gap-4 rounded-2xl border-2 border-dashed p-5 transition-colors", over ? "border-core bg-core/5" : "border-line bg-panel")}
+      >
+        <label className={cx("flex min-w-0 grow basis-64 cursor-pointer items-center gap-4", busy && "pointer-events-none")}>
+          <span className={cx("grid size-12 shrink-0 place-items-center rounded-xl border", over || busy ? "border-core/50 bg-core/10 text-core" : "border-line bg-raised/50 text-soft")}>
+            {busy ? <Loader2 size={22} className="animate-spin" /> : <UploadCloud size={22} />}
+          </span>
+          <span className="min-w-0">
+            <span className="block font-medium">{busy ? "Reading and indexing…" : over ? "Drop to upload" : "Drop a document here, or click to choose"}</span>
+            <span className="block text-xs text-soft">{busy ? "This can take up to a minute." : "PDF, Word, TXT, Markdown or CSV · up to 4 MB"}</span>
+          </span>
           <input
             ref={fileRef}
             type="file"
@@ -77,44 +107,102 @@ function Documents() {
             className="sr-only"
           />
         </label>
-        <ProjectSelect projects={projects.data} value={projectId} onChange={setProjectId} />
-        {busy && <span className="text-sm text-soft">Parsing and embedding… this can take up to a minute.</span>}
+        <label className="flex shrink-0 items-center gap-2 rounded-full border border-line bg-raised/60 pr-1 pl-3 text-xs text-soft">
+          <span className="font-mono text-[10px] tracking-[0.14em] text-faint uppercase">Project</span>
+          <select value={projectId ?? ""} onChange={(e) => setProjectId(e.target.value || null)} aria-label="Project" className="h-8 max-w-[12rem] cursor-pointer truncate bg-transparent pr-1 text-fg focus:outline-none">
+            <option value="" className="bg-panel">
+              Let HIVEMIND decide
+            </option>
+            {projects.data?.map((p) => (
+              <option key={p.id} value={p.id} className="bg-panel">
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <ErrorText error={error ?? docs.error} />
 
-      <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_1fr]">
+      <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {!docs.data?.length ? (
           <Empty>{docs.loading ? "Loading…" : "No documents yet."}</Empty>
         ) : (
-          <ul className="list-in space-y-2">
-            {docs.data.map((d) => (
-              <li key={d.id} className={`rounded-lg border bg-panel p-3 ${openId === d.id ? "border-accent" : "border-line"}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <button onClick={() => router.replace(`/documents?open=${d.id}`)} className="min-w-0 text-left">
-                    <div className="truncate text-sm font-medium hover:text-accent">{d.filename}</div>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      <Badge>{d.file_type}</Badge>
-                      <Badge tone={d.status === "ready" ? "accent" : "neutral"}>{d.status}</Badge>
-                      <Badge>{d.chunk_count} chunks</Badge>
-                      <Badge>{fmtDate(d.created_at)}</Badge>
-                    </div>
+          <ul className="list-in min-w-0 space-y-2">
+            {docs.data.map((d) => {
+              const k = kindOf(d.file_type);
+              return (
+                <li key={d.id} className={cx("group relative rounded-xl border bg-panel transition-colors", openId === d.id ? "border-core/60 bg-raised/40" : "border-line hover:border-line-strong")}>
+                  <button onClick={() => router.replace(`/documents?open=${d.id}`)} className="flex w-full gap-3 p-3.5 pr-12 text-left">
+                    <span className={cx("grid size-10 shrink-0 place-items-center rounded-lg border", k.tone)}>
+                      <k.icon size={18} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium">{d.filename}</span>
+                        {d.status !== "ready" && (
+                          <span className={cx("inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[9.5px] tracking-wider uppercase", d.status === "failed" ? "border-alert/50 text-alert" : "border-core/40 text-core")}>
+                            {d.status === "processing" && <Loader2 size={9} className="animate-spin" />}
+                            {d.status}
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block font-mono text-[10.5px] text-faint">
+                        {k.label} · {d.chunk_count} {d.chunk_count === 1 ? "chunk" : "chunks"} · {fmtDate(d.created_at)}
+                      </span>
+                      {d.summary && <span className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-soft">{d.summary}</span>}
+                      {d.error && <span className="mt-1.5 block text-xs text-alert">{d.error}</span>}
+                    </span>
                   </button>
-                  <Button variant="ghost" onClick={() => remove(d.id)}>Delete</Button>
-                </div>
-                {d.summary && <p className="mt-2 text-xs text-soft">{d.summary}</p>}
-                {d.error && <p className="mt-2 text-xs text-red-500">{d.error}</p>}
-              </li>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() => remove(d.id)}
+                    aria-label={`Delete ${d.filename}`}
+                    title="Delete"
+                    className="absolute top-3 right-3 grid size-8 place-items-center rounded-md text-faint opacity-60 transition hover:bg-alert/10 hover:text-alert group-hover:opacity-100 focus-visible:opacity-100"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
 
+        {!openId && (docs.data?.length ?? 0) > 0 && (
+          // nothing open: the reading pane says what it is for
+          <div className="hidden place-items-center rounded-xl border border-dashed border-line bg-panel/40 p-8 text-center lg:grid">
+            <span>
+              <BookOpen size={26} className="mx-auto mb-3 text-faint" />
+              <span className="block text-sm text-soft">Pick a document to read its text here,</span>
+              <span className="block text-sm text-soft">page by page, as HIVEMIND indexed it.</span>
+            </span>
+          </div>
+        )}
         {openId && (
-          <div className="rounded-xl border border-line bg-panel p-4">
+          <div className="min-w-0 rounded-xl border border-line bg-panel p-4 lg:sticky lg:top-4 lg:self-start">
             {!detail.data ? (
               <p className="text-sm text-soft">Loading…</p>
             ) : (
               <>
-                <h2 className="font-semibold">{detail.data.filename}</h2>
+                <div className="flex items-start gap-3">
+                  {(() => {
+                    const k = kindOf(detail.data.file_type);
+                    return (
+                      <span className={cx("grid size-9 shrink-0 place-items-center rounded-lg border", k.tone)}>
+                        <k.icon size={16} />
+                      </span>
+                    );
+                  })()}
+                  <span className="min-w-0 flex-1">
+                    <h2 className="truncate font-semibold">{detail.data.filename}</h2>
+                    <span className="block font-mono text-[10.5px] text-faint">
+                      {detail.data.chunks.length} chunks · {fmtDate(detail.data.created_at)}
+                    </span>
+                  </span>
+                  <button type="button" onClick={() => router.replace("/documents")} aria-label="Close" className="grid size-8 shrink-0 place-items-center rounded-md text-faint hover:bg-raised hover:text-fg">
+                    <X size={15} />
+                  </button>
+                </div>
                 <div className="mt-3 max-h-[70vh] space-y-3 overflow-y-auto">
                   {detail.data.chunks.map((c) => (
                     <div key={c.chunk_index} className="rounded-lg bg-muted p-3 text-xs">
@@ -122,7 +210,7 @@ function Documents() {
                         Chunk {c.chunk_index + 1}
                         {c.metadata.page ? ` · page ${c.metadata.page}` : ""}
                       </div>
-                      <div className="whitespace-pre-wrap">{c.content}</div>
+                      <div className="whitespace-pre-wrap break-words">{c.content}</div>
                     </div>
                   ))}
                 </div>

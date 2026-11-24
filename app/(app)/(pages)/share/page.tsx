@@ -1,10 +1,10 @@
 "use client";
 
-import { Bell, Check, FileText, Image as ImageIcon, ImagePlus, Link2, Loader2, Paperclip, Share2 } from "lucide-react";
+import { Bell, Check, FileText, Image as ImageIcon, ImagePlus, Link2, Loader2, Paperclip, Share2, Smartphone, UploadCloud, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { Button, ErrorText, PageHeader, Textarea } from "@/components/ui";
+import { Button, cx, ErrorText, PageHeader } from "@/components/ui";
 import { api, BRAIN_CHANGED } from "@/lib/client-api";
 import { uploadPhotos } from "@/lib/photo-prep";
 
@@ -68,6 +68,9 @@ function Share() {
   const [results, setResults] = useState<Result[] | null>(null);
   const [error, setError] = useState<string | null>(params.get("error") ? "That share didn't come through. Share it to HIVEMIND once more." : null);
   const [added, setAdded] = useState<Set<number>>(new Set());
+  // a file being dragged over the box
+  const [over, setOver] = useState(false);
+  const addFiles = (list: FileList | File[]) => setFiles((cur) => [...cur, ...list].slice(0, 5));
   const started = useRef(false);
 
   async function save(item: Inbox) {
@@ -138,7 +141,7 @@ function Share() {
       <PageHeader
         eyebrow="Share"
         title="Share to HIVEMIND"
-        subtitle="From any app on Android, tap Share → HIVEMIND: links are read and summarised, photos are described (bills, tickets, posters, screenshots), PDFs and Word files go to Documents. Or paste here."
+        subtitle="Drop or paste anything here, or send it from any app on your phone. HIVEMIND reads it and files it where it belongs."
       />
 
       {incoming && (
@@ -209,27 +212,92 @@ function Share() {
         </ul>
       )}
 
-      <section className="space-y-3 rounded-xl border border-line bg-panel p-4">
-        <Textarea rows={4} placeholder="Paste a link, a message, or anything to remember…" value={text} onChange={(e) => setText(e.target.value)} />
-        {files.length > 0 && (
-          <ul className="space-y-1 text-xs text-soft">
+      {/* the box: drop files anywhere on it, or paste a link or text */}
+      <section
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+        }}
+        className={cx("rounded-2xl border-2 border-dashed bg-panel p-4 transition-colors", over ? "border-data bg-data/5" : "border-line")}
+      >
+        <textarea
+          rows={4}
+          placeholder="Paste a link, a message, or anything to remember…"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          aria-label="Text or link to save"
+          className="w-full resize-none rounded-lg bg-transparent text-[15px] leading-relaxed placeholder:text-faint focus:outline-none"
+        />
+        {files.length > 0 ? (
+          <ul className="mt-2 flex flex-wrap gap-1.5">
             {files.map((f, i) => (
-              <li key={i} className="flex items-center gap-1.5">
-                {f.type.startsWith("image/") ? <ImageIcon size={12} /> : <FileText size={12} />} {f.name}
+              <li key={i} className="flex max-w-full items-center gap-1.5 rounded-full border border-line bg-raised/60 py-1 pr-1 pl-2.5 text-xs text-soft">
+                {f.type.startsWith("image/") ? <ImageIcon size={12} className="shrink-0 text-data" /> : <FileText size={12} className="shrink-0 text-ok" />}
+                <span className="truncate">{f.name}</span>
+                <button type="button" onClick={() => setFiles((cur) => cur.filter((_, k) => k !== i))} aria-label={`Remove ${f.name}`} className="grid size-5 shrink-0 place-items-center rounded-full text-faint hover:bg-raised hover:text-fg">
+                  <X size={11} />
+                </button>
               </li>
             ))}
           </ul>
+        ) : (
+          <div className={cx("mt-2 flex items-center justify-center gap-2 rounded-xl py-6 text-sm transition-colors", over ? "text-data" : "text-faint")}>
+            <UploadCloud size={20} /> {over ? "Drop to add" : "Drop photos or files here (up to 5)"}
+          </div>
         )}
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-line-strong px-3 text-xs hover:border-data hover:text-data">
-            <Paperclip size={13} /> Photo or file
-            <input type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.docx" className="hidden" onChange={(e) => setFiles([...(e.target.files ?? [])].slice(0, 5))} />
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+          <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-line-strong px-3 text-xs transition hover:border-data hover:text-data">
+            <Paperclip size={13} /> Choose files
+            <input type="file" multiple accept="image/*,.pdf,.txt,.md,.csv,.docx" className="hidden" onChange={(e) => e.target.files && addFiles(e.target.files)} />
           </label>
           <Button className="ml-auto" disabled={busy || (!text.trim() && !files.length)} onClick={() => save({ title: "", text: text.trim(), url: "", files })}>
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />} Save
           </Button>
         </div>
       </section>
+
+      {/* what happens to each kind of thing */}
+      <div className="mt-6 grid gap-2 sm:grid-cols-3">
+        {[
+          { icon: Link2, tone: "text-data border-data/40 bg-data/10", title: "Links", text: "Read and summarised into a memory" },
+          { icon: ImageIcon, tone: "text-core border-core/40 bg-core/10", title: "Photos", text: "Described: bills, tickets, posters, screenshots" },
+          { icon: FileText, tone: "text-ok border-ok/40 bg-ok/10", title: "PDF & Word", text: "Filed in Documents, ready to search" },
+        ].map((x) => (
+          <div key={x.title} className="flex gap-3 rounded-xl border border-line bg-panel/60 p-3">
+            <span className={cx("grid size-8 shrink-0 place-items-center rounded-lg border", x.tone)}>
+              <x.icon size={15} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">{x.title}</span>
+              <span className="block text-xs text-soft">{x.text}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* from the phone, in three steps */}
+      <div className="mt-6 rounded-xl border border-line bg-panel/40 p-4">
+        <p className="mb-3 flex items-center gap-2 font-mono text-[10px] tracking-[0.18em] text-faint uppercase">
+          <Smartphone size={12} /> From your phone (Android)
+        </p>
+        <ol className="flex flex-wrap items-center gap-2 text-sm">
+          {["Tap Share in any app", "Pick HIVEMIND", "Tap Save here"].map((step, i) => (
+            <li key={step} className="flex items-center gap-2">
+              {i > 0 && <span className="text-faint">→</span>}
+              <span className="flex items-center gap-2 rounded-full border border-line bg-raised/50 py-1 pr-3 pl-1">
+                <span className="grid size-5 place-items-center rounded-full bg-core text-[10px] font-semibold text-core-ink">{i + 1}</span>
+                {step}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }
