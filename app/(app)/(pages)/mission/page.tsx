@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Camera, ChevronUp, Clock3, Keyboard, Loader2, Moon, Play, Send, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUpRight, Camera, ChevronLeft, ChevronRight, ChevronUp, Clock3, Keyboard, Loader2, Moon, Pause, Play, Send, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { Ambience } from "@/components/mission/ambience";
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -54,6 +54,10 @@ export default function MissionPage() {
   const [open, setOpen] = useState<CrewId | null>(null);
   const [now, setNow] = useState(0);
   const [touring, setTouring] = useState(false);
+  // the tour's running order (fixed when it starts), where it is, and whether it is held on one agent
+  const [tourOrder, setTourOrder] = useState<CrewId[]>([]);
+  const [tourIdx, setTourIdx] = useState(0);
+  const [tourPaused, setTourPaused] = useState(false);
   const [ready, setReady] = useState(false);
   // the loading curtain never traps the page: it lifts when the crew arrives, on an error, or after 8 s regardless
   const [late, setLate] = useState(false);
@@ -113,6 +117,34 @@ export default function MissionPage() {
     scene.current?.setView(v);
   }, []);
 
+  // The tour: visit each robot in turn, anyone who needs you first. It can be held and stepped (buttons or arrow keys).
+  const showTour = useCallback(
+    (order: CrewId[], i: number) => {
+      setTourIdx(i);
+      if (order.length) pick(order[i]);
+    },
+    [pick],
+  );
+  const startTour = useCallback(() => {
+    const order = [...latest.current].sort((a, b) => Number(b.state === "alert") - Number(a.state === "alert")).map((c) => c.id);
+    setTourOrder(order);
+    setTourPaused(false);
+    setTouring(true);
+    showTour(order, 0);
+  }, [showTour]);
+  const stepTour = useCallback(
+    (d: number) => {
+      const n = Math.max(1, tourOrder.length);
+      showTour(tourOrder, (tourIdx + d + n) % n);
+    },
+    [tourOrder, tourIdx, showTour],
+  );
+  useEffect(() => {
+    if (!touring || tourPaused) return;
+    const t = setTimeout(() => stepTour(1), TOUR_MS);
+    return () => clearTimeout(t);
+  }, [touring, tourPaused, stepTour]);
+
   useEffect(() => {
     scene.current?.setSky(sky);
   }, [sky]);
@@ -171,8 +203,9 @@ export default function MissionPage() {
         if (touring) {
           setTouring(false);
           pick(null);
-        } else setTouring(true);
-      } else if (k === "h") setBare((b) => !b);
+        } else startTour();
+      } else if (touring && (k === "arrowleft" || k === "arrowright")) stepTour(k === "arrowright" ? 1 : -1);
+      else if (k === "h") setBare((b) => !b);
       else if (k === "m") setSound((s) => !s);
       else if (k === "escape") {
         if (open) userPick(null);
@@ -182,7 +215,7 @@ export default function MissionPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, pick, userPick, touring, open, help]);
+  }, [go, pick, userPick, touring, open, help, startTour, stepTour]);
 
   // The lift car: a lit block that slides to the pressed floor button (measured, so it fits both the column and the phone bar).
   useLayoutEffect(() => {
@@ -197,21 +230,6 @@ export default function MissionPage() {
     ro.observe(nav);
     return () => ro.disconnect();
   }, [view]);
-
-  // The tour: visit each robot in turn, anyone who needs you first.
-  useEffect(() => {
-    if (!touring) return;
-    const order = [...latest.current].sort((a, b) => Number(b.state === "alert") - Number(a.state === "alert"));
-    if (!order.length) return;
-    let i = -1;
-    const step = () => {
-      i = (i + 1) % order.length;
-      pick(order[i].id);
-    };
-    step();
-    const t = setInterval(step, 4800);
-    return () => clearInterval(t);
-  }, [touring, pick]);
 
   // A fresh canvas per effect: a canvas whose WebGL context was released can't get a new one (dev strict mode).
   useEffect(() => {
@@ -405,7 +423,7 @@ export default function MissionPage() {
                 if (touring) {
                   setTouring(false);
                   pick(null);
-                } else setTouring(true);
+                } else startTour();
               }}
               aria-pressed={touring}
               className={`${BTN} aria-pressed:border-[#38d6f5]/60 aria-pressed:text-[#38d6f5]`}
@@ -596,6 +614,43 @@ export default function MissionPage() {
           role="dialog"
           aria-label={`${chosen.name} inspector`}
         >
+          {touring && (
+            // the tour strip: where we are, step back / hold / step on / stop, and a bar for this stop's time
+            <div className="-mx-4 -mt-4 mb-3 border-b border-white/10 bg-[#38d6f5]/[0.06]">
+              <div className="flex items-center justify-between gap-2 py-1 pr-2 pl-4">
+                <span className="font-mono text-[9.5px] tracking-[0.2em] text-[#7fe6fa] uppercase">
+                  Tour · <span className="tabular-nums">{(tourIdx % Math.max(1, tourOrder.length)) + 1}/{tourOrder.length}</span>
+                  {tourPaused && <span className="text-white/45"> · held</span>}
+                </span>
+                <span className="flex items-center">
+                  <button type="button" onClick={() => stepTour(-1)} aria-label="Previous agent (←)" title="Previous (←)" className={TOUR_BTN}>
+                    <ChevronLeft size={14} />
+                  </button>
+                  <button type="button" onClick={() => setTourPaused((p) => !p)} aria-label={tourPaused ? "Carry on the tour" : "Hold the tour here"} title={tourPaused ? "Carry on" : "Hold here"} className={TOUR_BTN}>
+                    {tourPaused ? <Play size={12} /> : <Pause size={12} />}
+                  </button>
+                  <button type="button" onClick={() => stepTour(1)} aria-label="Next agent (→)" title="Next (→)" className={TOUR_BTN}>
+                    <ChevronRight size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTouring(false);
+                      pick(null);
+                    }}
+                    aria-label="Stop the tour"
+                    title="Stop the tour (T)"
+                    className={TOUR_BTN}
+                  >
+                    <Square size={11} />
+                  </button>
+                </span>
+              </div>
+              <span aria-hidden className="block h-0.5 bg-white/8">
+                <span key={`${tourIdx}-${tourPaused}`} className={`block h-full origin-left bg-[#38d6f5] ${tourPaused ? "opacity-30" : "mc-tour shadow-[0_0_6px_#38d6f5]"}`} style={{ animationDuration: `${TOUR_MS}ms` }} />
+              </span>
+            </div>
+          )}
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="hud-label">{FLOORS[FLOOR_OF[chosen.id]]} · Office</p>
@@ -649,10 +704,13 @@ const FLOOR_BUTTONS: Array<{ v: MissionView; short: string; label: string; key: 
   { v: "f0", short: "G", label: "Ground floor", key: "G", floor: 0 },
   { v: "lobby", short: "LOBBY", label: "The lobby hall: the K and the coordination desk", key: "L" },
 ];
+/** How long the tour stays on each agent. */
+const TOUR_MS = 4800;
+const TOUR_BTN = "grid size-7 place-items-center text-white/65 transition hover:text-[#38d6f5] active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-[#38d6f5]";
 /** The keyboard sheet, grouped: what each key does on this page. */
 const KEYS: Array<[string, Array<[string[], string]>]> = [
   ["Move", [[["E"], "Outside the tower"], [["2"], "Floor 2"], [["1"], "Floor 1"], [["G"], "Ground floor"], [["L"], "The lobby hall"]]],
-  ["View", [[["T"], "Start or stop the tour"], [["H"], "Photo mode"], [["M"], "Ambient sound"],[["Esc"], "Close / leave photo mode"], [["?"], "This sheet"]]],
+  ["View", [[["T"], "Start or stop the tour"], [["←", "→"], "Tour: back / on"],[["H"], "Photo mode"], [["M"], "Ambient sound"],[["Esc"], "Close / leave photo mode"], [["?"], "This sheet"]]],
 ];
 const SKY_NEXT: Record<SkyMode, SkyMode> = { live: "day", day: "night", night: "live" };
 const SKY_LABEL: Record<SkyMode, string> = { live: "Live sky", day: "Day", night: "Night" };
