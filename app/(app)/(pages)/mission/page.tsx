@@ -421,10 +421,7 @@ export default function MissionPage() {
           )}
         </div>
         <div style={D(640)} className="mc-in pointer-events-auto flex shrink-0 items-center gap-2">
-          <span className="hidden h-9 items-center gap-2 border border-white/10 bg-[#0a0d14]/80 px-3 font-mono sm:flex text-[10.5px] tracking-wider uppercase backdrop-blur-md">
-            <span className={`size-1.5 rounded-full ${error ? "bg-rose-400" : "animate-pulse bg-emerald-400"}`} />
-            {error ? "Offline" : `Live · ${crew.length}`}
-          </span>
+          <LiveChip at={now} count={crew.length} error={error} />
           {chosen && (
             // phones close the panel with its own ×; the header has no room to spare there
             <span className="hidden sm:contents">
@@ -539,12 +536,29 @@ export default function MissionPage() {
       {/* The loading curtain: lifts (a quick fade) the moment the scene is drawn, so the crane shot is the reveal. */}
       {!failed && (
         <div aria-hidden={lifted} className={`pointer-events-none absolute inset-0 z-[5] grid place-items-center bg-[#04060d] transition-opacity duration-700 ease-out ${lifted ? "opacity-0" : "opacity-100"}`}>
-          <div className="flex w-56 flex-col items-center gap-3">
+          <div className="flex w-60 flex-col items-center gap-4">
+            {/* the tower drawing itself, floor by floor */}
+            <svg width="120" height="96" viewBox="0 0 120 96" aria-hidden className="mc-build">
+              <path d="M8 92 H112" className="stroke-white/25" />
+              {[0, 1, 2].map((f) => (
+                <rect key={f} x="22" y={66 - f * 22} width="76" height="22" style={{ animationDelay: `${f * 380}ms` }} className="stroke-[#38d6f5]" />
+              ))}
+              <path d="M30 4 H90 V0" className="stroke-[#38d6f5]/60" style={{ animationDelay: "1140ms" }} />
+              <path d="M60 22 V88" className="stroke-white/20" style={{ animationDelay: "1300ms" }} />
+            </svg>
             <span className="font-mono text-[11px] tracking-[0.5em] text-white/85">HIVEMIND</span>
-            <span className="relative h-px w-full overflow-hidden bg-white/10">
-              <span className="mc-scan absolute inset-y-0 left-0 w-2/5 bg-gradient-to-r from-transparent via-[#38d6f5] to-transparent" />
-            </span>
-            <span role="status" className="font-mono text-[9.5px] tracking-[0.3em] text-white/45">{lifted ? "" : "RAISING THE TOWER"}</span>
+            <ul role="status" className="w-full space-y-1.5 font-mono text-[10px] tracking-[0.2em] uppercase">
+              {[
+                ["The crew", !!mission || error],
+                ["The weather", !!wx],
+                ["The tower", ready],
+              ].map(([label, done]) => (
+                <li key={String(label)} className={`flex items-center justify-between transition-colors ${done ? "text-white/70" : "text-white/35"}`}>
+                  {label}
+                  {done ? <Check size={11} className="text-emerald-300" /> : <Loader2 size={11} className="animate-spin text-[#38d6f5]/70" />}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
@@ -1157,8 +1171,8 @@ function CommandConsole({ crew, scene, api, onDone, onAgents, active }: { crew: 
           {links.length > 0 && (
             <div className="mx-3 -mt-1 mb-3 flex flex-wrap gap-1.5">
               {links.map((l) => (
-                <Link key={l.href + l.label} href={l.href} className="border border-white/15 px-2 py-1 text-[11px] text-[#38d6f5] hover:border-[#38d6f5]/60">
-                  {l.label}
+                <Link key={l.href + l.label} href={l.href} className="inline-flex items-center gap-1.5 border border-[#38d6f5]/35 bg-[#38d6f5]/10 px-2.5 py-1.5 text-xs text-[#7fe6fa] transition hover:border-[#38d6f5]/70 hover:bg-[#38d6f5]/15 active:scale-[0.97]">
+                  {l.label} <ArrowUpRight size={12} />
                 </Link>
               ))}
             </div>
@@ -1220,6 +1234,30 @@ function CommandConsole({ crew, scene, api, onDone, onAgents, active }: { crew: 
         </button>
       </form>
     </div>
+  );
+}
+
+/**
+ * The live chip: how fresh the crew data is (seconds since the last good refresh), amber and "stalled" when refreshing
+ * has stopped for a while, red when it can't be reached.
+ */
+function LiveChip({ at, count, error }: { at: number; count: number; error: boolean }) {
+  const [t, setT] = useState(0);
+  useEffect(() => {
+    const i = setInterval(() => setT(Date.now()), 1000);
+    return () => clearInterval(i);
+  }, []);
+  const age = at > 0 && t > 0 ? Math.max(0, Math.round((t - at) / 1000)) : 0;
+  const stalled = !error && at > 0 && age > 20;
+  return (
+    <span
+      title={at > 0 ? `Crew data refreshed ${age}s ago` : "Waiting for the crew"}
+      className={`hidden h-9 items-center gap-2 border bg-[#0a0d14]/80 px-3 font-mono text-[10.5px] tracking-wider uppercase backdrop-blur-md sm:flex ${error ? "border-rose-400/40 text-rose-200" : stalled ? "border-amber-400/40 text-amber-200" : "border-white/10"}`}
+    >
+      <span className={`size-1.5 rounded-full ${error ? "bg-rose-400" : stalled ? "bg-amber-400" : "animate-pulse bg-emerald-400"}`} />
+      {error ? "Offline" : stalled ? `Stalled · ${age}s` : `Live · ${count}`}
+      {!error && !stalled && at > 0 && <span className="w-6 text-right text-white/40 tabular-nums normal-case">{age}s</span>}
+    </span>
   );
 }
 
