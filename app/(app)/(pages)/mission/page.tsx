@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowUpRight, Camera, ChevronUp, Clock3, Loader2, Moon, Play, Send, Square, Sun, X } from "lucide-react";
+import { ArrowUpRight, Camera, ChevronUp, Clock3, Keyboard, Loader2, Moon, Play, Send, Square, Sun, X } from "lucide-react";
 import Link from "next/link";
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FLOOR_OF, FLOORS, MissionScene, type MissionView, type SiteWeather, type SkyMode } from "@/components/mission/mission-scene";
 import { api, type HiveEvent, streamHivemind } from "@/lib/client-api";
 import { ago, type AgentState, type CrewAgent, type CrewId, type SystemStats } from "@/lib/mission";
@@ -72,6 +72,10 @@ export default function MissionPage() {
   const [wx, setWx] = useState<(SiteWeather & { temp_c: number; condition: string; place: string }) | null>(null);
   // photo mode: the HUD steps aside for a clean view of the building
   const [bare, setBare] = useState(false);
+  // the keyboard sheet (?), and the lift panel's lit car
+  const [help, setHelp] = useState(false);
+  const liftRef = useRef<HTMLElement>(null);
+  const [car, setCar] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   // live notices: an agent changing state, or a new line in the activity feed, slides in at the top right
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
@@ -138,7 +142,9 @@ export default function MissionPage() {
       if (e.metaKey || e.ctrlKey || e.altKey || (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))) return;
       const k = e.key.toLowerCase();
       const to = FLOOR_BUTTONS.find((f) => f.key.toLowerCase() === k);
-      if (to) go(to.v);
+      if (k === "?") setHelp((h) => !h);
+      else if (k === "escape" && help) setHelp(false);
+      else if (to) go(to.v);
       else if (k === "t") {
         if (touring) {
           setTouring(false);
@@ -153,7 +159,21 @@ export default function MissionPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go, pick, userPick, touring, open]);
+  }, [go, pick, userPick, touring, open, help]);
+
+  // The lift car: a lit block that slides to the pressed floor button (measured, so it fits both the column and the phone bar).
+  useLayoutEffect(() => {
+    const nav = liftRef.current;
+    if (!nav) return;
+    const place = () => {
+      const b = nav.querySelector<HTMLElement>(`[data-v="${view}"]`);
+      setCar(b ? { x: b.offsetLeft, y: b.offsetTop, w: b.offsetWidth, h: b.offsetHeight } : null);
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(nav);
+    return () => ro.disconnect();
+  }, [view]);
 
   // The tour: visit each robot in turn, anyone who needs you first.
   useEffect(() => {
@@ -257,7 +277,15 @@ export default function MissionPage() {
       <div ref={host} className="absolute inset-0" />
 
       {/* The lift panel: look at the tower from outside, into one of its floors, or down in the lobby hall. */}
-      <nav aria-label="Floors" style={D(900)} className="mc-hud mc-in-left absolute inset-x-3 bottom-[4.5rem] z-10 flex border border-white/10 bg-[#0a0d14]/85 backdrop-blur-md sm:inset-x-auto sm:top-1/2 sm:bottom-auto sm:left-5 sm:block sm:w-14 sm:-translate-y-1/2">
+      <nav ref={liftRef} aria-label="Floors" style={D(900)} className="mc-hud mc-in-left absolute inset-x-3 bottom-[4.5rem] z-10 flex border border-white/10 bg-[#0a0d14]/85 backdrop-blur-md sm:inset-x-auto sm:top-1/2 sm:bottom-auto sm:left-5 sm:block sm:w-14 sm:-translate-y-1/2">
+        {/* the lift car: glides to the floor you pick, with a lit edge on the shaft side */}
+        <span
+          aria-hidden
+          className="mc-car pointer-events-none absolute top-0 left-0 bg-[#38d6f5]/10 shadow-[inset_0_0_0_1px_rgba(56,214,245,0.3),0_0_18px_rgba(56,214,245,0.15)]"
+          style={car ? { transform: `translate(${car.x}px, ${car.y}px)`, width: car.w, height: car.h } : { opacity: 0 }}
+        >
+          <span className="absolute inset-x-1.5 bottom-0 h-0.5 bg-[#38d6f5] shadow-[0_0_8px_#38d6f5] sm:inset-x-auto sm:inset-y-1.5 sm:left-0 sm:h-auto sm:w-0.5" />
+        </span>
         <p className="hidden border-b border-white/10 py-1 text-center font-mono text-[8.5px] tracking-[0.2em] text-white/40 sm:block">LIFT</p>
         {FLOOR_BUTTONS.map((f) => {
           // who is on this floor right now: one status light per agent, like the lamps on a real lift panel
@@ -272,7 +300,8 @@ export default function MissionPage() {
               aria-label={names ? `${f.label}: ${names}` : f.label}
               aria-keyshortcuts={f.key}
               title={`${names ? `${f.label}: ${names}` : f.label} (${f.key})`}
-              className="group flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-1.5 font-mono text-white/70 transition hover:text-[#38d6f5] focus-visible:outline-2 focus-visible:outline-[#38d6f5] aria-pressed:bg-[#38d6f5]/10 aria-pressed:text-[#38d6f5] sm:w-full sm:py-2 [&+&]:border-l [&+&]:border-white/10 sm:[&+&]:border-t sm:[&+&]:border-l-0"
+              data-v={f.v}
+              className="group relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-1.5 font-mono text-white/70 transition hover:text-[#38d6f5] focus-visible:outline-2 focus-visible:outline-[#38d6f5] aria-pressed:text-[#38d6f5] sm:w-full sm:py-2 [&+&]:border-l [&+&]:border-white/10 sm:[&+&]:border-t sm:[&+&]:border-l-0"
             >
               <span className={`grid h-7 min-w-7 place-items-center rounded-full border text-[10.5px] tracking-wider transition group-aria-pressed:border-[#38d6f5] group-aria-pressed:shadow-[0_0_10px_rgba(56,214,245,0.45)] ${f.floor === undefined ? "border-transparent px-1.5 text-[9px]" : "w-7 border-white/25"}`}>
                 {f.short}
@@ -332,6 +361,11 @@ export default function MissionPage() {
           <button type="button" onClick={() => setBare(true)} aria-label="Photo mode: hide the panels (H)" title="Photo mode (H)" className={BTN}>
             <Camera size={13} />
           </button>
+          <span className="hidden lg:contents">
+            <button type="button" onClick={() => setHelp(true)} aria-label="Keyboard shortcuts (?)" title="Keyboard shortcuts (?)" className={BTN}>
+              <Keyboard size={13} />
+            </button>
+          </span>
           {crew.length > 0 && (
             <button
               onClick={() => {
@@ -447,6 +481,40 @@ export default function MissionPage() {
         </button>
       )}
 
+      {/* The keyboard sheet: every shortcut on one card (? to open, Esc or a click outside to close). */}
+      {help && (
+        <div className="absolute inset-0 z-40 grid place-items-center p-4" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+          <button type="button" aria-label="Close" onClick={() => setHelp(false)} className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" />
+          <div className="mc-panel relative w-full max-w-md border border-white/10 bg-[#0a0d14]/95 shadow-2xl backdrop-blur-xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <span className="hud-label">KEYBOARD</span>
+              <button type="button" onClick={() => setHelp(false)} aria-label="Close" className="-mr-2 grid size-8 place-items-center text-white/70 hover:text-white">
+                <X size={15} />
+              </button>
+            </div>
+            <div className="grid gap-x-6 gap-y-1 p-4 sm:grid-cols-2">
+              {KEYS.map(([group, rows]) => (
+                <div key={group} className="mb-2">
+                  <p className="mb-1.5 font-mono text-[9px] tracking-[0.2em] text-[#7fe6fa]/70 uppercase">{group}</p>
+                  {rows.map(([keys, what]) => (
+                    <p key={what} className="flex items-center justify-between gap-3 py-1 text-[12.5px] text-white/80">
+                      {what}
+                      <span className="flex shrink-0 gap-1">
+                        {keys.map((k) => (
+                          <kbd key={k} className="grid h-6 min-w-6 place-items-center rounded-[3px] border border-white/20 border-b-white/35 bg-white/[0.06] px-1.5 font-mono text-[10.5px] text-white/90 shadow-[0_1px_0_rgba(255,255,255,0.08)]">
+                            {k}
+                          </kbd>
+                        ))}
+                      </span>
+                    </p>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Live notices: newest at the bottom; each drains a thin bar as it times out. */}
       <ol aria-live="polite" className={`mc-hud pointer-events-none absolute inset-x-3 top-[9.5rem] z-20 flex flex-col items-end gap-2 sm:inset-x-auto sm:top-20 sm:right-4 sm:w-72 ${chosen ? "lg:right-[21.5rem]" : ""}`}>
         {toasts.map((t) => {
@@ -547,6 +615,11 @@ const FLOOR_BUTTONS: Array<{ v: MissionView; short: string; label: string; key: 
   { v: "f1", short: "1", label: "Floor 1", key: "1", floor: 1 },
   { v: "f0", short: "G", label: "Ground floor", key: "G", floor: 0 },
   { v: "lobby", short: "LOBBY", label: "The lobby hall: the K and the coordination desk", key: "L" },
+];
+/** The keyboard sheet, grouped: what each key does on this page. */
+const KEYS: Array<[string, Array<[string[], string]>]> = [
+  ["Move", [[["E"], "Outside the tower"], [["2"], "Floor 2"], [["1"], "Floor 1"], [["G"], "Ground floor"], [["L"], "The lobby hall"]]],
+  ["View", [[["T"], "Start or stop the tour"], [["H"], "Photo mode"], [["Esc"], "Close / leave photo mode"], [["?"], "This sheet"]]],
 ];
 const SKY_NEXT: Record<SkyMode, SkyMode> = { live: "day", day: "night", night: "live" };
 const SKY_LABEL: Record<SkyMode, string> = { live: "Live sky", day: "Day", night: "Night" };
