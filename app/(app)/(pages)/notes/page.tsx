@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { FolderOpen, NotebookPen, Plus, Search, X } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Badge, Button, Empty, ErrorText, Input, PageHeader, ProjectSelect, Textarea } from "@/components/ui";
+import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, ProjectSelect, Textarea } from "@/components/ui";
 import { api, fmtDate, type Note, type Project, useFetch } from "@/lib/client-api";
 
 /** A note's preview without Markdown marks (headings, bold, list dashes, link targets). */
@@ -15,6 +16,11 @@ const plain = (t: string) =>
     .replace(/([^.!?:;,\s])\s*\n\s*\n\s*/g, "$1 · ")
     .replace(/\s+/g, " ")
     .trim();
+
+/** One key per category however the AI spelled it ("personal_log", "Personal Log" → "personal log"). */
+const catKey = (c: string) => c.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+/** Its display name: words capitalised ("personal log" → "Personal Log"). */
+const catLabel = (k: string) => k.replace(/\b\w/g, (ch) => ch.toUpperCase());
 
 export default function NotesPage() {
   return (
@@ -33,6 +39,8 @@ function Notes() {
   const notes = useFetch<Note[]>("/api/notes");
   const projects = useFetch<Project[]>("/api/projects");
   const [filter, setFilter] = useState("");
+  // a category picked in the side pane narrows the list (cleared with its ×)
+  const [cat, setCat] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(params.get("new") ? blank : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,9 +55,15 @@ function Notes() {
   const visible = useMemo(() => {
     const q = filter.toLowerCase();
     return (notes.data ?? []).filter(
-      (n) => !q || n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || n.tags.some((t) => t.includes(q)),
+      (n) => (!cat || (n.category && catKey(n.category) === cat)) && (!q || n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q) || n.tags.some((t) => t.includes(q))),
     );
-  }, [notes.data, filter]);
+  }, [notes.data, filter, cat]);
+  // how many notes in each category (real counts, biggest first)
+  const cats = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of notes.data ?? []) if (n.category) m.set(catKey(n.category), (m.get(catKey(n.category)) ?? 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [notes.data]);
 
   const current = draft?.id ? notes.data?.find((n) => n.id === draft.id) : null;
 
@@ -90,12 +104,25 @@ function Notes() {
       />
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <div className="space-y-3">
-          <Input placeholder="Filter notes…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-sunken px-3 transition-colors focus-within:border-data/60">
+            <Search size={14} className="shrink-0 text-faint" />
+            <input placeholder="Filter notes…" aria-label="Filter notes" value={filter} onChange={(e) => setFilter(e.target.value)} className="h-9 min-w-0 flex-1 bg-transparent text-sm placeholder:text-faint focus:outline-none" />
+            {notes.data && (filter || cat) && (
+              <span className="shrink-0 font-mono text-[10px] text-faint tabular-nums">
+                {visible.length} of {notes.data.length}
+              </span>
+            )}
+          </div>
+          {cat && (
+            <button type="button" onClick={() => setCat(null)} className="inline-flex items-center gap-1.5 rounded-full border border-core/50 bg-core/10 py-0.5 pr-1.5 pl-2.5 font-mono text-[10.5px] tracking-wider text-core uppercase">
+              {catLabel(cat)} <X size={11} />
+            </button>
+          )}
           <ErrorText error={notes.error} />
           {notes.loading && !notes.data ? (
             <p className="text-sm text-soft">Loading…</p>
           ) : visible.length === 0 ? (
-            <Empty>No notes yet.</Empty>
+            <Empty>{notes.data?.length ? "No notes match that." : "No notes yet."}</Empty>
           ) : (
             <ul className="list-in space-y-2">
               {visible.map((n) => (
@@ -142,8 +169,40 @@ function Notes() {
           </div>
         ) : (
           // On a phone the list is the page; the empty side pane only makes sense next to it.
-          <div className="hidden md:sticky md:top-6 md:block md:self-start">
-            <Empty>Select a note or create a new one.</Empty>
+          <div className="hidden rounded-xl border border-dashed border-line bg-panel/40 p-6 md:sticky md:top-6 md:block md:self-start">
+            <NotebookPen size={24} className="mb-3 text-faint" />
+            <p className="font-medium">Pick a note to read or edit it</p>
+            <p className="mt-1 text-sm text-soft">Or start a new one; HIVEMIND adds the summary, category and tags when you save.</p>
+            <Button
+              className="mt-4"
+              onClick={() => {
+                setDraft(blank);
+                router.replace("/notes");
+              }}
+            >
+              <Plus size={14} /> New note
+            </Button>
+            {cats.length > 0 && (
+              <div className="mt-6 border-t border-line pt-4">
+                <p className="mb-2 flex items-center gap-1.5 font-mono text-[10px] tracking-[0.18em] text-faint uppercase">
+                  <FolderOpen size={12} /> By category · {notes.data?.length ?? 0} notes
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {cats.map(([c, n]) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCat(cat === c ? null : c)}
+                      aria-pressed={cat === c}
+                      className={cx("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors", cat === c ? "border-core/60 bg-core/10 text-core" : "border-line text-soft hover:border-line-strong hover:text-fg")}
+                    >
+                      {catLabel(c)}
+                      <span className="font-mono text-[10px] text-faint tabular-nums">{n}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
