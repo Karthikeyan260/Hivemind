@@ -493,6 +493,10 @@ export class MissionScene {
   /** Clay lamps (agal vilakku) for Karthigai Deepam and Deepavali: along the entrance steps and the roof's front edge. */
   private diyas: { flames: THREE.InstancedMesh; ground: THREE.Group; roof: THREE.Group; spots: THREE.Vector3[]; mat: THREE.MeshBasicMaterial } | null = null;
   private festival: string | null = null;
+  /** "z z z" drifting up over each sleeping agent (made the first time someone sleeps). */
+  private zz = new Map<CrewId, THREE.Sprite[]>();
+  private zTex: THREE.CanvasTexture | null = null;
+  private zV = new THREE.Vector3();
   private skyCtx!: CanvasRenderingContext2D;
   private skyTex!: THREE.CanvasTexture;
   private skyHour = -1;
@@ -2403,6 +2407,58 @@ export class MissionScene {
     }
   }
 
+  /**
+   * Sleep: three small z's rise from over a sleeping robot's head on a loop, drifting aside and fading as they grow.
+   * Only for agents that really are asleep; hidden with their floor when the cutaway lifts it away.
+   */
+  private updateZzz(t: number) {
+    for (const p of this.pods) {
+      const asleep = p.state === "sleeping" && !p.ride;
+      let zs = this.zz.get(p.id);
+      if (!asleep) {
+        if (zs) for (const z of zs) z.visible = false;
+        continue;
+      }
+      if (!zs) {
+        if (!this.zTex) {
+          const c = document.createElement("canvas");
+          c.width = c.height = 64;
+          const g = c.getContext("2d")!;
+          g.font = "800 50px ui-sans-serif, system-ui, sans-serif";
+          g.textAlign = "center";
+          g.textBaseline = "middle";
+          g.lineWidth = 7;
+          g.strokeStyle = "rgba(8,12,22,0.85)"; // a dark edge so it reads on pale floors too
+          g.strokeText("z", 32, 30);
+          g.fillStyle = "#d8ecff";
+          g.fillText("z", 32, 30);
+          this.zTex = new THREE.CanvasTexture(c);
+          this.zTex.colorSpace = THREE.SRGBColorSpace;
+          this.disposables.push(this.zTex);
+        }
+        zs = [0, 1, 2].map(() => {
+          const m = new THREE.SpriteMaterial({ map: this.zTex, transparent: true, depthWrite: false, opacity: 0, fog: false, toneMapped: false });
+          this.disposables.push(m);
+          const sp = new THREE.Sprite(m);
+          this.scene.add(sp);
+          return sp;
+        });
+        this.zz.set(p.id, zs);
+      }
+      const lvl = this.levels[p.floor];
+      const shown = p.floor === 0 || (lvl.visible && lvl.position.y < 0.5);
+      p.rig.root.getWorldPosition(this.zV); // over the robot's own head, wherever it is resting
+      zs.forEach((sp, i) => {
+        sp.visible = shown;
+        if (!shown) return;
+        const ph = this.reduce ? 0.35 + i * 0.25 : (t / 3 + i / 3 + p.phase) % 1;
+        sp.position.set(this.zV.x + 0.3 + ph * 0.6 + Math.sin(ph * 6 + i) * 0.1, this.zV.y + 1.25 + ph * 1.2, this.zV.z + 0.2);
+        sp.scale.setScalar(0.45 + ph * 0.5);
+        (sp.material as THREE.SpriteMaterial).opacity = Math.sin(Math.PI * ph) * 0.85;
+      });
+    }
+  }
+
   /** Clouds, traffic and birds (rain is built the first time it rains). */
   private buildLife() {
     // clouds: soft billboards in a ring round the site, high up, drifting with the wind
@@ -2574,6 +2630,7 @@ export class MissionScene {
     this.updateMeteor(t);
     this.updateBolt(t);
     this.updateDiyas(t);
+    this.updateZzz(t);
     // birds: out on fair days only
     const fair = this.night < 0.5 && this.rainOn === 0 && this.overcast < 0.85;
     this.birdGroup.visible = fair;
@@ -3052,10 +3109,11 @@ export class MissionScene {
     for (const p of this.pods) {
       const dot = el.querySelector<HTMLElement>(`[data-dot="${p.id}"]`);
       if (!dot) continue;
-      p.group.getWorldPosition(this.mapV);
+      p.rig.root.getWorldPosition(this.mapV); // the robot itself, not its office: the dot follows its walks
       const v = this.mapV;
-      const inHall = v.y < 1 && v.z < TOWER.zb - 1;
-      const level = inHall ? -1 : THREE.MathUtils.clamp(v.y <= 0.38 ? 0 : (v.y - 0.38) / FLOOR_H, 0, 2);
+      const fy = v.y - 0.4; // the robot stands 0.4 above its floor
+      const inHall = fy < 1 && v.z < TOWER.zb - 1;
+      const level = inHall ? -1 : THREE.MathUtils.clamp(fy <= 0.38 ? 0 : (fy - 0.38) / FLOOR_H, 0, 2);
       const row = 2 - level; // 0 at the top (floor 2) .. 3 for the hall
       const span = inHall ? 30 : TOWER.x1 + 1;
       const x = THREE.MathUtils.clamp(50 + (v.x / span) * 46, 4, 96);
