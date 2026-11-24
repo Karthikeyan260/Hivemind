@@ -523,6 +523,9 @@ export class MissionScene {
   private carLights: THREE.MeshBasicMaterial[] = [];
   private birds: Array<{ g: THREE.Group; l: THREE.Mesh; r: THREE.Mesh; ph: number; rad: number; h: number; sp: number }> = [];
   private birdGroup = new THREE.Group();
+  /** A shooting star now and then on a clear night: one bright streak, reused. */
+  private meteor: { line: THREE.Line; pos: THREE.BufferAttribute; mat: THREE.LineBasicMaterial; at: number; len: number; from: THREE.Vector3; dir: THREE.Vector3 } | null = null;
+  private nextMeteor = 12;
   private night = 0;
   private selLight: THREE.PointLight | null = null;
   /** Warm light pools under the street lamps; they fade in at dusk. */
@@ -2462,6 +2465,7 @@ export class MissionScene {
     const lit = 0.25 + 0.75 * Math.max(this.night, this.overcast * 0.6);
     this.carLights[0]?.color.set("#fff4dc").multiplyScalar(lit * 1.4);
     this.carLights[1]?.color.set("#ff3b30").multiplyScalar(lit * 1.2);
+    this.updateMeteor(t);
     // birds: out on fair days only
     const fair = this.night < 0.5 && this.rainOn === 0 && this.overcast < 0.85;
     this.birdGroup.visible = fair;
@@ -2474,6 +2478,79 @@ export class MissionScene {
         b.l.rotation.z = flap;
         b.r.rotation.z = -flap;
       }
+    }
+  }
+
+  /**
+   * Shooting stars: on a clear night, every half-minute or so, a streak crosses the sky in front of the camera (inside the
+   * sky dome, slanting down), bright at the head and fading along its tail, then gone in under a second.
+   */
+  private updateMeteor(t: number) {
+    const clear = this.night > 0.6 && this.overcast < 0.5 && this.rainOn === 0 && this.fogOn < 0.3 && !this.reduce;
+    const m = this.meteor;
+    if (m && m.line.visible) {
+      const p = (t - m.at) / 0.9;
+      if (p >= 1 || !clear) {
+        m.line.visible = false;
+        return;
+      }
+      const ease = 1 - Math.pow(1 - p, 2);
+      const head = m.from.clone().addScaledVector(m.dir, m.len * ease);
+      const tail = head.clone().addScaledVector(m.dir, -(6 + 12 * Math.sin(Math.PI * Math.min(1, p * 1.4))));
+      m.pos.setXYZ(0, head.x, head.y, head.z);
+      m.pos.setXYZ(1, tail.x, tail.y, tail.z);
+      m.pos.needsUpdate = true;
+      m.mat.opacity = Math.sin(Math.PI * p);
+      return;
+    }
+    if (!clear || t < this.nextMeteor) return;
+    this.nextMeteor = t + 20 + Math.random() * 30;
+    if (!this.meteor) {
+      const geo = new THREE.BufferGeometry();
+      const pos = new THREE.BufferAttribute(new Float32Array(6), 3);
+      geo.setAttribute("position", pos);
+      // head white, tail fading to nothing (vertex alpha)
+      geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array([3, 3, 3.2, 1, 0.6, 0.85, 1.4, 0]), 4));
+      const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false, fog: false, toneMapped: false, blending: THREE.AdditiveBlending });
+      const line = new THREE.Line(geo, mat);
+      line.frustumCulled = false;
+      line.renderOrder = 2;
+      this.scene.add(line);
+      this.disposables.push(geo, mat);
+      this.meteor = { line, pos, mat, at: 0, len: 40, from: new THREE.Vector3(), dir: new THREE.Vector3() };
+    }
+    const mm = this.meteor;
+    // a point on screen, carried out along its ray to just inside the sky dome (radius 125, centred on the site)
+    const cam = this.camera.position;
+    const onSky = (x: number, y: number) => {
+      const v = new THREE.Vector3(x, y, 0.5).unproject(this.camera).sub(cam).normalize();
+      const b = cam.dot(v);
+      const d = b * b - (cam.lengthSq() - 116 * 116);
+      return d < 0 ? null : cam.clone().addScaledVector(v, -b + Math.sqrt(d));
+    };
+    // only where the camera sees the sky backdrop itself (not a building, the ground or the tower in the way)
+    const ray = new THREE.Raycaster();
+    ray.camera = this.camera;
+    const open = (p: THREE.Vector3) => {
+      const far = p.distanceTo(cam);
+      ray.set(cam, p.clone().sub(cam).normalize());
+      ray.far = far - 6;
+      const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent));
+      return !ray.intersectObjects(this.scene.children, true).some((h) => h.object !== this.meteor?.line && !(h.object as THREE.Sprite).isSprite && shown(h.object)); // clouds are sky
+    };
+    for (let k = 0; k < 8; k++) {
+      const sx = (Math.random() - 0.5) * 1.4;
+      const sy = 0.45 + Math.random() * 0.5;
+      const out = sx > 0 ? 1 : -1;
+      const from = onSky(sx, sy);
+      const to = onSky(sx + out * (0.3 + Math.random() * 0.25), sy - 0.2 - Math.random() * 0.12);
+      if (!from || !to || from.y < 24 || to.y < 14 || !open(from) || !open(to)) continue;
+      mm.from.copy(from);
+      mm.dir.copy(to).sub(from).normalize();
+      mm.len = Math.min(48, from.distanceTo(to) * 1.3);
+      mm.at = t;
+      mm.line.visible = true;
+      return;
     }
   }
 
