@@ -799,6 +799,21 @@ body {
     animation: fade-only 150ms ease both;
   }
 }
+/* the floor map's dots: glide between positions (the scene moves them), and a walking robot's dot pings */
+.mc-dot {
+  transition:
+    left 300ms linear,
+    top 300ms linear,
+    scale 150ms ease;
+}
+.mc-dot[data-walk="1"] {
+  box-shadow: 0 0 0 3px oklch(0.8 0.13 210 / 0.35);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-dot {
+    transition: none;
+  }
+}
 /* the tour strip's bar: fills over one stop */
 @keyframes mc-tour {
   from {

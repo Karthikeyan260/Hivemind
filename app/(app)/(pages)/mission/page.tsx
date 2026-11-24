@@ -79,6 +79,8 @@ export default function MissionPage() {
   const [bare, setBare] = useState(false);
   // the keyboard sheet (?), and the lift panel's lit car
   const [help, setHelp] = useState(false);
+  // the floor map: the scene moves its dots each frame
+  const mapRef = useRef<HTMLDivElement>(null);
   // lets the agent panel hand a job to the console ("Give a job": that agent picked, cursor in the box)
   const consoleApi = useRef<ConsoleApi | null>(null);
   // ambient sound: off until you turn it on (hum always; rain and wind from the real weather)
@@ -172,6 +174,12 @@ export default function MissionPage() {
   useEffect(() => {
     if (wx) scene.current?.setWeather(wx);
   }, [wx, ready]);
+
+  useEffect(() => {
+    const s = scene.current;
+    s?.attachMap(mapRef.current);
+    return () => s?.attachMap(null);
+  }, [ready, mission?.crew.length, open]);
 
   useEffect(() => {
     if (!sound) return;
@@ -573,6 +581,45 @@ export default function MissionPage() {
         </div>
       )}
 
+      {/* The floor map (wide screens): the tower in section, a dot per robot that moves as it walks or rides the lift. */}
+      {!chosen && !failed && crew.length > 0 && (
+        <div style={D(1000)} className="mc-hud mc-in absolute bottom-6 left-5 z-10 hidden w-56 border border-white/10 bg-[#0a0d14]/85 p-2.5 backdrop-blur-md lg:[@media(min-height:760px)]:block">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="font-mono text-[9px] tracking-[0.22em] text-white/45 uppercase">Floor map</span>
+            <span className="flex items-center gap-1 font-mono text-[8.5px] tracking-[0.16em] text-emerald-300/80 uppercase">
+              <span className="size-1 animate-pulse rounded-full bg-emerald-300" /> Live
+            </span>
+          </div>
+          <div ref={mapRef} className="relative h-32">
+            {MAP_ROWS.map((row, i) => (
+              <button
+                key={row.v}
+                type="button"
+                onClick={() => go(row.v)}
+                aria-label={`Go to ${row.label}`}
+                style={{ top: `${i * 25}%` }}
+                className={`absolute inset-x-0 h-1/4 border-b text-left transition-colors ${i === 3 ? "border-transparent" : "border-white/10"} ${view === row.v ? "bg-[#38d6f5]/10" : "hover:bg-white/[0.04]"}`}
+              >
+                <span className={`absolute top-1/2 left-1 -translate-y-1/2 font-mono text-[8.5px] tracking-wider ${view === row.v ? "text-[#7fe6fa]" : "text-white/35"}`}>{row.short}</span>
+              </button>
+            ))}
+            {/* the lift shaft, through the three floors */}
+            <span aria-hidden className="pointer-events-none absolute top-0 left-1/2 h-3/4 w-[7%] -translate-x-1/2 border-x border-dashed border-white/15" />
+            {crew.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                data-dot={c.id}
+                onClick={() => userPick(c.id)}
+                aria-label={`${c.name}, ${WORD[c.state].toLowerCase()}`}
+                title={`${c.name} · ${WORD[c.state]}`}
+                className={`mc-dot absolute top-1/2 left-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-[#0a0d14] transition-transform hover:scale-150 ${DOT[c.state]}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Live notices: newest at the bottom; each drains a thin bar as it times out. */}
       <ol aria-live="polite" className={`mc-hud pointer-events-none absolute inset-x-3 top-[9.5rem] z-20 flex flex-col items-end gap-2 sm:inset-x-auto sm:top-20 sm:right-4 sm:w-72 ${chosen ? "lg:right-[21.5rem]" : ""}`}>
         {toasts.map((t) => {
@@ -606,7 +653,7 @@ export default function MissionPage() {
       </ol>
 
       {caption && (
-        <div key={caption.key} aria-live="polite" className="mc-hud mc-caption pointer-events-none absolute bottom-[9rem] left-4 z-[6] sm:bottom-[5.75rem] sm:left-24">
+        <div key={caption.key} aria-live="polite" className="mc-hud mc-caption pointer-events-none absolute bottom-[9rem] left-4 z-[6] sm:bottom-[5.75rem] sm:left-24 lg:[@media(min-height:760px)]:left-[17rem]">
           <p className="font-mono text-[9.5px] tracking-[0.3em] text-[#38d6f5] uppercase">Now viewing</p>
           <p className="mt-0.5 text-2xl font-semibold tracking-tight sm:text-3xl">{caption.title}</p>
           <p className="mt-0.5 text-xs text-white/65">{caption.sub}</p>
@@ -719,6 +766,13 @@ const FLOOR_BUTTONS: Array<{ v: MissionView; short: string; label: string; key: 
   { v: "f1", short: "1", label: "Floor 1", key: "1", floor: 1 },
   { v: "f0", short: "G", label: "Ground floor", key: "G", floor: 0 },
   { v: "lobby", short: "LOBBY", label: "The lobby hall: the K and the coordination desk", key: "L" },
+];
+/** The floor map's rows, top to bottom, and where each takes the camera. */
+const MAP_ROWS: Array<{ v: MissionView; short: string; label: string }> = [
+  { v: "f2", short: "2", label: "Floor 2" },
+  { v: "f1", short: "1", label: "Floor 1" },
+  { v: "f0", short: "G", label: "the ground floor" },
+  { v: "lobby", short: "L", label: "the lobby hall" },
 ];
 /** How long the tour stays on each agent. */
 const TOUR_MS = 4800;

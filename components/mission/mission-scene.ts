@@ -544,6 +544,9 @@ export class MissionScene {
   private par = new THREE.Vector2();
   /** Name tags floating over each office (HTML, positioned from the 3D scene every frame). */
   private tagLayer: HTMLDivElement | null = null;
+  /** The page's floor map: each robot's dot follows it (x along the building, its floor, or the lobby hall). */
+  private mapEl: HTMLElement | null = null;
+  private mapV = new THREE.Vector3();
   private tags = new Map<CrewId, { el: HTMLDivElement; x: number; y: number; on: boolean; wide: boolean; key: string }>();
   private tagV = new THREE.Vector3();
   /** The tower's solid parts (slabs, walls, roof) that can hide an office's tag from the camera. */
@@ -2910,6 +2913,34 @@ export class MissionScene {
   }
 
   /** Projects each tag's anchor (inside its office, above the robot) to the screen; shown outside (names) and on the floor in view (names and the current task). */
+  /** Hand the scene the floor map (its dots carry data-dot="<agent id>"); null to let go of it. */
+  attachMap(el: HTMLElement | null) {
+    this.mapEl = el;
+  }
+
+  /**
+   * Moves the floor map's dots: across, where the robot is along the building; down, its floor (in between while it
+   * rides the lift), or the bottom row when it is out in the lobby hall. Rows are a quarter of the map each: 2, 1, G, hall.
+   */
+  private placeMap() {
+    const el = this.mapEl;
+    if (!el) return;
+    for (const p of this.pods) {
+      const dot = el.querySelector<HTMLElement>(`[data-dot="${p.id}"]`);
+      if (!dot) continue;
+      p.group.getWorldPosition(this.mapV);
+      const v = this.mapV;
+      const inHall = v.y < 1 && v.z < TOWER.zb - 1;
+      const level = inHall ? -1 : THREE.MathUtils.clamp(v.y <= 0.38 ? 0 : (v.y - 0.38) / FLOOR_H, 0, 2);
+      const row = 2 - level; // 0 at the top (floor 2) .. 3 for the hall
+      const span = inHall ? 30 : TOWER.x1 + 1;
+      const x = THREE.MathUtils.clamp(50 + (v.x / span) * 46, 4, 96);
+      dot.style.left = `${x.toFixed(2)}%`;
+      dot.style.top = `${((row + 0.5) * 25).toFixed(2)}%`;
+      dot.dataset.walk = p.walk > 0.05 ? "1" : "0";
+    }
+  }
+
   private placeTags() {
     if (!this.tagLayer || !this.tags.size) return;
     const focus = this.view[0] === "f" ? Number(this.view[1]) : -1;
@@ -3028,6 +3059,7 @@ export class MissionScene {
     this.camera.position.set(look.x + this.dist * sp * Math.sin(th), look.y + this.dist * Math.cos(ph), look.z + this.dist * sp * Math.cos(th));
     this.camera.lookAt(look);
     this.placeTags();
+    this.placeMap();
     // the cutaway: levels above the floor in view rise up and away (and settle back), a quick ease-out
     const lk = this.reduce ? 1 : 1 - Math.pow(0.004, dt);
     this.levels.forEach((g, k) => {
