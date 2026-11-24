@@ -503,7 +503,14 @@ export class MissionScene {
   private cutF = 3;
   private levelLift = [0, 0, 0, 0];
   /** Ceiling-light materials, one per floor (ground, 1, 2). */
-  private floorLights: THREE.MeshBasicMaterial[] = [];
+  /**
+   * The ceiling lights, one switch per column of panels on each floor. Each column has its own darkness at which it comes
+   * on, so at dusk (or when you switch to night) the offices light up one by one, each with a quick tube-light flicker.
+   */
+  private bays: Array<{ mat: THREE.MeshBasicMaterial; f: number; th: number; on: number; seed: number }> = [];
+  /** How dark it is, eased slowly, so the switch-on ripples across the building rather than happening at once. */
+  private nightS = 0;
+  private floorK = [1, 1, 1];
   private floorGlow = [1, 1, 1];
   /** The warm linear LED under each slab edge on the front, one per floor; they follow that floor's lights. */
   private stripMats: THREE.MeshBasicMaterial[] = [];
@@ -1008,11 +1015,14 @@ export class MissionScene {
     this.disposables.push(panelMat);
     // each floor has its own lights, which follow its agents: on while they work, off when they are all asleep
     for (let fl = 1; fl <= 3; fl++) {
-      const lm = new THREE.MeshBasicMaterial({ color: "#fff3df", toneMapped: false, side: THREE.DoubleSide });
-      this.floorLights.push(lm);
-      this.disposables.push(lm);
       into = lv(fl);
-      for (let x = X0 + 2; x < X1 - 1; x += 3.2) {
+      let col = 0;
+      for (let x = X0 + 2; x < X1 - 1; x += 3.2, col++) {
+        const lm = new THREE.MeshBasicMaterial({ color: "#fff3df", toneMapped: false, side: THREE.DoubleSide });
+        this.disposables.push(lm);
+        // a fixed, scattered order: each column's switch-on point between early and late dusk
+        const th = 0.1 + (((col * 37 + fl * 53) % 71) / 71) * 0.72;
+        this.bays.push({ mat: lm, f: fl - 1, th, on: 0, seed: col * 1.7 + fl * 3.1 });
         for (const z of [29, 34.5, 37.8]) {
           const lp = add(new THREE.PlaneGeometry(1.2, 0.3), lm, x, fl * FL - 0.01, z);
           lp.rotation.x = Math.PI / 2;
@@ -3040,14 +3050,21 @@ export class MissionScene {
     this.updateLife(t, dt);
     // floor lights ease toward their level; the LED band scrolls; the veils fade over the floors you aren't looking at
     const fk = 1 - Math.pow(0.3, dt);
-    this.floorLights.forEach((m, f) => {
-      const cur = m.userData.k ?? 1;
-      const k = cur + (this.floorGlow[f] - cur) * fk;
-      m.userData.k = k;
-      m.color.set("#fff3df").multiplyScalar(k);
+    for (let f = 0; f < 3; f++) {
+      const k = this.floorK[f] + (this.floorGlow[f] - this.floorK[f]) * fk;
+      this.floorK[f] = k;
       this.stripFlash[f] = Math.max(0, this.stripFlash[f] - dt * 0.7);
       this.stripMats[f]?.color.set("#ffcf96").multiplyScalar(0.25 + 0.85 * k + 1.6 * this.stripFlash[f]);
-    });
+    }
+    // the ceiling lights: by day they sit at a soft working level; as it darkens each column switches fully on in turn
+    this.nightS += (this.night - this.nightS) * (1 - Math.pow(0.75, dt));
+    for (const b of this.bays) {
+      const want = this.nightS >= b.th ? 1 : 0;
+      b.on = this.reduce ? want : THREE.MathUtils.clamp(b.on + (want ? dt * 2.2 : -dt * 1.5), 0, 1);
+      // a tube catching: a few quick flickers on the way up
+      const flick = !this.reduce && want && b.on < 1 && Math.sin(t * 47 + b.seed * 13) > 0.2 ? 0.25 : 1;
+      b.mat.color.set("#fff3df").multiplyScalar(this.floorK[b.f] * (0.45 + 0.55 * b.on) * flick);
+    }
     if (this.grade && !this.reduce) this.grade.uniforms.uTime.value = t;
     if (this.ticker) this.ticker.tex.offset.x = (this.ticker.tex.offset.x + dt * 0.035) % 1;
     const focus = this.view[0] === "f" ? Number(this.view[1]) : -1;
