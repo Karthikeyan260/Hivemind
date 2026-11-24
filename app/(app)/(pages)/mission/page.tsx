@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Camera, ChevronLeft, Download, ChevronRight, ChevronUp, Clock3, Keyboard, Loader2, Moon, Pause, Play, Send, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUpRight, Bell, Camera, ChevronLeft, Download, Globe, Hammer, Newspaper, Radar, ChevronRight, ChevronUp, Clock3, Keyboard, Loader2, Moon, Pause, Play, Send, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { Ambience } from "@/components/mission/ambience";
 import { festivalOn } from "@/lib/pet-looks";
 import Link from "next/link";
@@ -731,6 +731,7 @@ export default function MissionPage() {
           className="mc-hud mc-panel absolute inset-x-3 bottom-[8.5rem] z-20 sm:bottom-[5.25rem] mx-auto max-h-[55%] max-w-sm overflow-y-auto border border-white/10 bg-[#0a0d14]/92 p-4 shadow-2xl backdrop-blur-xl lg:inset-x-auto lg:top-20 lg:right-4 lg:bottom-auto lg:mx-0 lg:max-h-[calc(100%-12rem)] lg:w-80"
           role="dialog"
           aria-label={`${chosen.name} inspector`}
+          style={{ boxShadow: `inset 0 2px 0 ${RING[chosen.state]}, 0 25px 50px -12px rgba(0,0,0,0.6)` }}
         >
           {touring && (
             // the tour strip: where we are, step back / hold / step on / stop, and a bar for this stop's time
@@ -770,10 +771,13 @@ export default function MissionPage() {
             </div>
           )}
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="hud-label">{FLOORS[FLOOR_OF[chosen.id]]} · Office</p>
-              <p className="mt-1 text-xl font-semibold leading-tight">{chosen.name}</p>
-              <p className="text-xs text-white/60">{chosen.role}</p>
+            <div className="flex min-w-0 items-center gap-3">
+              <Avatar id={chosen.id} state={chosen.state} />
+              <div className="min-w-0">
+                <p className="hud-label">{FLOORS[FLOOR_OF[chosen.id]]} · Office</p>
+                <p className="mt-0.5 text-xl font-semibold leading-tight">{chosen.name}</p>
+                <p className="text-xs text-white/60">{chosen.role}</p>
+              </div>
             </div>
             <button onClick={() => userPick(null)} aria-label="Close" className="-m-1.5 grid size-9 shrink-0 place-items-center text-white/75 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#38d6f5]">
               <X size={16} />
@@ -1212,6 +1216,27 @@ function CommandConsole({ crew, scene, api, onDone, onAgents, active }: { crew: 
         </button>
       </form>
     </div>
+  );
+}
+
+/** The tool each robot keeps floating in its office (the same ones as in the 3D scene). */
+const TOOL_ICON: Record<CrewId, typeof Clock3> = { scheduler: Clock3, autopilot: Radar, web: Globe, dream: Moon, brief: Newspaper, reminders: Bell, apps: Hammer };
+const RING: Record<AgentState, string> = { working: "#6ee7b7", idle: "#7dd3fc", sleeping: "#94a3b8", alert: "#fb7185" };
+
+/** An agent's badge: its tool in a ring of its state colour (the ring turns while it works, blinks when it needs you). */
+function Avatar({ id, state }: { id: CrewId; state: AgentState }) {
+  const Icon = TOOL_ICON[id];
+  const c = RING[state];
+  return (
+    <span className="relative grid size-12 shrink-0 place-items-center" aria-hidden>
+      <span
+        className={`absolute inset-0 rounded-full ${state === "working" ? "animate-spin motion-reduce:animate-none [animation-duration:3.5s]" : state === "alert" ? "animate-pulse" : ""}`}
+        style={{ background: `conic-gradient(from 0deg, ${c}, ${c}22 55%, ${c})`, opacity: state === "sleeping" ? 0.45 : 1 }}
+      />
+      <span className="absolute inset-[2px] rounded-full bg-[#0a0d14]" />
+      <span className="absolute inset-[2px] rounded-full" style={{ background: `radial-gradient(circle at 50% 35%, ${c}33, transparent 70%)` }} />
+      <Icon size={20} className="relative" style={{ color: c, opacity: state === "sleeping" ? 0.6 : 1 }} />
+    </span>
   );
 }
 
