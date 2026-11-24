@@ -497,6 +497,8 @@ export class MissionScene {
   private zz = new Map<CrewId, THREE.Sprite[]>();
   private zTex: THREE.CanvasTexture | null = null;
   private zV = new THREE.Vector3();
+  /** A red beacon on the roof that turns and sweeps a beam while any agent needs you (built the first time). */
+  private beacon: { g: THREE.Group; head: THREE.Group; lamp: THREE.MeshBasicMaterial; beam: THREE.MeshBasicMaterial; k: number } | null = null;
   private skyCtx!: CanvasRenderingContext2D;
   private skyTex!: THREE.CanvasTexture;
   private skyHour = -1;
@@ -2408,6 +2410,49 @@ export class MissionScene {
   }
 
   /**
+   * The roof beacon: while any agent needs you (its real state is "alert"), a red lamp on the roof lights and turns,
+   * sweeping a soft beam over the site. It fades out when nothing does. With reduced motion it glows without turning.
+   */
+  private updateBeacon(t: number, dt: number) {
+    const want = this.crew.some((c) => c.state === "alert") ? 1 : 0;
+    if (!this.beacon) {
+      if (!want) return;
+      const g = new THREE.Group();
+      g.position.set(TOWER.x1 - 3, FLOOR_H * 3 + 0.25, TOWER.zb + 3);
+      const steel = new THREE.MeshStandardMaterial({ color: "#2a2f36", metalness: 0.8, roughness: 0.4 });
+      const lamp = new THREE.MeshBasicMaterial({ color: "#ff3b30", toneMapped: false, transparent: true });
+      const beam = new THREE.MeshBasicMaterial({ color: "#ff4d3d", transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false });
+      const postGeo = new THREE.CylinderGeometry(0.12, 0.16, 1.2, 10);
+      const domeGeo = new THREE.SphereGeometry(0.32, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+      // the beam: a long open cone lying on its side, pointing out from the lamp
+      const beamGeo = new THREE.ConeGeometry(2.2, 16, 18, 1, true);
+      beamGeo.translate(0, -8, 0);
+      beamGeo.rotateZ(Math.PI / 2);
+      this.disposables.push(steel, lamp, beam, postGeo, domeGeo, beamGeo);
+      const post = new THREE.Mesh(postGeo, steel);
+      post.position.y = 0.6;
+      const head = new THREE.Group();
+      head.position.y = 1.25;
+      const dome = new THREE.Mesh(domeGeo, lamp);
+      const ray = new THREE.Mesh(beamGeo, beam);
+      ray.rotation.z = -0.12; // tipped slightly down, over the site
+      head.add(dome, ray);
+      g.add(post, head);
+      this.levels[3].add(g); // it rides the roof when the cutaway lifts it
+      this.beacon = { g, head, lamp, beam, k: 0 };
+    }
+    const b = this.beacon;
+    b.k += (want - b.k) * (1 - Math.pow(0.08, dt));
+    b.g.visible = b.k > 0.01;
+    if (!b.g.visible) return;
+    if (!this.reduce) b.head.rotation.y = t * 2.4;
+    const pulse = this.reduce ? 1 : 0.75 + 0.25 * Math.sin(t * 6);
+    b.lamp.color.set("#ff3b30").multiplyScalar(0.6 + 2.2 * b.k * pulse);
+    b.lamp.opacity = b.k;
+    b.beam.opacity = b.k * (0.1 + 0.16 * this.night);
+  }
+
+  /**
    * Sleep: three small z's rise from over a sleeping robot's head on a loop, drifting aside and fading as they grow.
    * Only for agents that really are asleep; hidden with their floor when the cutaway lifts it away.
    */
@@ -2631,6 +2676,7 @@ export class MissionScene {
     this.updateBolt(t);
     this.updateDiyas(t);
     this.updateZzz(t);
+    this.updateBeacon(t, dt);
     // birds: out on fair days only
     const fair = this.night < 0.5 && this.rainOn === 0 && this.overcast < 0.85;
     this.birdGroup.visible = fair;
