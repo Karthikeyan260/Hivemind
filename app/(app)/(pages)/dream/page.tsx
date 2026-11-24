@@ -150,12 +150,25 @@ export default function DreamPage() {
       )}
 
       {!!d?.dates.length && (
-        <div className="mt-6 flex flex-wrap gap-1.5">
-          {d.dates.slice(0, 20).map((x) => (
-            <button key={x} type="button" onClick={() => setDate(x)} className={cx("border px-2 py-1 font-mono text-[11px]", x === d.date ? "border-core text-core" : "border-line text-soft hover:border-data hover:text-data")}>
-              {pretty(x)}
-            </button>
-          ))}
+        <div className="mt-8">
+          <p className="mb-2 font-mono text-[10px] tracking-[0.18em] text-faint uppercase">Earlier nights</p>
+          <div className="flex flex-wrap gap-1.5">
+            {d.dates.slice(0, 20).map((x) => (
+              <button
+                key={x}
+                type="button"
+                onClick={() => setDate(x)}
+                aria-pressed={x === d.date}
+                className={cx(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[11px] transition-colors",
+                  x === d.date ? "border-core/70 bg-core/10 text-core" : "border-line text-soft hover:border-data/60 hover:text-data",
+                )}
+              >
+                {x === d.date && <Moon size={11} />}
+                {pretty(x)}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

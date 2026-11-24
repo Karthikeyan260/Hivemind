@@ -204,6 +204,30 @@ body {
 }
 
 /* ───── Bridge (galaxy + HUD) ───── */
+/* app-wide form controls: a slim chevron on dropdowns (instead of the browser's arrow), and checkboxes and
+   radios in the app's own colour on a dark box */
+.hm-select {
+  appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239aa3b2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 14px;
+}
+.hm-select:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+.hm-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--core);
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
 /* the Map page: OpenStreetMap's tiles turned to a dark map (same tiles, inverted), and dark controls */
 .hm-map .leaflet-tile-pane {
   filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.7);
