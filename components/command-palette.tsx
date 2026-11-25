@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CalendarHeart, CornerDownLeft, FolderKanban, Search, Sparkles, StickyNote } from "lucide-react";
+import { CalendarHeart, CornerDownLeft, FolderKanban, Loader2, Search, Sparkles, StickyNote } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { NAV } from "@/components/sidebar";
@@ -128,10 +128,13 @@ export function CommandPalette() {
 
   if (!open) return null;
   let lastGroup = "";
+  // still looking through notes and memories for what was typed
+  const term = q.trim();
+  const searching = term.length >= 3 && (!hits || hits.q !== term);
   return (
     <div className="fixed inset-0 z-[400] flex items-start justify-center px-3 pt-[12vh]" role="dialog" aria-modal="true" aria-label="Search and jump">
       <button aria-label="Close" onClick={close} className="absolute inset-0 cursor-default bg-black/55 backdrop-blur-sm" tabIndex={-1} />
-      <div className="relative w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
+      <div className="pal-in relative w-full max-w-xl overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
         <div className="flex items-center gap-3 border-b border-line px-4">
           <Search size={16} className="shrink-0 text-faint" />
           <input
@@ -166,6 +169,7 @@ export function CommandPalette() {
             autoComplete="off"
             spellCheck={false}
           />
+          {searching && <Loader2 size={15} className="shrink-0 animate-spin text-data" aria-label="Searching" />}
           <kbd className="hidden rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint sm:block">esc</kbd>
         </div>
         <ul ref={listRef} id="palette-list" role="listbox" className="max-h-[min(24rem,60vh)] overflow-y-auto p-2">
@@ -184,10 +188,13 @@ export function CommandPalette() {
                   aria-selected={i === at}
                   onMouseMove={() => i !== at && setCursor(i)}
                   onClick={() => go(it)}
-                  className={cx("flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm", i === at ? "bg-raised text-fg" : "text-soft")}
+                  className={cx("relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors", i === at ? "bg-raised text-fg" : "text-soft")}
                 >
                   {it.emoji ? <span className="w-4 text-center leading-none">{it.emoji}</span> : <Icon size={16} strokeWidth={1.75} className={i === at ? "text-core" : "text-faint"} />}
-                  <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                  {i === at && <span aria-hidden className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-core" />}
+                  <span className="min-w-0 flex-1 truncate">
+                    <Marked text={it.label} q={term} />
+                  </span>
                   {it.hint && <span className="shrink-0 text-xs text-faint">{it.hint}</span>}
                   {i === at && <CornerDownLeft size={13} className="shrink-0 text-faint" />}
                 </button>
@@ -196,12 +203,34 @@ export function CommandPalette() {
           })}
         </ul>
         <div className="flex items-center justify-between border-t border-line px-4 py-2 text-[11px] text-faint">
-          <span className="flex items-center gap-1">
-            <ArrowRight size={11} /> Enter to open
+          <span className="flex items-center gap-1.5">
+            <Key>↵</Key> open
           </span>
-          <span className="hidden sm:inline">↑ ↓ to move · Ctrl K any time</span>
+          <span className="hidden items-center gap-1.5 sm:flex">
+            <Key>↑</Key>
+            <Key>↓</Key> move · <Key>Ctrl</Key>
+            <Key>K</Key> any time · <Key>Esc</Key> close
+          </span>
         </div>
       </div>
     </div>
+  );
+}
+
+/** A key, drawn as a small keycap. */
+function Key({ children }: { children: React.ReactNode }) {
+  return <kbd className="grid h-[18px] min-w-[18px] place-items-center rounded border border-line border-b-line-strong bg-raised/60 px-1 font-mono text-[10px] text-soft">{children}</kbd>;
+}
+
+/** The label with the typed letters lit, where they appear together (case-insensitive). */
+function Marked({ text, q }: { text: string; q: string }) {
+  const i = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  if (i < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, i)}
+      <span className="text-core">{text.slice(i, i + q.length)}</span>
+      {text.slice(i + q.length)}
+    </>
   );
 }

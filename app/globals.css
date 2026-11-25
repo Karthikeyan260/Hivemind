@@ -902,6 +902,21 @@ input[type="radio"] {
     stroke-dashoffset: 0;
   }
 }
+/* the search / jump palette: opens with a quick scale and fade */
+@keyframes pal-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+.pal-in {
+  animation: pal-in 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pal-in {
+    animation: fade-only 120ms ease both;
+  }
+}
 /* the tour strip's bar: fills over one stop */
 @keyframes mc-tour {
   from {
