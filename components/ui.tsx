@@ -126,6 +126,29 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
   );
 }
 
+/** While a list loads: card-shaped shimmering placeholders that match the real cards (announced as "Loading"). */
+export function CardSkeleton({ count = 3, grid = false }: { count?: number; grid?: boolean }) {
+  return (
+    <div role="status" aria-label="Loading" className={grid ? "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6" : "space-y-2"}>
+      {Array.from({ length: count }, (_, i) =>
+        grid ? (
+          <div key={i} className="shimmer aspect-square rounded-lg" style={{ animationDelay: `${i * 90}ms` }} />
+        ) : (
+          <div key={i} className="flex gap-3 rounded-xl border border-line bg-panel/60 p-4">
+            <div className="shimmer size-9 shrink-0 rounded-lg" style={{ animationDelay: `${i * 120}ms` }} />
+            <div className="flex-1 space-y-2 pt-0.5">
+              <div className="shimmer h-3 w-2/5 rounded-sm" style={{ animationDelay: `${i * 120}ms` }} />
+              <div className="shimmer h-2.5 w-11/12 rounded-sm" style={{ animationDelay: `${i * 120 + 60}ms` }} />
+              <div className="shimmer h-2.5 w-3/4 rounded-sm" style={{ animationDelay: `${i * 120 + 120}ms` }} />
+            </div>
+          </div>
+        ),
+      )}
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
+}
+
 /** Minimal safe markdown: headings, **bold**, *italic*, bullet lists, > quotes, [n] citations linked to sources. No HTML injection. */
 export function RichText({ text, sources, caret }: { text: string; sources?: { n: number; href: string }[]; caret?: boolean }) {
   const lines = text.split("\n");

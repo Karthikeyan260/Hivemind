@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { FolderOpen, NotebookPen, Plus, Search, X } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, ProjectSelect, Textarea } from "@/components/ui";
+import { Badge, Button, CardSkeleton, cx, Empty, ErrorText, Input, PageHeader, ProjectSelect, Textarea } from "@/components/ui";
 import { api, fmtDate, type Note, type Project, useFetch } from "@/lib/client-api";
 
 /** A note's preview without Markdown marks (headings, bold, list dashes, link targets). */
@@ -120,7 +120,7 @@ function Notes() {
           )}
           <ErrorText error={notes.error} />
           {notes.loading && !notes.data ? (
-            <p className="text-sm text-soft">Loading…</p>
+            <CardSkeleton count={5} />
           ) : visible.length === 0 ? (
             <Empty>{notes.data?.length ? "No notes match that." : "No notes yet."}</Empty>
           ) : (

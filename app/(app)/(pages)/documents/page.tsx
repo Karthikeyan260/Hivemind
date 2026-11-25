@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import { BookOpen, FileSpreadsheet, FileText, FileType2, Loader2, Trash2, UploadCloud, X } from "lucide-react";
-import { cx, Empty, ErrorText, PageHeader } from "@/components/ui";
+import { CardSkeleton, cx, Empty, ErrorText, PageHeader, Skeleton } from "@/components/ui";
 import { api, fmtDate, type Project, useFetch } from "@/lib/client-api";
 
 type Doc = {
@@ -125,7 +125,7 @@ function Documents() {
 
       <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {!docs.data?.length ? (
-          <Empty>{docs.loading ? "Loading…" : "No documents yet."}</Empty>
+          docs.loading ? <CardSkeleton count={4} /> : <Empty>No documents yet.</Empty>
         ) : (
           <ul className="list-in min-w-0 space-y-2">
             {docs.data.map((d) => {
@@ -181,7 +181,7 @@ function Documents() {
         {openId && (
           <div className="min-w-0 rounded-xl border border-line bg-panel p-4 lg:sticky lg:top-4 lg:self-start">
             {!detail.data ? (
-              <p className="text-sm text-soft">Loading…</p>
+              <Skeleton lines={8} />
             ) : (
               <>
                 <div className="flex items-start gap-3">

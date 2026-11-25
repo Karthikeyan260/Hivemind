@@ -4,7 +4,7 @@ import { Bell, BookOpen, Briefcase, Check, Compass, ExternalLink, FolderKanban, 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Badge, Button, cx, Empty, ErrorText, PageHeader } from "@/components/ui";
+import { Badge, Button, CardSkeleton, cx, Empty, ErrorText, PageHeader } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { unlocksAction } from "@/lib/agents/intent";
 import { api, armAsk, BRAIN_CHANGED, timeAgo, useFetch } from "@/lib/client-api";
@@ -181,7 +181,7 @@ export default function AutopilotPage() {
       <ErrorText error={error ?? feed.error} />
 
       {!f && feed.loading ? (
-        <p className="text-sm text-soft">Loading…</p>
+        <CardSkeleton count={3} />
       ) : items.length === 0 ? (
         <Empty>{f?.items.length ? "All caught up. Nothing new needs you." : "Autopilot hasn't found anything yet. Tap Run now to see it work."}</Empty>
       ) : (

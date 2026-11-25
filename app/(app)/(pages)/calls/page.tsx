@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Check, Copy, PhoneIncoming, RefreshCw, Send, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Badge, Button, cx, ErrorText, PageHeader, Select } from "@/components/ui";
+import { Badge, Button, CardSkeleton, cx, ErrorText, PageHeader, Select } from "@/components/ui";
 import { api, timeAgo, useFetch } from "@/lib/client-api";
 
 type Settings = { mode: "missed" | "always" | "off"; wait_s: number; my_voice: boolean };
@@ -113,7 +113,7 @@ export default function CallsPage() {
         )}
       </div>
       {!d && feed.loading ? (
-        <p className="text-sm text-soft">Loading…</p>
+        <CardSkeleton count={2} />
       ) : !d?.items.length ? (
         <div className="rounded-xl border border-dashed border-line bg-panel/40 p-6 text-center">
           <span className="mx-auto mb-3 grid size-11 place-items-center rounded-full border border-core/40 bg-core/10 text-core">

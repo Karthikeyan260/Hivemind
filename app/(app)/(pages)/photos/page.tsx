@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight, ImagePlus, Loader2, Lock, MapPin, Pencil, Search, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import { cx, Empty, ErrorText, Input, PageHeader } from "@/components/ui";
+import { CardSkeleton, cx, Empty, ErrorText, Input, PageHeader } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { api, useFetch } from "@/lib/client-api";
 import { uploadPhotos } from "@/lib/photo-prep";
@@ -238,7 +238,7 @@ function Photos() {
       </div>
 
       {!feed.data ? (
-        <Empty>Loading…</Empty>
+        <CardSkeleton count={12} grid />
       ) : !photos.length ? (
         <Empty>{q ? "Nothing matches. Try other words, a place or a month." : "No photos yet. Tap Add photos, or share photos from your gallery to HIVEMIND."}</Empty>
       ) : (
