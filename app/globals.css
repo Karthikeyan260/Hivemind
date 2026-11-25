@@ -902,6 +902,25 @@ input[type="radio"] {
     stroke-dashoffset: 0;
   }
 }
+/* the palace floor plan: a slow pulse where you stand */
+@keyframes palace-you {
+  0% {
+    r: 4;
+    fill-opacity: 0.45;
+  }
+  100% {
+    r: 11;
+    fill-opacity: 0;
+  }
+}
+.palace-you {
+  animation: palace-you 1.8s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .palace-you {
+    animation: none;
+  }
+}
 /* the unlock box shakes once after a wrong try */
 @keyframes unlock-shake {
   10%, 90% {

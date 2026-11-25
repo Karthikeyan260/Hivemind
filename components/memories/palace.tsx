@@ -246,7 +246,7 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
       </div>
 
       {me.zone.kind === "wing" && (
-        <button type="button" onClick={() => jump("hub")} className="absolute right-4 top-4 flex items-center gap-1.5 border border-line bg-[#0b0e15]/80 px-2.5 py-1.5 font-mono text-[10.5px] tracking-widest text-soft backdrop-blur hover:border-core hover:text-core">
+        <button type="button" onClick={() => jump("hub")} className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-[#f2c46d]/40 bg-[#0b0e15]/80 px-3 py-1.5 font-mono text-[10.5px] tracking-widest text-[#f2c46d] backdrop-blur transition hover:border-[#f2c46d] hover:bg-[#f2c46d]/10 active:scale-[0.97]">
           <Home size={12} /> ROTUNDA
         </button>
       )}
@@ -264,11 +264,35 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
         </div>
       )}
 
+      {/* Wings: one tap to any of them (wide screens; phones use the floor plan) */}
+      {layout.length > 0 && !highlight && (
+        <div className="absolute bottom-4 left-1/2 hidden -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 bg-[#0b0e15]/75 p-1 backdrop-blur-md lg:flex">
+          {layout.map((w, i) => {
+            const here = me.zone.kind === "wing" && me.zone.index === i;
+            return (
+              <button
+                key={w.wing.id}
+                type="button"
+                onClick={() => jump(i)}
+                title={w.wing.tagline}
+                aria-pressed={here}
+                className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] whitespace-nowrap text-soft transition hover:text-fg"
+                style={here ? { background: `${w.wing.color}26`, color: w.wing.color, boxShadow: `inset 0 0 0 1px ${w.wing.color}66` } : undefined}
+              >
+                <span className="size-1.5 rounded-full" style={{ background: w.wing.color, boxShadow: here ? `0 0 6px ${w.wing.color}` : undefined }} />
+                {w.wing.name}
+                <span className="font-mono text-[10px] opacity-60 tabular-nums">{w.items.length}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Floor plan: tap a wing to go there */}
       {layout.length > 0 && <MiniMap layout={layout} me={me} onJump={jump} />}
 
       {hint && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-5 flex justify-center pl-36 pr-4 sm:pl-44">
+        <div className="pointer-events-none absolute inset-x-0 bottom-5 flex justify-center pl-36 pr-4 sm:pl-44 lg:bottom-16 lg:pl-4">
           <p className="border border-line bg-[#0b0e15]/80 px-3 py-1.5 text-center font-mono text-[10.5px] tracking-wider text-soft backdrop-blur">
             {touch ? "DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A MEMORY TO OPEN" : "DRAG TO LOOK · WASD OR CLICK THE FLOOR TO WALK · CLICK A MEMORY TO OPEN"}
           </p>
@@ -287,7 +311,7 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
   );
 }
 
-function MiniMap({ layout, me, onJump }: { layout: WingLayout[]; me: { x: number; z: number; yaw: number }; onJump: (to: "hub" | number) => void }) {
+function MiniMap({ layout, me, onJump }: { layout: WingLayout[]; me: { x: number; z: number; yaw: number; zone: { kind: string; index?: number } }; onJump: (to: "hub" | number) => void }) {
   // World → map: centred on the rotunda, scaled so the longest wing fits.
   const reach = HUB_R + Math.max(...layout.map((w) => w.length));
   const S = 64 / reach;
@@ -301,14 +325,26 @@ function MiniMap({ layout, me, onJump }: { layout: WingLayout[]; me: { x: number
         return (
           <g key={w.wing.id} transform={`rotate(${deg})`} className="cursor-pointer" onClick={() => onJump(i)}>
             <title>{w.wing.name}</title>
-            <rect x={-3.5 * S} y={-(HUB_R + w.length) * S} width={7 * S} height={w.length * S} fill={w.wing.color} fillOpacity={w.items.length ? 0.28 : 0.1} stroke={w.wing.color} strokeOpacity={0.7} strokeWidth={0.8} />
+            <rect
+              x={-3.5 * S}
+              y={-(HUB_R + w.length) * S}
+              width={7 * S}
+              height={w.length * S}
+              rx={1.5}
+              fill={w.wing.color}
+              fillOpacity={me.zone.kind === "wing" && me.zone.index === i ? 0.55 : w.items.length ? 0.24 : 0.08}
+              stroke={w.wing.color}
+              strokeOpacity={me.zone.kind === "wing" && me.zone.index === i ? 1 : 0.6}
+              strokeWidth={me.zone.kind === "wing" && me.zone.index === i ? 1.4 : 0.8}
+            />
           </g>
         );
       })}
       <circle cx={0} cy={0} r={HUB_R * S} fill="#f2c46d" fillOpacity={0.14} stroke="#f2c46d" strokeOpacity={0.7} strokeWidth={0.8} className="cursor-pointer" onClick={() => onJump("hub")}>
         <title>Rotunda</title>
       </circle>
-      {/* You */}
+      {/* You: a soft pulse where you stand, and an arrow for where you face */}
+      <circle cx={px} cy={pz} r={5} fill="#eef1f6" fillOpacity={0.25} pointerEvents="none" className="palace-you" />
       <g transform={`translate(${px} ${pz}) rotate(${(-me.yaw * 180) / Math.PI})`} pointerEvents="none">
         <path d="M0 -6 L4 4 L0 2 L-4 4 Z" fill="#eef1f6" />
       </g>
