@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useState } from "react";
 import type { Project } from "@/lib/client-api";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
@@ -85,12 +85,24 @@ export const Badge = ({ children, tone = "neutral" }: { children: ReactNode; ton
 );
 
 export function PageHeader({ eyebrow, title, subtitle, actions }: { eyebrow?: string; title: string; subtitle?: string; actions?: ReactNode }) {
+  // phones: a long description shows two lines (so the page itself starts higher), "more" opens the rest
+  const [more, setMore] = useState(false);
+  const long = (subtitle?.length ?? 0) > 90;
   return (
-    <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-      <div className="head-in">
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-4 sm:mb-8">
+      <div className="head-in min-w-0">
         {eyebrow && <div className="hud-label mb-2">{eyebrow}</div>}
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {subtitle && <p className="mt-1.5 max-w-[65ch] text-sm text-soft">{subtitle}</p>}
+        {subtitle && (
+          <p className={cx("mt-1.5 max-w-[65ch] text-sm text-soft", long && !more && "line-clamp-2 sm:line-clamp-none")}>
+            {subtitle}
+          </p>
+        )}
+        {long && (
+          <button type="button" onClick={() => setMore((m) => !m)} className="mt-1 text-xs text-data sm:hidden">
+            {more ? "less" : "more"}
+          </button>
+        )}
       </div>
       {actions && <div className="head-in-actions flex flex-wrap items-center gap-2">{actions}</div>}
     </div>

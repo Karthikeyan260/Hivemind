@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileText, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Download, FileText, Loader2, Pencil, RefreshCw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Holo } from "@/components/bridge/holo";
 import { Badge, Button, ErrorText, Textarea } from "@/components/ui";
@@ -30,14 +30,14 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 function FileLinks({ base }: { base: string }) {
   return (
     <div className="flex flex-wrap gap-2">
-      <a href={`${base}?format=pdf`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 border border-data/30 px-2.5 py-1.5 font-mono text-[10.5px] tracking-widest text-soft hover:border-data hover:text-data">
-        <FileText size={12} /> VIEW PDF
+      <a href={`${base}?format=pdf-download`} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-core px-3 text-xs font-medium text-core-ink transition hover:bg-core/85 active:scale-[0.97]">
+        <Download size={13} /> Download PDF
       </a>
-      <a href={`${base}?format=pdf-download`} className="flex items-center gap-1.5 border border-core/50 bg-core/10 px-2.5 py-1.5 font-mono text-[10.5px] tracking-widest text-core hover:bg-core/20">
-        <Download size={12} /> DOWNLOAD PDF
+      <a href={`${base}?format=pdf`} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong px-3 text-xs transition hover:border-data hover:text-data active:scale-[0.97]">
+        <FileText size={13} /> View
       </a>
-      <a href={`${base}?format=tex`} className="flex items-center gap-1.5 border border-data/30 px-2.5 py-1.5 font-mono text-[10.5px] tracking-widest text-soft hover:border-data hover:text-data">
-        <Download size={12} /> .TEX (OVERLEAF)
+      <a href={`${base}?format=tex`} title="LaTeX source, for Overleaf" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong px-3 text-xs transition hover:border-data hover:text-data active:scale-[0.97]">
+        <Download size={13} /> .tex
       </a>
     </div>
   );
@@ -99,8 +99,8 @@ export function MasterResume() {
             <ErrorText error={error} />
           </>
         ) : (
-          <button type="button" onClick={() => setEditing(true)} className="font-mono text-[10px] tracking-widest text-soft hover:text-core">
-            REPLACE LATEX
+          <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 text-xs text-soft transition hover:text-core">
+            <Pencil size={12} /> Replace the LaTeX source
           </button>
         )}
       </div>
