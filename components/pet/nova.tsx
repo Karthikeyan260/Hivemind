@@ -836,11 +836,7 @@ export function Nova() {
   const cardAt = sheet ? {} : { ...shift(288), maxHeight: Math.max(220, Math.min(480, below ? roomBelow : roomAbove)) };
   const peeking = seek?.phase === "hidden" ? seek.spot?.peek : undefined;
   const counting = seek?.phase === "counting";
-  // Phones, in normal use: the pet sits small in the bottom corner, above the mic button, so it never covers
-  // buttons or text. Its bubbles and questions wait (tap it: its card opens with what it has to say).
-  // During its games (hide-and-seek, the lantern walk, fireflies) it behaves as everywhere else.
-  const docked = sheet && !walk && !seek && !catching;
-  const bubble = docked ? null : (say ?? (eating !== null || evolving || (!open && !seek && (mood === "hungry" || mood === "missed")) ? line : null));
+  const bubble = say ?? (eating !== null || evolving || (!open && !seek && (mood === "hungry" || mood === "missed")) ? line : null);
   // While gliding, it looks the way it's going.
   const facing = flying ? { x: flying === "left" ? -2.4 : 2.4, y: 0 } : look;
 
@@ -900,17 +896,12 @@ export function Nova() {
       )}
     <div
       data-pet
-      data-docked={docked ? "1" : undefined}
       className="fixed z-30 select-none"
-      style={
-        docked
-          ? { right: 8, bottom: "calc(var(--tabbar-h) + var(--music-h, 0px) + 4.75rem)", width: SIZE * 0.5, height: SIZE * 0.5 }
-          : {
-              left: pos.x,
-              top: pos.y,
-              transition: flying ? `left ${FLY_MS}ms cubic-bezier(.45,.05,.35,1), top ${FLY_MS}ms cubic-bezier(.45,.05,.35,1)` : "none",
-            }
-      }
+      style={{
+        left: pos.x,
+        top: pos.y,
+        transition: flying ? `left ${FLY_MS}ms cubic-bezier(.45,.05,.35,1), top ${FLY_MS}ms cubic-bezier(.45,.05,.35,1)` : "none",
+      }}
     >
       {open && (
         <PetCard
@@ -966,7 +957,7 @@ export function Nova() {
         />
       )}
       {/* A question it asked: tap an answer (it replies, out loud). */}
-      {ask && !peeking && !open && !docked && (
+      {ask && !peeking && !open && (
         <div className={`absolute ${place} z-10 flex w-60 justify-center`} style={shift(240)}>
           <div className="pet-pop w-full rounded-xl border border-line bg-[#0b1016]/95 p-2.5 text-xs text-fg shadow-lg">
             <p>{ask.say}</p>
@@ -1012,8 +1003,7 @@ export function Nova() {
           height: SIZE,
           clipPath: peeking ? PEEK_CLIP[peeking] : undefined,
           opacity: counting ? 0 : 1,
-          transform: counting ? "scale(0.4)" : docked ? "scale(0.5)" : undefined,
-          transformOrigin: docked ? "0 0" : undefined,
+          transform: counting ? "scale(0.4)" : undefined,
           transition: "opacity .5s, transform .5s",
         }}
       >
