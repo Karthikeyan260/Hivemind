@@ -31,6 +31,9 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
   const hidden = isPublicPage(path);
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   const inMore = MORE.some((m) => active(m.href));
+  // which of the five slots is current (the four tabs, then More); the highlight slides to it
+  const tabAt = TABS.findIndex((t) => active(t.href));
+  const slot = tabAt >= 0 ? tabAt : inMore ? TABS.length : -1;
 
   // Lets page layouts reserve space for the bar (see --tabbar-h in globals.css).
   useEffect(() => {
@@ -120,12 +123,18 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
         aria-label="Main"
         className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-sunken/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
+        {slot >= 0 && (
+          <span aria-hidden className="tab-mark pointer-events-none absolute top-0 left-0 h-14 w-1/5" style={{ transform: `translateX(${slot * 100}%)` }}>
+            <span className="absolute top-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-core shadow-[0_0_10px_var(--core)]" />
+            <span className="absolute top-[7px] left-1/2 h-7 w-12 -translate-x-1/2 rounded-full bg-core/10" />
+          </span>
+        )}
         {TABS.map(({ label, href, icon: Icon }) => (
           <Link
             key={href}
             href={href}
             aria-current={active(href) ? "page" : undefined}
-            className={cx("flex h-14 flex-1 flex-col items-center justify-center gap-1 text-[10.5px]", active(href) ? "text-fg" : "text-faint")}
+            className={cx("relative flex h-14 flex-1 flex-col items-center justify-center gap-1 text-[10.5px] transition-colors", active(href) ? "text-fg" : "text-faint")}
           >
             <Icon size={20} strokeWidth={1.75} className={active(href) ? "text-core" : ""} />
             {label}
@@ -137,7 +146,7 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
           onClick={() => setMore(true)}
           aria-expanded={more}
           aria-haspopup="dialog"
-          className={cx("flex h-14 flex-1 flex-col items-center justify-center gap-1 text-[10.5px]", inMore || more ? "text-fg" : "text-faint")}
+          className={cx("relative flex h-14 flex-1 flex-col items-center justify-center gap-1 text-[10.5px] transition-colors", inMore || more ? "text-fg" : "text-faint")}
         >
           <Menu size={20} strokeWidth={1.75} className={inMore ? "text-core" : ""} />
           More
