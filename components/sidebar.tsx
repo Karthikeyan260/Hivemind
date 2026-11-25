@@ -3,6 +3,7 @@
 import { Lock, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useLayoutEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import { PALETTE_EVENT } from "@/lib/client-api";
 import { clearOfflineCache } from "@/lib/offline";
@@ -17,6 +18,21 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
   const myApps = useMyApps();
   const router = useRouter();
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  // the highlight under the current page's item: measured, and it glides to the new item on navigation
+  const navRef = useRef<HTMLElement>(null);
+  const [mark, setMark] = useState<{ top: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const place = () => {
+      const el = nav.querySelector<HTMLElement>('[aria-current="page"]');
+      setMark(el ? { top: el.offsetTop, height: el.offsetHeight } : null);
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(nav);
+    return () => ro.disconnect();
+  }, [path, myApps.length]);
 
   async function lock() {
     await fetch("/api/unlock", { method: "DELETE" });
@@ -44,7 +60,12 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
           <span className="flex-1">Search</span>
           <kbd className="font-mono text-[10px]">Ctrl K</kbd>
         </button>
-        <nav className="no-scrollbar flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]" aria-label="Main">
+        <nav ref={navRef} className="no-scrollbar relative flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]" aria-label="Main">
+          {mark && (
+            <span aria-hidden className="side-mark pointer-events-none absolute inset-x-3 rounded-md bg-raised" style={{ top: mark.top, height: mark.height }}>
+              <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-core shadow-[0_0_8px_var(--core)]" />
+            </span>
+          )}
           {[{ title: "", items: [HOME] }, ...NAV_GROUPS].map((g) => (
             <div key={g.title || "home"} className={g.title ? "mt-3" : ""}>
               {g.title && <div className="hud-label mb-1 px-3 text-[9.5px] tracking-[0.2em]">{g.title.toUpperCase()}</div>}
@@ -54,8 +75,8 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
                   href={href}
                   aria-current={active(href) ? "page" : undefined}
                   className={cx(
-                    "group flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors duration-150",
-                    active(href) ? "bg-raised text-fg" : "text-soft hover:bg-raised/60 hover:text-fg",
+                    "group relative flex items-center gap-3 rounded-md px-3 py-1.5 text-sm transition-colors duration-150",
+                    active(href) ? "text-fg" : "text-soft hover:bg-raised/60 hover:text-fg",
                   )}
                 >
                   <Icon size={16} strokeWidth={1.75} className={active(href) ? "text-core" : "text-faint group-hover:text-soft"} />
@@ -72,7 +93,7 @@ export function Sidebar({ canLock }: { canLock: boolean }) {
                   key={a.id}
                   href={`/apps/${a.id}`}
                   aria-current={path === `/apps/${a.id}` ? "page" : undefined}
-                  className={cx("flex items-center gap-3 rounded-md px-3 py-1.5 text-[13px]", path === `/apps/${a.id}` ? "bg-raised text-fg" : "text-soft hover:bg-raised/60 hover:text-fg")}
+                  className={cx("relative flex items-center gap-3 rounded-md px-3 py-1.5 text-[13px]", path === `/apps/${a.id}` ? "text-fg" : "text-soft hover:bg-raised/60 hover:text-fg")}
                 >
                   <span className="w-4 text-center text-sm leading-none">{a.emoji}</span>
                   <span className="truncate">{a.name}</span>
