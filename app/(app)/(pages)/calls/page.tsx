@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Check, Copy, PhoneIncoming, RefreshCw, Send, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Badge, Button, cx, Empty, ErrorText, PageHeader, Select } from "@/components/ui";
+import { Badge, Button, cx, ErrorText, PageHeader, Select } from "@/components/ui";
 import { api, timeAgo, useFetch } from "@/lib/client-api";
 
 type Settings = { mode: "missed" | "always" | "off"; wait_s: number; my_voice: boolean };
@@ -115,7 +115,13 @@ export default function CallsPage() {
       {!d && feed.loading ? (
         <p className="text-sm text-soft">Loading…</p>
       ) : !d?.items.length ? (
-        <Empty>No answered calls yet. Share your call link, and HIVEMIND picks up when you can&apos;t.</Empty>
+        <div className="rounded-xl border border-dashed border-line bg-panel/40 p-6 text-center">
+          <span className="mx-auto mb-3 grid size-11 place-items-center rounded-full border border-core/40 bg-core/10 text-core">
+            <PhoneIncoming size={18} />
+          </span>
+          <p className="font-medium">No answered calls yet</p>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-soft">Share your call link above. When someone calls and you can&apos;t pick up, HIVEMIND answers and the summary shows up here.</p>
+        </div>
       ) : (
         <ul className="list-in space-y-3">
           {d.items.map((c) => (

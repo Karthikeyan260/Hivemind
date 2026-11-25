@@ -19,7 +19,7 @@ export function Button({
         "inline-flex items-center justify-center gap-2 rounded-md font-medium transition-[background-color,border-color,color,opacity,transform] duration-150 ease-out active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100",
         // Taller on touch screens (44 px target for normal buttons).
         size === "sm" ? "h-7 px-2.5 text-xs pointer-coarse:h-9" : "h-9 px-3.5 text-sm pointer-coarse:h-11",
-        variant === "primary" && "bg-core text-core-ink hover:bg-core/85",
+        variant === "primary" && "bg-core text-core-ink hover:bg-core/85 disabled:bg-raised disabled:text-faint disabled:opacity-100",
         variant === "ghost" && "border border-line-strong text-fg hover:border-data hover:text-data",
         variant === "quiet" && "text-soft hover:bg-raised hover:text-fg",
         variant === "danger" && "border border-alert/50 text-alert hover:bg-alert/10",

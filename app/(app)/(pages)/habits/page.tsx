@@ -120,10 +120,10 @@ function Habits() {
           <ul className="list-in space-y-3">
             {habits.data.map((h) => (
               <li key={h.id} className="rounded-xl border border-line p-3.5">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span>{h.emoji}</span>
-                  <span className="min-w-0 flex-1 truncate font-medium">{h.name}</span>
-                  <span className="font-mono text-[10.5px] text-soft">
+                  <span className="min-w-0 flex-1 basis-40 truncate font-medium">{h.name}</span>
+                  <span className="order-last w-full pl-6 font-mono text-[10.5px] text-soft sm:order-none sm:w-auto sm:pl-0">
                     🔥 {h.streak} · best {h.best}
                     {h.rate != null ? ` · ${h.rate}%` : ""}
                   </span>

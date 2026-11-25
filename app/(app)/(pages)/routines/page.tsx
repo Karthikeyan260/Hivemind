@@ -141,7 +141,7 @@ export default function RoutinesPage() {
               {!!r.triggers.length && (
                 <div className="mt-1.5 flex flex-wrap gap-1.5 pl-6">
                   {r.triggers.map((t) => (
-                    <span key={t} className="rounded-full bg-raised px-2 py-0.5 font-mono text-[10.5px] text-soft">
+                    <span key={t} className="rounded-full border border-data/30 bg-data/10 px-2 py-0.5 font-mono text-[10.5px] text-data">
                       &quot;{t}&quot;
                     </span>
                   ))}

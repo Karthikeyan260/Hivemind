@@ -81,7 +81,7 @@ export default function SourcesPage() {
                   <div className="text-sm font-medium">{p.label}</div>
                   <a href={p.url} target="_blank" rel="noreferrer" className="block truncate text-xs text-soft hover:text-accent">{p.url}</a>
                   {doc && (
-                    <div className="mt-1">
+                    <div className="mt-1 whitespace-nowrap">
                       <Badge tone={doc.status === "ready" ? "accent" : "neutral"}>
                         {doc.status} · {doc.chunk_count} chunks · {fmtDate(doc.created_at)}
                       </Badge>
