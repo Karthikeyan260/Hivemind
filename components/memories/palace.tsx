@@ -4,7 +4,7 @@ import { Home, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Scramble } from "@/components/bridge/scramble";
 import { useVoiceActions } from "@/components/voice/provider";
-import { HUB_R, WINGS, type PalaceItem, type PalaceScene, type WingLayout, type Zone } from "./palace-scene";
+import { HUB_R, WINGS, wingOf, type PalaceItem, type PalaceScene, type WingLayout, type Zone } from "./palace-scene";
 
 type Props = {
   items: PalaceItem[];
@@ -44,6 +44,9 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
   const [hint, setHint] = useState(true);
   const [touch, setTouch] = useState(false);
   const [failed, setFailed] = useState(false);
+  // the memory under the mouse, and where the mouse is (a label follows it; mouse only, not touch)
+  const [hoverId, setHoverId] = useState<string | null>(null);
+  const tip = useRef<HTMLDivElement>(null);
 
   // Build the scene once per set of memories.
   const key = items.map((i) => `${i.id}:${i.updated_at}:${i.importance}`).join("|");
@@ -62,6 +65,7 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
           onOpen: (id) => openRef.current(id),
           onClose: (id) => closeRef.current(id),
           onMove: (x, z, yaw, zone) => setMe({ x, z, yaw, zone }),
+          onHover: (id) => setHoverId(id),
         });
       } catch (err) {
         console.warn("palace unavailable, showing the list:", err instanceof Error ? err.message : err);
@@ -231,7 +235,18 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
   if (failed) return <p className="border border-line p-6 text-sm text-soft">3D isn&apos;t available on this device. Switch to List view.</p>;
 
   return (
-    <div ref={wrap} className="palace relative h-[70dvh] min-h-[420px] sm:h-[calc(100dvh-20rem)] w-full overflow-hidden border border-line bg-[#06080d]" onPointerDown={() => setHint(false)}>
+    <div
+      ref={wrap}
+      onPointerMove={(e) => {
+        const t = tip.current;
+        const box = wrap.current?.getBoundingClientRect();
+        if (!t || !box || e.pointerType !== "mouse") return;
+        // keep the label inside the palace: flip to the left of the pointer near the right edge
+        const x = e.clientX - box.left;
+        const left = x + 16 + 260 > box.width ? x - 16 - 260 : x + 16;
+        t.style.transform = `translate(${Math.max(8, left)}px, ${Math.max(8, e.clientY - box.top + 14)}px)`;
+      }}
+      className="palace relative h-[70dvh] min-h-[420px] sm:h-[calc(100dvh-20rem)] w-full overflow-hidden border border-line bg-[#06080d]" onPointerDown={() => setHint(false)}>
       <canvas ref={canvas} className="block h-full w-full outline-none" aria-label="Memory Palace: walk through your memories. Use List view for a text list." />
 
       {/* Where am I: the meta line decodes, the name rises out of a mask, the tagline follows. */}
@@ -290,6 +305,27 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
 
       {/* Floor plan: tap a wing to go there */}
       {layout.length > 0 && <MiniMap layout={layout} me={me} onJump={jump} />}
+
+      {/* hovering a memory: its title and kind, readable at any distance */}
+      {(() => {
+        const m = hoverId && hoverId !== openId && !touch ? items.find((i) => i.id === hoverId) : null;
+        const w = m ? wingOf(m.memory_type) : null;
+        return (
+          <div ref={tip} aria-hidden className="pointer-events-none absolute top-0 left-0 z-10 w-[260px]" style={{ opacity: m ? 1 : 0, transition: "opacity 120ms ease" }}>
+            {m && w && (
+              <div className="rounded-lg border bg-[#0b0e15]/92 px-3 py-2 shadow-2xl backdrop-blur-md" style={{ borderColor: `${w.color}66` }}>
+                <p className="flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.18em] uppercase" style={{ color: w.color }}>
+                  <span className="size-1.5 rounded-full" style={{ background: w.color }} />
+                  {m.memory_type.replace(/_/g, " ")} · {w.name}
+                </p>
+                <p className="mt-1 line-clamp-2 text-[13px] leading-snug font-medium text-fg">{m.title}</p>
+                {m.snippet && <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-soft">{m.snippet}</p>}
+                <p className="mt-1.5 font-mono text-[9.5px] tracking-wider text-faint uppercase">Click to open</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* a memory is open: shade the side its panel covers, so the panel reads as the focus */}
       <div aria-hidden className="pointer-events-none absolute inset-0 hidden bg-gradient-to-l from-[#06080d]/85 via-[#06080d]/35 to-transparent transition-opacity duration-500 lg:block" style={{ opacity: openId ? 1 : 0 }} />
