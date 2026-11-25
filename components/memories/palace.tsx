@@ -265,7 +265,7 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
       )}
 
       {/* Wings: one tap to any of them (wide screens; phones use the floor plan) */}
-      {layout.length > 0 && !highlight && (
+      {layout.length > 0 && !highlight && !openId && (
         <div className="absolute bottom-4 left-1/2 hidden -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 bg-[#0b0e15]/75 p-1 backdrop-blur-md lg:flex">
           {layout.map((w, i) => {
             const here = me.zone.kind === "wing" && me.zone.index === i;
@@ -291,7 +291,10 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
       {/* Floor plan: tap a wing to go there */}
       {layout.length > 0 && <MiniMap layout={layout} me={me} onJump={jump} />}
 
-      {hint && (
+      {/* a memory is open: shade the side its panel covers, so the panel reads as the focus */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 hidden bg-gradient-to-l from-[#06080d]/85 via-[#06080d]/35 to-transparent transition-opacity duration-500 lg:block" style={{ opacity: openId ? 1 : 0 }} />
+
+      {hint && !openId && (
         <div className="pointer-events-none absolute inset-x-0 bottom-5 flex justify-center pl-36 pr-4 sm:pl-44 lg:bottom-16 lg:pl-4">
           <p className="border border-line bg-[#0b0e15]/80 px-3 py-1.5 text-center font-mono text-[10.5px] tracking-wider text-soft backdrop-blur">
             {touch ? "DRAG TO LOOK · TAP THE FLOOR TO WALK · TAP A MEMORY TO OPEN" : "DRAG TO LOOK · WASD OR CLICK THE FLOOR TO WALK · CLICK A MEMORY TO OPEN"}
