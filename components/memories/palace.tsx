@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Scramble } from "@/components/bridge/scramble";
 import { useVoiceActions } from "@/components/voice/provider";
@@ -47,6 +47,20 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
   // the memory under the mouse, and where the mouse is (a label follows it; mouse only, not touch)
   const [hoverId, setHoverId] = useState<string | null>(null);
   const tip = useRef<HTMLDivElement>(null);
+  // step to the neighbouring memory along the wall; a short note when there is none that way
+  const [edge, setEdge] = useState<string | null>(null);
+  const step = (dir: 1 | -1) => {
+    const id = scene.current?.neighbour(dir);
+    if (id) setEdge(null);
+    else {
+      setEdge(dir > 0 ? "That's the last one this way" : "That's the first one");
+      setTimeout(() => setEdge(null), 1600);
+    }
+  };
+  const stepRef = useRef(step);
+  useEffect(() => {
+    stepRef.current = step;
+  });
 
   // Build the scene once per set of memories.
   const key = items.map((i) => `${i.id}:${i.updated_at}:${i.importance}`).join("|");
@@ -107,6 +121,12 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
     const typing = (e: KeyboardEvent) => e.target instanceof HTMLElement && (e.target.closest("input, textarea, select, [contenteditable=true]") !== null);
     const down = (e: KeyboardEvent) => {
       if (e.code === "Escape" && !typing(e)) return closeRef.current();
+      // [ and ]: the previous / next memory along the wall (the arrows already walk)
+      if ((e.code === "BracketLeft" || e.code === "BracketRight") && !typing(e) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        stepRef.current(e.code === "BracketRight" ? 1 : -1);
+        return;
+      }
       if (!KEYS.has(e.code) || typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code.startsWith("Arrow")) e.preventDefault();
       scene.current?.setKeys(e.code, true);
@@ -305,6 +325,22 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
 
       {/* Floor plan: tap a wing to go there */}
       {layout.length > 0 && <MiniMap layout={layout} me={me} onJump={jump} />}
+
+      {/* a memory is open: walk along the wall to the one before or after it */}
+      {openId && layout.length > 0 && (
+        <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-1.5 lg:left-[calc((100%-492px)/2)]">
+          {edge && <p className="rounded-full bg-[#0b0e15]/85 px-2.5 py-1 font-mono text-[10px] tracking-wider text-soft backdrop-blur">{edge}</p>}
+          <div className="flex items-center rounded-full border border-white/10 bg-[#0b0e15]/80 p-1 backdrop-blur-md">
+            <button type="button" onClick={() => step(-1)} aria-label="Previous memory" title="Previous memory ( [ )" className="flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] text-soft transition hover:bg-white/5 hover:text-fg active:scale-[0.97]">
+              <ChevronLeft size={14} /> Previous
+            </button>
+            <span aria-hidden className="h-4 w-px bg-white/10" />
+            <button type="button" onClick={() => step(1)} aria-label="Next memory" title="Next memory ( ] )" className="flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] text-soft transition hover:bg-white/5 hover:text-fg active:scale-[0.97]">
+              Next <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* an empty wing: say plainly what belongs here and how to add one (the far wall's words are too small to read) */}
       {zoneWing && zoneCount === 0 && !openId && (
