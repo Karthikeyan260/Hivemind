@@ -281,7 +281,7 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
       </div>
 
       {me.zone.kind === "wing" && (
-        <button type="button" onClick={() => jump("hub")} className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-[#f2c46d]/40 bg-[#0b0e15]/80 px-3 py-1.5 font-mono text-[10.5px] tracking-widest text-[#f2c46d] backdrop-blur transition hover:border-[#f2c46d] hover:bg-[#f2c46d]/10 active:scale-[0.97]">
+        <button type="button" onClick={() => jump("hub")} className={`absolute right-4 top-4 items-center gap-1.5 rounded-full border border-[#f2c46d]/40 bg-[#0b0e15]/80 px-3 py-1.5 font-mono text-[10.5px] tracking-widest text-[#f2c46d] backdrop-blur transition hover:border-[#f2c46d] hover:bg-[#f2c46d]/10 active:scale-[0.97] ${openId ? "hidden lg:flex" : "flex"}`}>
           <Home size={12} /> ROTUNDA
         </button>
       )}
@@ -328,15 +328,15 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
 
       {/* a memory is open: walk along the wall to the one before or after it */}
       {openId && layout.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-1.5 lg:left-[calc((100%-492px)/2)]">
+        <div className="absolute top-3 right-3 z-20 flex flex-col items-end gap-1.5 lg:top-auto lg:right-auto lg:bottom-4 lg:left-[calc((100%-492px)/2)] lg:-translate-x-1/2 lg:items-center">
           {edge && <p className="rounded-full bg-[#0b0e15]/85 px-2.5 py-1 font-mono text-[10px] tracking-wider text-soft backdrop-blur">{edge}</p>}
           <div className="flex items-center rounded-full border border-white/10 bg-[#0b0e15]/80 p-1 backdrop-blur-md">
             <button type="button" onClick={() => step(-1)} aria-label="Previous memory" title="Previous memory ( [ )" className="flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] text-soft transition hover:bg-white/5 hover:text-fg active:scale-[0.97]">
-              <ChevronLeft size={14} /> Previous
+              <ChevronLeft size={14} /> <span className="hidden lg:inline">Previous</span>
             </button>
             <span aria-hidden className="h-4 w-px bg-white/10" />
             <button type="button" onClick={() => step(1)} aria-label="Next memory" title="Next memory ( ] )" className="flex items-center gap-1 rounded-full px-3 py-1.5 text-[12px] text-soft transition hover:bg-white/5 hover:text-fg active:scale-[0.97]">
-              Next <ChevronRight size={14} />
+              <span className="hidden lg:inline">Next</span> <ChevronRight size={14} />
             </button>
           </div>
         </div>
