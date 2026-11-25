@@ -21,6 +21,8 @@ const TABS = [
 const TAB_HREFS: string[] = TABS.map((t) => t.href);
 const MORE_GROUPS = NAV_GROUPS.map((g) => ({ title: g.title, items: g.items.filter((i) => !TAB_HREFS.includes(i.href)) })).filter((g) => g.items.length);
 const MORE = MORE_GROUPS.flatMap((g) => g.items);
+/** Each group's tint in the More sheet: today gold, getting things done blue, my life violet. */
+const TINT = ["text-core bg-core/10 border-core/25", "text-data bg-data/10 border-data/25", "text-violet-300 bg-violet-400/10 border-violet-400/25"];
 
 /** Phone navigation like a native app: a bottom tab bar, with the rest of the pages in a "More" sheet. */
 export function MobileNav({ canLock }: { canLock: boolean }) {
@@ -74,6 +76,7 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
         <div ref={sheet} className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" aria-label="More pages">
           <button type="button" aria-label="Close" onClick={() => setMore(false)} className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
           <div className="sheet-up absolute inset-x-0 bottom-0 flex max-h-[86dvh] flex-col rounded-t-2xl border-t border-line bg-sunken px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+            <span aria-hidden className="mx-auto -mt-1 mb-2 block h-1 w-10 shrink-0 rounded-full bg-line-strong" />
             <div className="mb-2 flex shrink-0 items-center justify-between">
               <span className="font-mono text-[11px] tracking-[0.25em] text-faint">MORE</span>
               <button type="button" onClick={() => setMore(false)} aria-label="Close" className="-mr-2 p-2 text-soft">
@@ -81,8 +84,8 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
               </button>
             </div>
             <nav className="grid min-h-0 flex-1 grid-cols-3 content-start gap-2 overflow-y-auto overscroll-contain pb-1" aria-label="More pages">
-              {MORE_GROUPS.map((g) => (
-                <div key={g.title} className="col-span-3 grid grid-cols-3 gap-2">
+              {MORE_GROUPS.map((g, gi) => (
+                <div key={g.title} className="list-in col-span-3 grid grid-cols-3 gap-2">
                   <div className="hud-label col-span-3 mt-1 text-[9.5px] tracking-[0.2em]">{g.title.toUpperCase()}</div>
                   {g.items.map(({ label, href, icon: Icon }) => (
                     <Link
@@ -93,7 +96,9 @@ export function MobileNav({ canLock }: { canLock: boolean }) {
                         active(href) ? "border-core/50 bg-core/10 text-fg" : "border-line text-soft active:bg-raised",
                       )}
                     >
-                      <Icon size={20} strokeWidth={1.75} className={active(href) ? "text-core" : ""} />
+                      <span className={cx("grid size-9 place-items-center rounded-lg border", active(href) ? "border-core/50 bg-core/15 text-core" : TINT[gi % TINT.length])}>
+                        <Icon size={18} strokeWidth={1.75} />
+                      </span>
                       {label}
                     </Link>
                   ))}
