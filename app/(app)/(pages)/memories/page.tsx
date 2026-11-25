@@ -527,7 +527,9 @@ function Explorer() {
         }
       />
 
-      <div className="mb-4 flex gap-1" role="tablist" aria-label="View">
+      <div className="relative mb-4 inline-flex rounded-full border border-line bg-sunken p-1" role="tablist" aria-label="View">
+        {/* the highlight slides under the chosen view */}
+        <span aria-hidden className="tab-mark absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-full border border-core/50 bg-core/15" style={{ transform: `translateX(${view === "list" ? 100 : 0}%)` }} />
         {(
           [
             ["palace", "Palace", Landmark],
@@ -539,7 +541,7 @@ function Explorer() {
             role="tab"
             aria-selected={view === v}
             onClick={() => switchView(v)}
-            className={cx("flex items-center gap-1.5 border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider", view === v ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}
+            className={cx("relative flex w-28 items-center justify-center gap-1.5 rounded-full py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors", view === v ? "text-core" : "text-soft hover:text-fg")}
           >
             <Icon size={13} /> {name}
           </button>
