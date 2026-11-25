@@ -251,6 +251,20 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
   const zoneWing = me.zone.kind === "wing" ? WINGS[me.zone.index] : null;
   const zoneCount = me.zone.kind === "wing" ? layout[me.zone.index]?.items.length ?? 0 : items.length;
   const matches = highlight?.length ?? 0;
+  // which match was walked to last (‹ › go through them in order, wrapping round)
+  const [hit, setHit] = useState(-1);
+  const hlKey = highlight?.join(",") ?? "";
+  const [seenKey, setSeenKey] = useState(hlKey);
+  if (seenKey !== hlKey) {
+    setSeenKey(hlKey);
+    setHit(-1);
+  }
+  const goMatch = (i: number) => {
+    if (!highlight?.length) return;
+    const n = (i + highlight.length) % highlight.length;
+    setHit(n);
+    scene.current?.focus(highlight[n]);
+  };
 
   if (failed) return <p className="border border-line p-6 text-sm text-soft">3D isn&apos;t available on this device. Switch to List view.</p>;
 
@@ -270,7 +284,7 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
       <canvas ref={canvas} className="block h-full w-full outline-none" aria-label="Memory Palace: walk through your memories. Use List view for a text list." />
 
       {/* Where am I: the meta line decodes, the name rises out of a mask, the tagline follows. */}
-      <div key={zoneWing?.id ?? "hub"} className="pointer-events-none absolute left-3 top-3 max-w-[62%] rounded-md bg-[#0b0e15]/60 px-2 py-1.5 backdrop-blur-sm">
+      <div key={zoneWing?.id ?? "hub"} className="pointer-events-none absolute left-3 top-3 max-w-[55%] sm:max-w-[62%] rounded-md bg-[#0b0e15]/60 px-2 py-1.5 backdrop-blur-sm">
         <p className="font-mono text-[10px] tracking-[0.25em]" style={{ color: zoneWing?.color ?? "#f2c46d" }}>
           <Scramble text={`${zoneWing ? "WING" : "ROTUNDA"} · ${zoneCount} ${zoneCount === 1 ? "MEMORY" : "MEMORIES"}`} />
         </p>
@@ -286,15 +300,29 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
         </button>
       )}
 
-      {/* Search matches */}
+      {/* Search matches: how many lit up, and a walk through them one by one */}
       {highlight && (
-        <div className="absolute left-1/2 top-4 flex -translate-x-1/2 items-center gap-2 border border-data/40 bg-[#0b0e15]/85 px-3 py-1.5 font-mono text-[11px] text-data backdrop-blur">
-          <Search size={12} />
-          {matches ? `${matches} lit up` : "No matches here"}
+        <div
+          className={`absolute z-20 flex items-center gap-1 rounded-full ${
+            openId
+              ? "top-3 right-3 lg:top-auto lg:right-auto lg:bottom-4 lg:left-[calc((100%-492px)/2)] lg:-translate-x-1/2"
+              : `${me.zone.kind === "wing" ? "top-14" : "top-3"} right-3 lg:top-auto lg:right-auto lg:bottom-4 lg:left-1/2 lg:-translate-x-1/2`
+          } border border-data/40 bg-[#0b0e15]/85 p-1 font-mono lg:pl-3 text-[11px] text-data shadow-2xl backdrop-blur-md`}
+        >
+          <Search size={12} className={`shrink-0 ${matches ? "hidden lg:block" : ""}`} />
+          <span className={`pr-1 whitespace-nowrap ${matches ? "hidden lg:inline" : ""}`}>{matches ? `${matches} lit up` : "No matches here"}</span>
           {matches > 0 && (
-            <button type="button" onClick={() => scene.current?.focus(highlight[0])} className="ml-1 border-l border-data/30 pl-2 text-fg hover:text-core">
-              GO TO FIRST →
-            </button>
+            <>
+              <button type="button" onClick={() => goMatch(hit - 1)} aria-label="Previous match" className="grid size-7 place-items-center rounded-full text-soft transition hover:bg-data/10 hover:text-data">
+                <ChevronLeft size={14} />
+              </button>
+              <span className="min-w-[2.75rem] text-center text-fg tabular-nums lg:min-w-[3.25rem]">
+                {hit >= 0 ? hit + 1 : "–"} / {matches}
+              </span>
+              <button type="button" onClick={() => goMatch(hit + 1)} aria-label="Next match" className="grid size-7 place-items-center rounded-full bg-data/15 text-data transition hover:bg-data/25">
+                <ChevronRight size={14} />
+              </button>
+            </>
           )}
         </div>
       )}
@@ -327,7 +355,7 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
       {layout.length > 0 && <MiniMap layout={layout} me={me} onJump={jump} />}
 
       {/* a memory is open: walk along the wall to the one before or after it */}
-      {openId && layout.length > 0 && (
+      {openId && layout.length > 0 && !highlight && (
         <div className="absolute top-3 right-3 z-20 flex flex-col items-end gap-1.5 lg:top-auto lg:right-auto lg:bottom-4 lg:left-[calc((100%-492px)/2)] lg:-translate-x-1/2 lg:items-center">
           {edge && <p className="rounded-full bg-[#0b0e15]/85 px-2.5 py-1 font-mono text-[10px] tracking-wider text-soft backdrop-blur">{edge}</p>}
           <div className="flex items-center rounded-full border border-white/10 bg-[#0b0e15]/80 p-1 backdrop-blur-md">
