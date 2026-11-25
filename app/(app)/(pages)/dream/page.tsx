@@ -70,7 +70,7 @@ export default function DreamPage() {
   const counts = (k: Change["kind"]) => d?.dream?.changes.filter((c) => c.kind === k && !c.undone).length ?? 0;
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-4xl">
       <PageHeader
         eyebrow="Overnight"
         title="Dream mode"

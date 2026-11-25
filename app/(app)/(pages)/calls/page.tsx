@@ -43,7 +43,7 @@ export default function CallsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-4xl">
       <PageHeader
         eyebrow="Voice"
         title="Calls"

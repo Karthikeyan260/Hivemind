@@ -86,7 +86,7 @@ export default function BriefPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-4xl">
       <PageHeader
         eyebrow="Every morning"
         title="Morning brief"

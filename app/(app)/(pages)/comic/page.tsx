@@ -110,7 +110,7 @@ function ComicDay() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-4xl">
       <PageHeader
         eyebrow="Daily"
         title="Your day as a comic"

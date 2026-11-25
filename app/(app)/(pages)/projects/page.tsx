@@ -116,7 +116,7 @@ export default function ProjectsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <PageHeader
         eyebrow="Workspaces"
         title="Projects"

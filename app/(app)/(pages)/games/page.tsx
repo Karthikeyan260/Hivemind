@@ -44,7 +44,7 @@ const GAMES: Game[] = [
 
 export default function GamesPage() {
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <PageHeader eyebrow="Play" title="Games" subtitle="Quick games inside HIVEMIND, by tap or by voice." />
 
       {/* the featured one: game night with friends */}

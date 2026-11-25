@@ -21,7 +21,7 @@ export default function WeeklyPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-4xl">
       <PageHeader eyebrow="Review" title="This week" subtitle="The last 7 days from your own data: habits, moods, notes and games." />
       <ErrorText error={feed.error} />
       {!w ? (

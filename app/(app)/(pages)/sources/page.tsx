@@ -76,10 +76,10 @@ export default function SourcesPage() {
           {MY_PAGES.map((p) => {
             const doc = imported(p.url);
             return (
-              <li key={p.url} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
+              <li key={p.url} className="flex items-center gap-3 py-3">
+                <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium">{p.label}</div>
-                  <a href={p.url} target="_blank" rel="noreferrer" className="text-xs text-soft hover:text-accent">{p.url}</a>
+                  <a href={p.url} target="_blank" rel="noreferrer" className="block truncate text-xs text-soft hover:text-accent">{p.url}</a>
                   {doc && (
                     <div className="mt-1">
                       <Badge tone={doc.status === "ready" ? "accent" : "neutral"}>
@@ -88,7 +88,7 @@ export default function SourcesPage() {
                     </div>
                   )}
                 </div>
-                <Button variant="ghost" onClick={() => importUrl(p.url)} disabled={!!busy}>
+                <Button variant="ghost" className="shrink-0" onClick={() => importUrl(p.url)} disabled={!!busy}>
                   {busy === p.url ? "Importing…" : doc ? "Re-import" : "Import"}
                 </Button>
               </li>

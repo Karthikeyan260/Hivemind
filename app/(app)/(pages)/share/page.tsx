@@ -137,7 +137,7 @@ function Share() {
   const what = incoming && (incoming.files.length ? `${incoming.files.length} file${incoming.files.length > 1 ? "s" : ""}` : incoming.url || incoming.text.match(/https?:\/\/\S+/)?.[0] || incoming.text.slice(0, 80));
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-4xl">
       <PageHeader
         eyebrow="Share"
         title="Share to HIVEMIND"

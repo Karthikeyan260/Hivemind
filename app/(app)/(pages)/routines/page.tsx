@@ -71,7 +71,7 @@ export default function RoutinesPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-4xl">
       <PageHeader
         eyebrow="Voice"
         title="Routines"

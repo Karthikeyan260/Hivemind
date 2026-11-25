@@ -58,7 +58,7 @@ export default function AppsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <PageHeader
         eyebrow="Self-building"
         title="Apps"
