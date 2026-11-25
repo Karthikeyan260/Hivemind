@@ -306,6 +306,19 @@ export function Palace({ items, highlight, openId, related, onOpen, onClose, onU
       {/* Floor plan: tap a wing to go there */}
       {layout.length > 0 && <MiniMap layout={layout} me={me} onJump={jump} />}
 
+      {/* an empty wing: say plainly what belongs here and how to add one (the far wall's words are too small to read) */}
+      {zoneWing && zoneCount === 0 && !openId && (
+        <div key={zoneWing.id} className="palace-follow pointer-events-none absolute inset-x-0 top-[38%] flex justify-center px-6">
+          <div className="max-w-sm rounded-xl border bg-[#0b0e15]/80 px-5 py-4 text-center shadow-2xl backdrop-blur-md" style={{ borderColor: `${zoneWing.color}55` }}>
+            <p className="font-mono text-[10px] tracking-[0.25em] uppercase" style={{ color: zoneWing.color }}>
+              Empty wing
+            </p>
+            <p className="mt-1.5 text-[14px] leading-snug text-fg">{zoneWing.empty}</p>
+            <p className="mt-1.5 text-[11.5px] text-soft">Once saved, they hang on these walls.</p>
+          </div>
+        </div>
+      )}
+
       {/* hovering a memory: its title and kind, readable at any distance */}
       {(() => {
         const m = hoverId && hoverId !== openId && !touch ? items.find((i) => i.id === hoverId) : null;
