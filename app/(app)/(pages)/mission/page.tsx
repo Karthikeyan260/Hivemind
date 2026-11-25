@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Bell, Camera, Check, ChevronLeft, ChevronRight, ChevronUp, Clock3, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Download, Globe, Hammer, Keyboard, Loader2, Moon, Newspaper, Pause, Play, Radar, Send, Sparkles, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUpRight, Bell, Camera, Check, ChevronLeft, ChevronRight, ChevronUp, Clock3, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Download, Globe, Hammer, Info, Keyboard, Loader2, Moon, Newspaper, Pause, Play, Radar, Send, Sparkles, Square, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { Ambience } from "@/components/mission/ambience";
 import { festivalOn } from "@/lib/pet-looks";
 import Link from "next/link";
@@ -827,8 +827,10 @@ export default function MissionPage() {
           <p className="mt-3 border-t border-white/10 pt-3 text-[15px] leading-snug text-white/95">{chosen.line}</p>
           {chosen.detail.length > 0 && (
             <>
-              <p className="hud-label mt-4">RECENT</p>
-              <ol className="mt-2 ml-1 space-y-2.5 border-l border-white/12 text-xs text-white/70">
+              <p className="hud-label mt-4 flex items-center justify-between">
+                RECENT <span className="font-mono text-[9.5px] tracking-wider text-white/35 tabular-nums">{chosen.detail.length}</span>
+              </p>
+              <ol className="mt-2.5 ml-1 space-y-3 border-l border-white/12 text-xs leading-snug text-white/75">
                 {chosen.detail.map((d, i) => (
                   <li key={i} className="relative pl-3.5">
                     <span aria-hidden className={`absolute top-1.5 -left-[3.5px] size-1.5 rounded-full ${i === 0 ? "bg-[#38d6f5] shadow-[0_0_6px_#38d6f5]" : "bg-white/30"}`} />
@@ -850,7 +852,12 @@ export default function MissionPage() {
               Open {chosen.name} <ArrowUpRight size={15} />
             </Link>
           </div>
-          <p className="mt-2 text-[10.5px] leading-snug text-white/40">Start, pause or change this agent from its own page. Model and token use aren&apos;t recorded for background jobs.</p>
+          <details className="group mt-2.5 text-[10.5px] text-white/40">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 hover:text-white/65 [&::-webkit-details-marker]:hidden">
+              <Info size={11} /> About controls
+            </summary>
+            <p className="mt-1.5 leading-snug">Start, pause or change this agent from its own page. Model and token use aren&apos;t recorded for background jobs.</p>
+          </details>
         </div>
       )}
 
