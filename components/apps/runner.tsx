@@ -68,16 +68,23 @@ export function AppRunner({
     const actions = new Map<string, string>();
     onActions([]);
     data.current = null;
+    // Load failed (offline, server error): the app must not see "no data", or it may start fresh and
+    // save its empty or sample state over the owner's real data. Reads and writes fail until a reload.
+    let loadFailed = false;
     const loaded = fetch(`/api/apps/${id}/data`)
-      .then((r) => r.json())
-      .then((d) => {
-        data.current = d && typeof d === "object" ? d : {};
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        if (!d || typeof d !== "object" || Array.isArray(d)) throw new Error("bad data");
+        data.current = d;
       })
       .catch(() => {
-        data.current = {};
+        loadFailed = true;
+        if (alive) setError("Couldn't load this app's saved data. Nothing will be saved; reload the page to try again.");
       });
 
     const save = () => {
+      if (loadFailed) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         void fetch(`/api/apps/${id}/data`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: data.current ?? {} }) })
@@ -104,7 +111,8 @@ export function AppRunner({
       }
       await loaded;
       if (!alive) return;
-      const store = data.current!;
+      if (loadFailed || !data.current) return reply(false, null, "Saved data couldn't be loaded");
+      const store = data.current;
       switch (m.op) {
         case "get":
           return reply(true, m.key && m.key in store ? store[m.key] : null);
@@ -146,7 +154,8 @@ export function AppRunner({
       // Don't lose the last change when leaving the page.
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
-        if (data.current) navigator.sendBeacon?.(`/api/apps/${id}/data`, new Blob([JSON.stringify({ data: data.current })], { type: "application/json" }));
+        saveTimer.current = null;
+        if (data.current && !loadFailed) navigator.sendBeacon?.(`/api/apps/${id}/data`, new Blob([JSON.stringify({ data: data.current })], { type: "application/json" }));
       }
     };
     // A new version reloads the frame, so the bridge restarts with it.
@@ -158,7 +167,8 @@ export function AppRunner({
         ref={frame}
         key={`${id}-${version}`}
         title="App"
-        sandbox="allow-scripts allow-forms"
+        // allow-downloads: apps can export their own data (CSV, JSON) as a file. Still no network.
+        sandbox="allow-scripts allow-forms allow-downloads"
         {...{ csp: FRAME_POLICY }}
         srcDoc={srcDoc}
         className="h-full w-full rounded-xl border border-line bg-[oklch(0.155_0.012_250)]"

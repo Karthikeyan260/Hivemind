@@ -140,8 +140,8 @@ export default function AppPage() {
             <Select aria-label="Undo to an earlier version" value="" onChange={(e) => e.target.value && undo(Number(e.target.value))}>
               <option value="">Undo…</option>
               {d.history.map((h) => (
-                <option key={h.version} value={h.version}>
-                  v{h.version} · {timeAgo(h.at)}
+                <option key={h.version} value={h.version} title={h.request}>
+                  v{h.version} · {timeAgo(h.at)} · {h.request.length > 48 ? `${h.request.slice(0, 47)}…` : h.request}
                 </option>
               ))}
             </Select>

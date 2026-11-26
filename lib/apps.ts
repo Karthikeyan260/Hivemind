@@ -9,7 +9,7 @@ import { readJSON, removeFiles, writeJSON } from "@/lib/private-store";
  * HIVEMIND) and keeps its data through a tiny bridge (window.hive) the host page provides.
  */
 export type AppMeta = { id: string; name: string; emoji: string; description: string; status: "building" | "ready" | "failed"; error?: string; created_at: string; updated_at: string; version: number };
-export type AppDoc = AppMeta & { html: string; history: { version: number; at: string; request: string; html: string }[]; /** What to build or change next (read by the background build). */ pending?: string; /** When the current build started, and how many times it was (re)started. */ building_since?: string; attempts?: number };
+export type AppDoc = AppMeta & { html: string; history: { version: number; at: string; request: string; html: string }[]; /** What made the current version (the first request, a change, or an undo); becomes its label in history. */ made_by?: string;/** What to build or change next (read by the background build). */ pending?: string; /** When the current build started, and how many times it was (re)started. */ building_since?: string; attempts?: number };
 
 const INDEX = "apps/index";
 const docKey = (id: string) => `apps/${id}`;
@@ -68,7 +68,8 @@ Hard rules:
   Load saved data on start; save after every change. Values are any JSON.
 - Register 2-5 voice actions for the app's main operations so the owner can use it by voice:
     hive.action("add_expense", "Add a petrol expense. input: amount in rupees and optional note", async (input) => { …; return { added: …, total: … }; });
-  input is a plain string from speech: parse numbers/words leniently. Return a small JSON result (what changed / the answer).
+  input is a plain string from speech: parse numbers/words leniently. Amounts may have digit grouping ("2,499", "1,25,000"): remove commas between digits before reading numbers, and ignore ordinal suffixes ("3rd" = 3). Return a small JSON result (what changed / the answer).
+- To export data (CSV/JSON), make a Blob or data: URL and click an <a download="name.csv"> link; that is allowed. Never upload it anywhere.
 - Use these CSS variables (already defined by the host): --bg --panel --raised --line --text --soft --accent --accent-ink --ok --alert; font is inherited. Rounded cards, generous spacing, big tap targets, works at 360px width.
 - Indian context: currency ₹ with Indian digit grouping (toLocaleString("en-IN")), dates as 2 Oct 2026, km/litres.
 - No alert()/confirm()/prompt(); show inline messages. Handle empty states nicely. Keep the code tidy and under ~400 lines.`;
@@ -137,8 +138,8 @@ export async function generate(supabase: SupabaseClient, id: string, request: st
         ? `Here is the current app:\n\n${app.html}\n\nChange it as the owner asks, keeping all existing features and the SAME storage keys (their saved data must keep working): ${request}\n\nReturn the full updated app in the same format.`
         : `Build this app: ${request}`,
     );
-    if (changing) app.history = [{ version: app.version, at: app.updated_at, request: app.description, html: app.html }, ...app.history].slice(0, KEEP_VERSIONS);
-    Object.assign(app, { ...out, description: changing ? app.description : out.description || request.slice(0, 200), status: "ready", error: undefined, version: app.version + 1 });
+    if (changing) app.history = [{ version: app.version, at: app.updated_at, request: app.made_by ?? app.description, html: app.html }, ...app.history].slice(0, KEEP_VERSIONS);
+    Object.assign(app, { ...out, description: changing ? app.description : out.description || request.slice(0, 200), status: "ready", error: undefined, version: app.version + 1, made_by: request.slice(0, 200) });
     if (changing) app.name = out.name || app.name;
     app.pending = undefined;
     app.building_since = undefined;
@@ -168,8 +169,9 @@ export async function restoreVersion(supabase: SupabaseClient, id: string, versi
   const app = await getApp(supabase, id);
   const old = app?.history.find((h) => h.version === version);
   if (!app || !old) return null;
-  app.history = [{ version: app.version, at: app.updated_at, request: "before undo", html: app.html }, ...app.history.filter((h) => h.version !== version)].slice(0, KEEP_VERSIONS);
+  app.history = [{ version: app.version, at: app.updated_at, request: app.made_by ?? "before undo", html: app.html }, ...app.history.filter((h) => h.version !== version)].slice(0, KEEP_VERSIONS);
   app.html = old.html;
+  app.made_by = `Undo to v${version}: ${old.request}`.slice(0, 200);
   app.version += 1;
   app.status = "ready";
   return saveApp(supabase, app);
