@@ -424,7 +424,7 @@ export function CardsGame({
       {isHost && connected && (!s || s.winner) && (
         <div className="flex flex-col gap-3 rounded-2xl border border-line bg-panel p-4 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-soft">Players:</span>
+            <span className="w-full text-soft sm:mr-1 sm:w-auto">Players:</span>
             {[false, true].map((b) => (
               <button
                 key={String(b)}

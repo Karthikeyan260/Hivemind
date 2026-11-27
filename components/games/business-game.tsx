@@ -195,7 +195,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
       {isHost && (!s || s.over) && (
         <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-soft">HIVEMIND bots:</span>
+            <span className="w-full text-soft sm:mr-1 sm:w-auto">HIVEMIND bots:</span>
             {(party ? [0, 1, 2, 3, 4, 5] : [1, 2, 3, 4, 5]).filter((n) => n + people <= 6).map((n) => (
               <Choice key={n} on={bots === n} onClick={() => setBots(n)}>
                 {n === 0 ? "None" : n}
@@ -203,7 +203,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-soft">Game length:</span>
+            <span className="w-full text-soft sm:mr-1 sm:w-auto">Game length:</span>
             {[
               [10, "Quick · 10 rounds"],
               [20, "20 rounds"],
@@ -292,7 +292,7 @@ function HowTo() {
 
 function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={on} className={cx("rounded-full border px-3 py-1 text-xs", on ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}>
+    <button type="button" onClick={onClick} aria-pressed={on} className={cx("min-h-9 min-w-10 rounded-full border px-3.5 py-1.5 text-[13px] transition-colors pointer-coarse:min-h-10", on ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}>
       {children}
     </button>
   );

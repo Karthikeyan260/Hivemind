@@ -200,7 +200,7 @@ export default function PaattuQuiz() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href="/games" className="mb-3 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-soft hover:text-data">
+      <Link href="/games" className="-ml-2 mb-2 inline-flex h-10 items-center gap-1.5 rounded-md px-2 font-mono text-[12px] uppercase tracking-wider text-soft transition-colors hover:bg-raised hover:text-data">
         <ArrowLeft size={13} /> Games
       </Link>
       <div className="mb-4 flex items-center gap-3">
@@ -233,7 +233,7 @@ export default function PaattuQuiz() {
             <h2 className="font-mono text-[11px] uppercase tracking-wider text-faint">{done ? "Play again" : "Pick a theme"}</h2>
             <div className="flex overflow-hidden rounded-full border border-line text-xs" role="group" aria-label="Difficulty">
               {(["Easy", "Hard"] as const).map((l) => (
-                <button key={l} type="button" aria-pressed={(l === "Hard") === hard} onClick={() => setHard(l === "Hard")} className={cx("px-3 py-1", (l === "Hard") === hard ? "bg-core text-core-ink" : "text-soft")}>
+                <button key={l} type="button" aria-pressed={(l === "Hard") === hard} onClick={() => setHard(l === "Hard")} className={cx("min-h-9 px-4 py-1.5 text-[13px] transition-colors pointer-coarse:min-h-10", (l === "Hard") === hard ? "bg-core text-core-ink" : "text-soft")}>
                   {l}
                 </button>
               ))}

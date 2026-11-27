@@ -360,7 +360,7 @@ export function PartyDraw({ party }: { party: Party }) {
       {isHost && (!s || s.phase === "over") && (
         <div className="flex flex-col gap-3 rounded-2xl border border-line bg-panel p-4 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-soft">Each player draws:</span>
+            <span className="w-full text-soft sm:mr-1 sm:w-auto">Each player draws:</span>
             {[1, 2, 3].map((k) => (
               <button key={k} type="button" onClick={() => setPer(k)} aria-pressed={per === k} className={cx("rounded-full border-2 px-4 py-1.5 text-sm font-semibold", per === k ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}>
                 {k}×

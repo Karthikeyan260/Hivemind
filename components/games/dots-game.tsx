@@ -306,7 +306,7 @@ export function DotsGame({
       {isHost && connected && (!s || s.over) && (
         <div className="flex flex-col gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-soft">Players:</span>
+            <span className="w-full text-soft sm:mr-1 sm:w-auto">Players:</span>
             <Choice on={!bots} onClick={() => setBots(false)}>
               {solo ? "Me vs HIVEMIND" : party ? `Just us (${Math.min(4, party.players.filter((p) => p.online || p.host).length)})` : "Just us two"}
             </Choice>
@@ -315,7 +315,7 @@ export function DotsGame({
             </Choice>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-1 text-soft">Board:</span>
+            <span className="w-full text-soft sm:mr-1 sm:w-auto">Board:</span>
             {SIZES.map((z) => (
               <Choice key={z.n} on={size === z.n} onClick={() => setSize(z.n)}>
                 {z.label}
@@ -361,7 +361,7 @@ export function DotsGame({
 
 function Choice({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={on} className={cx("rounded-full border px-3 py-1 text-xs", on ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}>
+    <button type="button" onClick={onClick} aria-pressed={on} className={cx("min-h-9 min-w-10 rounded-full border px-3.5 py-1.5 text-[13px] transition-colors pointer-coarse:min-h-10", on ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}>
       {children}
     </button>
   );

@@ -73,21 +73,24 @@ export default function GamesPage() {
         </div>
       </Link>
 
-      <div className="list-in grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* phones: two columns (one per row made an 11-game wall ~4000px tall); the whole card is the button */}
+      <div className="list-in grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
         {GAMES.map((g) => (
           <Link key={g.href} href={g.href} title={g.about} className="lift group flex flex-col overflow-hidden rounded-xl border border-line bg-panel transition-colors hover:border-core/60">
             {/* banner: the game's own look */}
-            <span className="relative block h-24 overflow-hidden" style={g.art}>
+            <span className="relative block h-16 overflow-hidden sm:h-24" style={g.art}>
               <span className="absolute inset-0 bg-gradient-to-t from-[oklch(0.17_0.012_250)] via-transparent to-transparent" />
-              <span className="absolute bottom-2.5 left-3 grid size-10 place-items-center rounded-lg border border-white/15 bg-black/45 text-white backdrop-blur-sm">
-                <g.icon size={19} />
+              <span className="absolute bottom-2 left-2.5 grid size-8 place-items-center rounded-lg border border-white/15 bg-black/45 text-white backdrop-blur-sm sm:bottom-2.5 sm:left-3 sm:size-10">
+                <g.icon size={17} />
               </span>
             </span>
-            <span className="flex flex-1 flex-col p-4 pt-3">
-              <span className="text-[15px] font-semibold group-hover:text-core">{g.title}</span>
-              <span className="mt-0.5 font-mono text-[10px] tracking-wider text-faint uppercase">{g.who}</span>
-              <span className="mt-2 text-sm leading-snug text-soft">{g.tag}</span>
-              <span className="mt-3 inline-flex items-center gap-1.5 self-start rounded-full border border-line px-2.5 py-1 text-xs text-soft transition group-hover:border-core/60 group-hover:text-core">
+            <span className="flex flex-1 flex-col p-3 pt-2.5 sm:p-4 sm:pt-3">
+              <span className="text-sm font-semibold group-hover:text-core sm:text-[15px]">{g.title}</span>
+              <span className="mt-0.5 flex items-center gap-1 text-xs text-faint first-letter:uppercase">
+                <Users size={11} className="shrink-0" aria-hidden /> <span className="line-clamp-1">{g.who}</span>
+              </span>
+              <span className="mt-1.5 line-clamp-3 text-xs leading-snug text-soft sm:mt-2 sm:line-clamp-none sm:text-sm">{g.tag}</span>
+              <span className="mt-3 hidden items-center gap-1.5 self-start rounded-full border border-line px-3 py-1.5 text-[13px] text-soft transition group-hover:border-core/60 group-hover:text-core sm:inline-flex">
                 <Play size={11} /> Play
               </span>
             </span>

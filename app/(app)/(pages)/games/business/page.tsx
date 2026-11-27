@@ -10,7 +10,7 @@ export default function BusinessPage() {
   const room = useFetch<{ name: string }>("/api/games/room");
   return (
     <div className="mx-auto max-w-5xl pb-20">
-      <Link href="/games" className="mb-3 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-soft hover:text-data">
+      <Link href="/games" className="-ml-2 mb-2 inline-flex h-10 items-center gap-1.5 rounded-md px-2 font-mono text-[12px] uppercase tracking-wider text-soft transition-colors hover:bg-raised hover:text-data">
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">Business</h1>

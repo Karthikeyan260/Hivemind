@@ -20,7 +20,7 @@ export default function PartyHost() {
 
   return (
     <div className="mx-auto max-w-5xl pb-20">
-      <Link href="/games" className="mb-3 inline-flex items-center gap-1 font-mono text-[11px] tracking-wider text-soft uppercase hover:text-data">
+      <Link href="/games" className="-ml-2 mb-2 inline-flex h-10 items-center gap-1.5 rounded-md px-2 font-mono text-[12px] tracking-wider text-soft uppercase transition-colors hover:bg-raised hover:text-data">
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">🎮 Game night</h1>
@@ -30,10 +30,10 @@ export default function PartyHost() {
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-3 text-sm">
           <span className="w-full text-soft sm:w-auto">Your game night link (always the same):</span>
           <code className="hidden min-w-0 flex-1 truncate font-mono text-xs text-data sm:block">{link}</code>
-          <button type="button" onClick={() => void navigator.clipboard?.writeText(link).then(() => setCopied(true))} className="inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1 text-xs">
+          <button type="button" onClick={() => void navigator.clipboard?.writeText(link).then(() => setCopied(true))} className="inline-flex items-center gap-1 rounded-md border border-line min-h-9 px-3 py-1.5 text-[13px] transition-colors hover:border-line-strong pointer-coarse:min-h-10">
             {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copied" : "Copy"}
           </button>
-          <a href={`https://wa.me/?text=${encodeURIComponent(`Game night on HIVEMIND! Join me (save this link, it stays the same): ${link}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-ok/90 px-2.5 py-1 text-xs font-medium text-black">
+          <a href={`https://wa.me/?text=${encodeURIComponent(`Game night on HIVEMIND! Join me (save this link, it stays the same): ${link}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md bg-ok/90 min-h-9 px-3 py-1.5 text-[13px] pointer-coarse:min-h-10 font-medium text-black">
             <Send size={12} /> WhatsApp
           </a>
           <p className="w-full text-xs text-faint">If you&apos;re not here when a friend opens it, you get a notification; the lobby opens when you come to this page.</p>

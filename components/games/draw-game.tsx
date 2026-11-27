@@ -1056,7 +1056,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
 function RoundPicker({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-sm" role="radiogroup" aria-label="Rounds">
-      <span className="mr-1 text-soft">Rounds:</span>
+      <span className="w-full text-soft sm:mr-1 sm:w-auto">Rounds:</span>
       {ROUND_CHOICES.map((n) => (
         <button
           key={n}
@@ -1064,7 +1064,7 @@ function RoundPicker({ value, onChange }: { value: number; onChange: (n: number)
           role="radio"
           aria-checked={value === n}
           onClick={() => onChange(n)}
-          className={cx("min-w-9 rounded-full border px-3 py-1 font-mono text-xs", value === n ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}
+          className={cx("min-h-9 min-w-10 rounded-full border px-3 py-1.5 font-mono text-[13px] transition-colors pointer-coarse:min-h-10", value === n ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}
         >
           {n}
         </button>
