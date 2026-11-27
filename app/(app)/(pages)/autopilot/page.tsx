@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, BookOpen, Briefcase, Check, Compass, ExternalLink, FolderKanban, Globe, HeartPulse, Loader2, Play, ShoppingBag, Sparkles, Users, X } from "lucide-react";
+import { Bell, BookOpen, Briefcase, Check, ChevronRight, Compass, ExternalLink, FolderKanban, Globe, HeartPulse, Loader2, Play, ShoppingBag, Sparkles, Users, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -147,28 +147,34 @@ export default function AutopilotPage() {
           </div>
           {/* the schedule */}
           <div className={cx("flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3.5 text-sm transition-opacity", !f.settings.enabled && "pointer-events-none opacity-45")} aria-disabled={!f.settings.enabled}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-[10px] tracking-[0.16em] text-faint uppercase">Every</span>
-              <div className="flex rounded-lg border border-line p-0.5" role="radiogroup" aria-label="How often">
+            <div className="flex w-full flex-col gap-1.5 sm:w-auto">
+              <span className="text-xs text-faint">How often</span>
+              <div className="flex rounded-lg bg-sunken p-1" role="radiogroup" aria-label="How often">
                 {[1, 2, 3, 4, 6, 12, 24].map((h) => (
                   <button
                     key={h}
                     type="button"
                     role="radio"
                     aria-checked={f.settings.every_hours === h}
+                    aria-label={`Every ${h} hour${h > 1 ? "s" : ""}`}
                     onClick={() => setSettings({ every_hours: h })}
-                    className={cx("rounded-md px-2 py-1 font-mono text-[11px] transition-colors", f.settings.every_hours === h ? "bg-core text-core-ink" : "text-soft hover:text-fg")}
+                    className={cx(
+                      "h-8 min-w-10 flex-1 rounded-md px-2 text-[13px] tabular-nums transition-colors duration-150 pointer-coarse:h-10",
+                      f.settings.every_hours === h ? "bg-core font-semibold text-core-ink" : "text-soft hover:bg-raised hover:text-fg",
+                    )}
                   >
                     {h}h
                   </button>
                 ))}
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-soft">
-              <span className="font-mono text-[10px] tracking-[0.16em] text-faint uppercase">Between</span>
-              <HourPill label="Start hour" value={f.settings.start_hour} hours={Array.from({ length: 24 }, (_, h) => h)} onChange={(h) => setSettings({ start_hour: h })} />
-              <span className="text-faint">–</span>
-              <HourPill label="End hour" value={f.settings.end_hour} hours={Array.from({ length: 24 }, (_, h) => h + 1)} onChange={(h) => setSettings({ end_hour: h })} />
+            <div className="flex flex-col gap-1.5 text-soft">
+              <span className="text-xs text-faint">Between</span>
+              <span className="flex items-center gap-2">
+                <HourPill label="Start hour" value={f.settings.start_hour} hours={Array.from({ length: 24 }, (_, h) => h)} onChange={(h) => setSettings({ start_hour: h })} />
+                <span className="text-faint">to</span>
+                <HourPill label="End hour" value={f.settings.end_hour} hours={Array.from({ length: 24 }, (_, h) => h + 1)} onChange={(h) => setSettings({ end_hour: h })} />
+              </span>
             </div>
             <span className="sm:ml-auto">
               <Toggle on={f.settings.push} onChange={(v) => setSettings({ push: v })} label="Notify me when urgent" small />
@@ -245,22 +251,38 @@ export default function AutopilotPage() {
           type="button"
           onClick={() => setShowAll(!showAll)}
           aria-expanded={showAll}
-          className="mt-4 inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5 font-mono text-[11px] tracking-wider text-soft uppercase transition hover:border-data/60 hover:text-data"
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-full border border-line bg-panel px-3.5 text-[13px] text-soft transition hover:border-data/60 hover:text-data pointer-coarse:h-11"
         >
           <Check size={12} /> {showAll ? "Hide done & dismissed" : `Show ${hidden} done & dismissed`}
         </button>
       )}
 
       {f?.runs.length ? (
-        <details className="mt-8 text-sm">
-          <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-faint">All recent runs</summary>
-          <ul className="mt-2 space-y-1 font-mono text-[11.5px] text-soft">
+        <details className="group mt-8 text-sm">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-soft hover:text-fg">
+            <ChevronRight size={15} className="transition-transform duration-150 group-open:rotate-90" />
+            Run history <span className="text-faint tabular-nums">({f.runs.length})</span>
+          </summary>
+          {/* a timeline: newest first, a dot for how it went */}
+          <ol className="mt-2 ml-[7px] border-l border-line">
             {f.runs.map((r) => (
-              <li key={r.at}>
-                {timeAgo(r.at)} · {r.manual ? "manual" : "scheduled"} · {(r.ms / 1000).toFixed(1)}s · {r.error ? <span className="text-alert">{r.error}</span> : `${r.found} new`}
+              <li key={r.at} className="relative py-2 pl-5">
+                <span
+                  className={cx("absolute top-3.5 -left-[5px] size-[9px] rounded-full ring-4 ring-bg", r.error ? "bg-alert" : r.found ? "bg-core" : "bg-line-strong")}
+                  aria-hidden
+                />
+                <p className="flex flex-wrap items-baseline gap-x-2">
+                  <span className={cx("font-medium", r.error ? "text-alert" : r.found ? "text-fg" : "text-soft")}>
+                    {r.error ? "Failed" : r.found ? `Found ${r.found} new` : "Nothing new"}
+                  </span>
+                  <span className="text-xs text-faint">
+                    {timeAgo(r.at)} · {r.manual ? "you ran it" : "on schedule"} · {(r.ms / 1000).toFixed(1)}s
+                  </span>
+                </p>
+                {r.error && <p className="mt-0.5 line-clamp-2 text-xs text-alert/80">{r.error}</p>}
               </li>
             ))}
-          </ul>
+          </ol>
         </details>
       ) : null}
     </div>
@@ -270,7 +292,7 @@ export default function AutopilotPage() {
 /** A switch (role="switch") with its label. */
 function Toggle({ on, onChange, label, small }: { on: boolean; onChange: (v: boolean) => void; label: string; small?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className={cx("group flex items-center gap-2.5 text-left text-sm", small ? "text-soft" : "font-medium")}>
+    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className={cx("group flex min-h-9 items-center gap-2.5 text-left text-sm pointer-coarse:min-h-11", small ? "text-soft" : "font-medium")}>
       <span className={cx("relative h-5 w-9 shrink-0 rounded-full border transition-colors", on ? "border-core bg-core/80" : "border-line-strong bg-raised")}>
         <span className={cx("absolute top-1/2 size-3.5 -translate-y-1/2 rounded-full bg-white shadow transition-[left] duration-200", on ? "left-[18px]" : "left-[2px]")} />
       </span>
@@ -282,7 +304,7 @@ function Toggle({ on, onChange, label, small }: { on: boolean; onChange: (v: boo
 /** An hour picker styled as a pill (still a real select underneath, for keyboards and phones). */
 function HourPill({ label, value, hours, onChange }: { label: string; value: number; hours: number[]; onChange: (h: number) => void }) {
   return (
-    <span className="relative inline-flex items-center rounded-full border border-line bg-raised/60 px-3 py-1 font-mono text-xs text-fg transition-colors focus-within:border-data/60 hover:border-line-strong">
+    <span className="relative inline-flex h-9 items-center rounded-lg border border-line bg-sunken px-3 text-sm text-fg tabular-nums transition-colors focus-within:border-data/60 hover:border-line-strong pointer-coarse:h-10">
       {String(value % 24).padStart(2, "0")}:00
       <select aria-label={label} value={value} onChange={(e) => onChange(+e.target.value)} className="absolute inset-0 cursor-pointer opacity-0">
         {hours.map((h) => (
@@ -299,20 +321,48 @@ function HourPill({ label, value, hours, onChange }: { label: string; value: num
 function RunStrip({ runs }: { runs: Feed["runs"] }) {
   const list = [...runs].slice(0, 16).reverse();
   const max = Math.max(1, ...list.map((r) => r.found));
+  const useful = list.filter((r) => !r.error && r.found > 0).length;
+  const failed = list.filter((r) => r.error).length;
+  const found = list.reduce((s, r) => s + (r.error ? 0 : r.found), 0);
   return (
-    <div className="flex items-end gap-3 border-t border-line px-4 pt-3 pb-3.5">
-      <span className="shrink-0 pb-0.5 font-mono text-[10px] tracking-[0.16em] text-faint uppercase">Runs</span>
-      <div className="flex h-8 flex-1 items-end gap-1" aria-label={`Last ${list.length} runs`}>
+    <div className="border-t border-line px-4 pt-3 pb-3.5">
+      {/* in words first: the bars alone said nothing on a phone */}
+      <p className="text-sm">
+        <span className="font-medium">
+          Last {list.length} run{list.length > 1 ? "s" : ""}:
+        </span>{" "}
+        <span className="text-soft">
+          {found ? `${found} thing${found > 1 ? "s" : ""} found in ${useful}` : "nothing new found"}
+          {failed ? <span className="text-alert"> · {failed} failed</span> : null}
+        </span>
+      </p>
+      <div className="mt-2.5 flex h-10 items-end justify-between gap-1" role="img" aria-label={`Last ${list.length} runs, oldest first`}>
         {list.map((r) => (
           <span
             key={r.at}
             title={`${timeAgo(r.at)} · ${r.manual ? "manual" : "scheduled"} · ${(r.ms / 1000).toFixed(1)}s · ${r.error ? `failed: ${r.error}` : `${r.found} new`}`}
-            className={cx("w-full max-w-4 rounded-sm transition-opacity hover:opacity-80", r.error ? "bg-alert/80" : r.found ? "bg-core/80" : "bg-line-strong")}
-            style={{ height: r.error ? "100%" : `${Math.max(12, (r.found / max) * 100)}%` }}
+            className={cx("max-w-5 min-w-1.5 flex-1 rounded-sm transition-opacity hover:opacity-80", r.error ? "bg-alert/80" : r.found ? "bg-core/80" : "bg-line-strong/60")}
+            style={{ height: r.error ? "100%" : r.found ? `${Math.max(30, (r.found / max) * 100)}%` : "14%" }}
           />
         ))}
       </div>
-      <span className="shrink-0 pb-0.5 font-mono text-[10px] text-faint">newest {timeAgo(list[list.length - 1].at)}</span>
+      <div className="mt-1 flex justify-between text-[11px] text-faint">
+        <span>{timeAgo(list[0].at)}</span>
+        <span className="flex items-center gap-3">
+          <span className="flex items-center gap-1">
+            <span className="size-2 rounded-sm bg-core/80" /> found
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="size-2 rounded-sm bg-line-strong/60" /> nothing
+          </span>
+          {failed > 0 && (
+            <span className="flex items-center gap-1">
+              <span className="size-2 rounded-sm bg-alert/80" /> failed
+            </span>
+          )}
+        </span>
+        <span>{timeAgo(list[list.length - 1].at)}</span>
+      </div>
     </div>
   );
 }
