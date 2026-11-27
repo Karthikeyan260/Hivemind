@@ -1,13 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { ChevronDown, ChevronLeft, GitCommitVertical, Landmark, List, Pencil, Plus, Search, Sparkles, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, GitCommitVertical, Landmark, List, Pencil, Plus, Search, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Holo } from "@/components/bridge/holo";
 import { useVoiceActions } from "@/components/voice/provider";
-import { Badge, Button, cx, Empty, ErrorText, Input, PageHeader, ProjectSelect, Select, Textarea } from "@/components/ui";
+import { Badge, Button, CardSkeleton, cx, Empty, ErrorText, Input, PageHeader, ProjectSelect, Select, Textarea } from "@/components/ui";
 import { api, fmtDate, type Memory, MEMORY_TYPES, type Project, useFetch } from "@/lib/client-api";
 
 // The 3D palace (three.js) loads only when the Palace view is opened.
@@ -237,6 +237,9 @@ function Explorer() {
   const f = list.data?.facets;
   const setF = (k: keyof typeof filters) => (e: React.ChangeEvent<HTMLSelectElement>) => setFilters({ ...filters, [k]: e.target.value });
   const active = Object.values(filters).some(Boolean) || !!debounced;
+  // how many dropdowns are set (sort excluded): the phone's Filters button shows it
+  const filterCount = [filters.type, filters.category, filters.project, filters.source].filter(Boolean).length;
+  const [showFilters, setShowFilters] = useState(false);
   const d = detail.data;
 
   const detailPane = (
@@ -286,7 +289,68 @@ function Explorer() {
           </div>
         </Holo>
       ) : !openId ? (
-        <Empty>Select a memory to see its source, history and connections, or create a new one.</Empty>
+        // Nothing open (wide screens only): your memory at a glance instead of an empty box.
+        <div className="self-start rounded-xl border border-line bg-panel/60 p-5">
+          <p className="text-sm text-soft">
+            <span className="text-2xl font-semibold text-fg tabular-nums">{f?.total ?? "…"}</span> memories. Pick one to see where it came from, how it changed and what it connects to.
+          </p>
+          {list.data && list.data.items.length > 0 && (
+            <div className="mt-5">
+              <h3 className="mb-2 text-xs font-medium text-faint">Most important</h3>
+              <ul className="space-y-1">
+                {[...list.data.items]
+                  .sort((a, b) => b.importance - a.importance)
+                  .slice(0, 4)
+                  .map((m) => (
+                    <li key={m.id}>
+                      <button type="button" onClick={() => open(m.id)} className="flex w-full items-baseline gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-raised">
+                        <span className="w-7 shrink-0 text-xs text-core tabular-nums">★ {m.importance}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{m.title}</span>
+                          <span className="block truncate text-xs text-soft">{m.snippet}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+          {f && (
+            <div className="mt-5 grid gap-5 sm:grid-cols-2">
+              {(
+                [
+                  ["By type", "type", f.types, label],
+                  ["By category", "category", f.categories, (c: string) => c],
+                ] as const
+              ).map(([title, key, counts, name]) =>
+                Object.keys(counts).length ? (
+                  <div key={key}>
+                    <h3 className="mb-2 text-xs font-medium text-faint">{title}</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(counts)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 8)
+                        .map(([v, n]) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setFilters({ ...filters, [key]: filters[key] === v ? "" : v })}
+                            aria-pressed={filters[key] === v}
+                            className={cx(
+                              "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs capitalize transition-colors",
+                              filters[key] === v ? "border-core/60 bg-core/10 text-core" : "border-line text-soft hover:border-line-strong hover:text-fg",
+                            )}
+                          >
+                            {name(v)} <span className="text-faint tabular-nums">{n}</span>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          )}
+        </div>
       ) : !d ? (
         <p className="font-mono text-[11px] text-faint">{detail.error ?? "LOADING MEMORY…"}</p>
       ) : (
@@ -541,9 +605,9 @@ function Explorer() {
             role="tab"
             aria-selected={view === v}
             onClick={() => switchView(v)}
-            className={cx("relative flex w-28 items-center justify-center gap-1.5 rounded-full py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors", view === v ? "text-core" : "text-soft hover:text-fg")}
+            className={cx("relative flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm transition-colors pointer-coarse:h-10", view === v ? "font-medium text-core" : "text-soft hover:text-fg")}
           >
-            <Icon size={13} /> {name}
+            <Icon size={14} /> {name}
           </button>
         ))}
       </div>
@@ -560,8 +624,38 @@ function Explorer() {
             </button>
           )}
         </div>
+        {/* Phones: the five dropdowns fold behind one "Filters" button (they pushed the first memory ~180px down). */}
+        {view === "list" && (
+          <div className="flex items-center gap-2 sm:hidden">
+            <button
+              type="button"
+              onClick={() => setShowFilters((s) => !s)}
+              aria-expanded={showFilters}
+              className={cx(
+                "inline-flex h-10 items-center gap-2 rounded-md border px-3 text-sm transition-colors",
+                showFilters || filterCount ? "border-core/50 bg-core/10 text-core" : "border-line text-soft hover:text-fg",
+              )}
+            >
+              <SlidersHorizontal size={15} /> Filters
+              {filterCount > 0 && <span className="grid size-5 place-items-center rounded-full bg-core text-[11px] font-semibold text-core-ink">{filterCount}</span>}
+            </button>
+            {active && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQ("");
+                  setFilters({ type: "", category: "", project: "", source: "", sort: "" });
+                }}
+                className="h-10 rounded-md px-2 text-sm text-soft hover:text-fg"
+              >
+                Clear
+              </button>
+            )}
+            <span className="ml-auto text-xs text-faint tabular-nums">{list.data ? `${list.data.items.length} of ${f?.total ?? 0}` : "…"}</span>
+          </div>
+        )}
         {/* Phone: an even two-column grid; wider screens: one wrapping row. The palace keeps only search, to give the 3D room. */}
-        <div className={cx("grid-cols-2 items-center gap-2 sm:flex-wrap [&>select]:w-full sm:[&>select]:w-auto", view === "palace" ? "hidden" : "grid sm:flex")}>
+        <div className={cx("grid-cols-2 items-center gap-2 sm:flex-wrap [&>select]:w-full sm:[&>select]:w-auto", view === "palace" ? "hidden" : showFilters ? "grid sm:flex" : "hidden sm:flex")}>
           <Select value={filters.type} onChange={setF("type")}>
             <option value="">All types</option>
             {MEMORY_TYPES.map((t) => (
@@ -605,11 +699,11 @@ function Explorer() {
             <option value="confidence">Most confident</option>
           </Select>
           {active && (
-            <button type="button" onClick={() => { setQ(""); setFilters({ type: "", category: "", project: "", source: "", sort: "" }); }} className="font-mono text-[10px] tracking-widest text-soft hover:text-core">
-              RESET
+            <button type="button" onClick={() => { setQ(""); setFilters({ type: "", category: "", project: "", source: "", sort: "" }); }} className="hidden h-9 rounded-md px-2 text-sm text-soft hover:text-core sm:block">
+              Clear filters
             </button>
           )}
-          <span className="col-span-2 text-right font-mono text-[11px] text-faint sm:ml-auto">
+          <span className="hidden text-right text-xs text-faint tabular-nums sm:ml-auto sm:block">
             {list.data ? `${list.data.items.length} of ${f?.total ?? 0} memories` : "…"}
           </span>
         </div>
@@ -667,39 +761,62 @@ function Explorer() {
         <div className={cx("min-w-0 lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto lg:pr-1", (openId || draft) && "hidden lg:block")}>
           <ErrorText error={list.error} />
           {list.loading && !list.data ? (
-            <p className="font-mono text-[11px] text-faint">SCANNING…</p>
+            <CardSkeleton count={5} />
           ) : !list.data?.items.length ? (
             <Empty>{active ? "No memories match. Try other words or clear the filters." : "No memories yet. Say “remember that …” to HIVEMIND."}</Empty>
           ) : (
-            <ul className="space-y-1.5">
-              {list.data.items.map((m) => (
-                <li key={m.id}>
-                  <button
-                    type="button"
-                    onClick={() => open(m.id)}
-                    className={cx(
-                      "w-full border p-3 text-left transition-colors",
-                      openId === m.id ? "border-core/60 bg-core/10" : "border-line hover:border-line-strong",
-                    )}
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-[13.5px] font-medium">{m.title}</span>
-                      {m.match !== undefined && <span className="shrink-0 font-mono text-[10px] text-data">{m.match}%</span>}
-                    </div>
-                    <p className="mt-0.5 line-clamp-2 text-[12px] text-soft">{m.snippet}</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-1">
-                      <Badge tone="accent">{label(m.memory_type)}</Badge>
-                      {m.category && <Badge>{m.category}</Badge>}
-                      {projectName(m.project_id) && <Badge tone="data">{projectName(m.project_id)}</Badge>}
-                      <span className="ml-auto flex items-center gap-0.5" title={`Importance ${m.importance}/10`}>
-                        {Array.from({ length: 5 }, (_, i) => (
-                          <span key={i} className={cx("h-1.5 w-1.5", i < Math.round(m.importance / 2) ? "bg-core" : "bg-line")} />
-                        ))}
-                      </span>
-                    </div>
-                  </button>
-                </li>
-              ))}
+            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-raised">
+              {list.data.items.map((m) => {
+                const selected = openId === m.id;
+                // the category often just repeats the type ("Preference · preference"): show it only when it adds something
+                const cat = m.category && m.category.toLowerCase().replace(/[_\s-]+/g, "") !== m.memory_type.toLowerCase().replace(/[_\s-]+/g, "") ? m.category : null;
+                const proj = projectName(m.project_id);
+                return (
+                  <li key={m.id}>
+                    <button
+                      type="button"
+                      onClick={() => open(m.id)}
+                      aria-current={selected || undefined}
+                      className={cx("w-full px-3.5 py-3 text-left transition-colors duration-150", selected ? "bg-core/10" : "hover:bg-sunken/60")}
+                    >
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className={cx("truncate text-sm font-medium", selected && "text-core")}>{m.title}</span>
+                        {m.match !== undefined ? (
+                          <span className="shrink-0 text-xs text-data tabular-nums">{m.match}% match</span>
+                        ) : (
+                          <span
+                            className={cx("shrink-0 text-xs tabular-nums", m.importance >= 7 ? "text-core" : "text-faint")}
+                            title={`Importance ${m.importance} of 10`}
+                            aria-label={`Importance ${m.importance} of 10`}
+                          >
+                            ★ {m.importance}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 line-clamp-2 text-[13px] leading-relaxed text-soft">{m.snippet}</p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                        <span className="text-core/90 capitalize">{label(m.memory_type)}</span>
+                        {cat && (
+                          <>
+                            <span className="text-faint" aria-hidden>
+                              ·
+                            </span>
+                            <span className="text-soft">{cat}</span>
+                          </>
+                        )}
+                        {proj && (
+                          <>
+                            <span className="text-faint" aria-hidden>
+                              ·
+                            </span>
+                            <span className="truncate text-data">{proj}</span>
+                          </>
+                        )}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
