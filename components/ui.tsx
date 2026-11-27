@@ -99,8 +99,9 @@ export function PageHeader({ eyebrow, title, subtitle, actions }: { eyebrow?: st
           </p>
         )}
         {long && (
-          <button type="button" onClick={() => setMore((m) => !m)} className="mt-1 text-xs text-data sm:hidden">
-            {more ? "less" : "more"}
+          // A 40px-tall tap area (the word alone was 16px), pulled up so the spacing looks the same.
+          <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more} className="-mb-2 -ml-2 inline-flex h-10 items-center rounded-md px-2 text-[13px] text-data active:bg-data/10 sm:hidden">
+            {more ? "Show less" : "Read more"}
           </button>
         )}
       </div>
