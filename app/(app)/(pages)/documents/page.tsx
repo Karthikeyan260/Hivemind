@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
-import { BookOpen, FileSpreadsheet, FileText, FileType2, Loader2, Trash2, UploadCloud, X } from "lucide-react";
+import { ArrowLeft, BookOpen, FileSpreadsheet, FileText, FileType2, Loader2, Trash2, UploadCloud, X } from "lucide-react";
 import { CardSkeleton, cx, Empty, ErrorText, PageHeader, Skeleton } from "@/components/ui";
 import { api, fmtDate, type Project, useFetch } from "@/lib/client-api";
 
@@ -26,6 +26,26 @@ function kindOf(t: string) {
   if (x.includes("csv")) return { icon: FileSpreadsheet, tone: "text-emerald-300 border-emerald-400/40 bg-emerald-400/10", label: "CSV" };
   return { icon: FileText, tone: "text-soft border-line bg-raised/50", label: x.includes("md") || x.includes("markdown") ? "Markdown" : "Text" };
 }
+
+/** "Karthikeyan_K_Resume_Template-dad4a313.pdf" → "Karthikeyan K Resume Template" (the real name stays on hover). */
+const prettyName = (f: string) =>
+  f
+    .replace(/\.(pdf|docx?|txt|md|markdown|csv)$/i, "")
+    .replace(/[-_ ]?[0-9a-f]{8}$/i, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || f;
+
+/**
+ * PDF text arrives broken at the page's line ends ("applica-\ntions", "Large\nLanguage"). Re-join words split
+ * by a hyphen, and lines that carry on into a lowercase word; real paragraph breaks (blank lines) stay.
+ */
+const unwrap = (t: string) =>
+  t
+    // addresses split at the dot ("gmail.\n\ncom", "vercel.\n\napp")
+    .replace(/(\w)\.\s*\n\s*\n?\s*(?=[a-z]{2,}\b)/g, "$1.")
+    .replace(/(\p{L})-\n(?=\p{Ll})/gu, "$1")
+    .replace(/([^\n.:!?])\n(?=\p{Ll})/gu, "$1 ");
 
 export default function DocumentsPage() {
   return (
@@ -127,7 +147,8 @@ function Documents() {
         {!docs.data?.length ? (
           docs.loading ? <CardSkeleton count={4} /> : <Empty>No documents yet.</Empty>
         ) : (
-          <ul className="list-in min-w-0 space-y-2">
+          // phones: an open document replaces the list (it used to open far below it)
+          <ul className={cx("list-in min-w-0 space-y-2", openId && "max-lg:hidden")}>
             {docs.data.map((d) => {
               const k = kindOf(d.file_type);
               return (
@@ -138,7 +159,9 @@ function Documents() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium">{d.filename}</span>
+                        <span className="truncate text-sm font-medium" title={d.filename}>
+                          {prettyName(d.filename)}
+                        </span>
                         {d.status !== "ready" && (
                           <span className={cx("inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[9.5px] tracking-wider uppercase", d.status === "failed" ? "border-alert/50 text-alert" : "border-core/40 text-core")}>
                             {d.status === "processing" && <Loader2 size={9} className="animate-spin" />}
@@ -158,7 +181,7 @@ function Documents() {
                     onClick={() => remove(d.id)}
                     aria-label={`Delete ${d.filename}`}
                     title="Delete"
-                    className="absolute top-3 right-3 grid size-8 place-items-center rounded-md text-faint opacity-60 transition hover:bg-alert/10 hover:text-alert group-hover:opacity-100 focus-visible:opacity-100"
+                    className="absolute top-2.5 right-2.5 grid size-9 place-items-center rounded-md text-faint opacity-60 transition hover:bg-alert/10 hover:text-alert group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:size-11 pointer-coarse:opacity-100"
                   >
                     <Trash2 size={15} />
                   </button>
@@ -184,6 +207,13 @@ function Documents() {
               <Skeleton lines={8} />
             ) : (
               <>
+                <button
+                  type="button"
+                  onClick={() => router.replace("/documents")}
+                  className="-mt-1 -ml-1 mb-2 inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-soft transition-colors hover:bg-raised hover:text-fg lg:hidden"
+                >
+                  <ArrowLeft size={15} /> All documents
+                </button>
                 <div className="flex items-start gap-3">
                   {(() => {
                     const k = kindOf(detail.data.file_type);
@@ -194,25 +224,35 @@ function Documents() {
                     );
                   })()}
                   <span className="min-w-0 flex-1">
-                    <h2 className="truncate font-semibold">{detail.data.filename}</h2>
-                    <span className="block font-mono text-[10.5px] text-faint">
-                      {detail.data.chunks.length} chunks · {fmtDate(detail.data.created_at)}
+                    <h2 className="font-semibold leading-snug" title={detail.data.filename}>
+                      {prettyName(detail.data.filename)}
+                    </h2>
+                    <span className="block text-xs text-faint">
+                      {kindOf(detail.data.file_type).label} · {detail.data.chunks.length} {detail.data.chunks.length === 1 ? "chunk" : "chunks"} · {fmtDate(detail.data.created_at)}
                     </span>
                   </span>
-                  <button type="button" onClick={() => router.replace("/documents")} aria-label="Close" className="grid size-8 shrink-0 place-items-center rounded-md text-faint hover:bg-raised hover:text-fg">
+                  <button type="button" onClick={() => router.replace("/documents")} aria-label="Close" className="hidden size-9 shrink-0 place-items-center rounded-md text-faint hover:bg-raised hover:text-fg lg:grid">
                     <X size={15} />
                   </button>
                 </div>
-                <div className="mt-3 max-h-[70vh] space-y-3 overflow-y-auto">
-                  {detail.data.chunks.map((c) => (
-                    <div key={c.chunk_index} className="rounded-lg bg-muted p-3 text-xs">
-                      <div className="mb-1 font-medium text-soft">
-                        Chunk {c.chunk_index + 1}
-                        {c.metadata.page ? ` · page ${c.metadata.page}` : ""}
+                {detail.data.summary && (
+                  <p className="mt-4 rounded-lg bg-sunken px-3.5 py-3 text-sm leading-relaxed text-soft">
+                    <span className="mr-1.5 text-xs font-medium text-faint">In short</span>
+                    {detail.data.summary}
+                  </p>
+                )}
+                {/* the text as HIVEMIND indexed it, by page, with the PDF's line breaks mended */}
+                <div className="mt-4 max-h-[70vh] overflow-y-auto pr-1 text-sm leading-relaxed text-soft">
+                  {detail.data.chunks.map((c, i) => {
+                    const page = c.metadata.page;
+                    const newPage = page && page !== detail.data!.chunks[i - 1]?.metadata.page;
+                    return (
+                      <div key={c.chunk_index} title={`Chunk ${c.chunk_index + 1}`}>
+                        {newPage && <h3 className={cx("mb-2 text-xs font-medium text-faint", i > 0 && "mt-6 border-t border-line pt-4")}>Page {page}</h3>}
+                        <p className="mb-3 whitespace-pre-wrap break-words">{unwrap(c.content)}</p>
                       </div>
-                      <div className="whitespace-pre-wrap break-words">{c.content}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}
