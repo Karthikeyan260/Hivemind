@@ -572,6 +572,18 @@ export function Nova() {
     if (f) setTimeout(() => speak(f.line, 6000), 1500);
   }, [festId, today, pet, speak]);
 
+  // Hungry / missing you: say it for a few seconds when the mood starts and on each new page, then
+  // tuck the bubble away (left up for good it sat over the page's own buttons and text).
+  const needy = mood === "hungry" || mood === "missed";
+  const [nag, setNag] = useState(false);
+  useEffect(() => {
+    if (!needy) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a timed peek, restarted per page
+    setNag(true);
+    const t = setTimeout(() => setNag(false), 8000);
+    return () => clearTimeout(t);
+  }, [needy, path]);
+
   const wearIt = useCallback(async (w: AccessoryId | "none") => {
     const r = await fetch("/api/pet", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wear: w }) }).catch(() => null);
     const data = r ? await r.json().catch(() => ({})) : {};
@@ -836,7 +848,7 @@ export function Nova() {
   const cardAt = sheet ? {} : { ...shift(288), maxHeight: Math.max(220, Math.min(480, below ? roomBelow : roomAbove)) };
   const peeking = seek?.phase === "hidden" ? seek.spot?.peek : undefined;
   const counting = seek?.phase === "counting";
-  const bubble = say ?? (eating !== null || evolving || (!open && !seek && (mood === "hungry" || mood === "missed")) ? line : null);
+  const bubble = say ?? (eating !== null || evolving || (!open && !seek && needy && nag) ? line : null);
   // While gliding, it looks the way it's going.
   const facing = flying ? { x: flying === "left" ? -2.4 : 2.4, y: 0 } : look;
 

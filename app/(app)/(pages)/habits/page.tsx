@@ -103,7 +103,7 @@ function Habits() {
                   <span className="text-xl">{h.emoji}</span>
                   <span className="min-w-0 flex-1">
                     <span className={cx("block truncate font-medium", h.doneToday && "text-soft line-through")}>{h.name}</span>
-                    <span className="font-mono text-[10.5px] text-faint">{h.times.length > 3 ? `${h.times.length}× from ${h.times[0]}` : h.times.join(" · ")}</span>
+                    <span className="text-xs text-faint tabular-nums">{h.times.length > 3 ? `${h.times.length}× from ${h.times[0]}` : h.times.join(" · ")}</span>
                   </span>
                   {h.streak > 0 && <span className="shrink-0 font-mono text-sm text-core">🔥 {h.streak}</span>}
                 </button>
@@ -120,17 +120,37 @@ function Habits() {
           <ul className="list-in space-y-3">
             {habits.data.map((h) => (
               <li key={h.id} className="rounded-xl border border-line p-3.5">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span>{h.emoji}</span>
-                  <span className="min-w-0 flex-1 basis-40 truncate font-medium">{h.name}</span>
-                  <span className="order-last w-full pl-6 font-mono text-[10.5px] text-soft sm:order-none sm:w-auto sm:pl-0">
-                    🔥 {h.streak} · best {h.best}
-                    {h.rate != null ? ` · ${h.rate}%` : ""}
-                  </span>
-                  <button type="button" onClick={() => removeHabit(h)} aria-label={`Delete ${h.name}`} className="hit relative p-1 text-faint hover:text-alert">
-                    <Trash2 size={14} />
+                <div className="flex items-center gap-2">
+                  <span className="text-lg leading-none">{h.emoji}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{h.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeHabit(h)}
+                    aria-label={`Delete ${h.name}`}
+                    title="Stop tracking"
+                    className="hit relative -mr-1.5 grid size-9 place-items-center rounded-md text-faint transition-colors hover:bg-alert/10 hover:text-alert"
+                  >
+                    <Trash2 size={15} />
                   </button>
                 </div>
+                {/* the numbers that matter, readable at a glance */}
+                <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg bg-sunken px-2 py-1.5">
+                    <dt className="text-[11px] text-faint">Streak</dt>
+                    <dd className={cx("text-sm font-semibold tabular-nums", h.streak > 0 ? "text-core" : "text-soft")}>
+                      {h.streak > 0 ? "🔥 " : ""}
+                      {h.streak} {h.streak === 1 ? "day" : "days"}
+                    </dd>
+                  </div>
+                  <div className="rounded-lg bg-sunken px-2 py-1.5">
+                    <dt className="text-[11px] text-faint">Best</dt>
+                    <dd className="text-sm font-semibold tabular-nums">{h.best} days</dd>
+                  </div>
+                  <div className="rounded-lg bg-sunken px-2 py-1.5">
+                    <dt className="text-[11px] text-faint">Last 30 days</dt>
+                    <dd className={cx("text-sm font-semibold tabular-nums", h.rate != null && h.rate >= 80 ? "text-ok" : "")}>{h.rate != null ? `${h.rate}%` : "–"}</dd>
+                  </div>
+                </dl>
                 <div className="mt-2.5 grid grid-cols-[repeat(30,minmax(0,1fr))] gap-[3px]" aria-label="Last 30 days">
                   {h.last30.map((d) => (
                     <span
@@ -140,15 +160,19 @@ function Habits() {
                     />
                   ))}
                 </div>
+                <div className="mt-1 flex justify-between text-[11px] text-faint" aria-hidden>
+                  <span>30 days ago</span>
+                  <span>today</span>
+                </div>
                 {/* its schedule: which weekdays it repeats on, and when */}
-                <div className="mt-2.5 flex flex-wrap items-center gap-1.5 font-mono text-[9.5px] text-faint" aria-label={`Repeats on ${h.days.map((d) => DAY_NAME[d]).join(", ")}${h.times.length ? ` at ${h.times.join(", ")}` : ""}`}>
-                  <span className="mr-0.5 tracking-[0.16em] uppercase">Repeats</span>
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-faint" aria-label={`Repeats on ${h.days.map((d) => DAY_NAME[d]).join(", ")}${h.times.length ? ` at ${h.times.join(", ")}` : ""}`}>
+                  <span className="mr-0.5">Repeats</span>
                   {DAY_LABEL.map((l, i) => (
-                    <span key={i} aria-hidden className={cx("grid size-[18px] place-items-center rounded-full border", h.days.includes(i) ? "border-ok/50 bg-ok/15 text-ok" : "border-line text-faint/50")}>
+                    <span key={i} aria-hidden className={cx("grid size-[22px] place-items-center rounded-full border font-medium", h.days.includes(i) ? "border-ok/50 bg-ok/15 text-ok" : "border-line text-faint/50")}>
                       {l}
                     </span>
                   ))}
-                  {h.times.length > 0 && <span className="ml-1 text-soft">· {h.times.length > 3 ? `${h.times.length}× a day` : h.times.join(" · ")}</span>}
+                  {h.times.length > 0 && <span className="ml-1 text-soft tabular-nums">· {h.times.length > 3 ? `${h.times.length}× a day` : h.times.join(" · ")}</span>}
                 </div>
               </li>
             ))}
@@ -175,19 +199,35 @@ function Habits() {
                     {b.name}
                     {b.relation && <span className="ml-1.5 text-[12px] font-normal text-faint">{b.relation}</span>}
                   </span>
-                  <span className="font-mono text-[10.5px] text-soft">
+                  <span className="text-xs text-soft">
                     {b.label}
                     {b.turning ? ` · turning ${b.turning}` : ""}
+                    {b.days > 7 && <span className="text-faint tabular-nums"> · in {b.days} days</span>}
                   </span>
                 </span>
-                <span className={cx("shrink-0 font-mono text-[11px]", b.days === 0 ? "text-core" : b.days <= 7 ? "text-data" : "text-faint")}>
-                  {b.days === 0 ? "TODAY" : b.days === 1 ? "TOMORROW" : `${b.days} days`}
-                </span>
-                <button type="button" onClick={() => setWishFor(b.id)} aria-label={`Write a wish for ${b.name}`} className="hit relative p-1.5 text-data hover:text-core">
+                {/* close ones get a chip; far ones say it quietly under the name (keeps names readable) */}
+                {b.days <= 7 && (
+                  <span className={cx("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums", b.days === 0 ? "bg-core/15 text-core" : "bg-data/10 text-data")}>
+                    {b.days === 0 ? "Today" : b.days === 1 ? "Tomorrow" : `in ${b.days} days`}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setWishFor(b.id)}
+                  aria-label={`Write a wish for ${b.name}`}
+                  title="Write a wish"
+                  className="grid size-9 shrink-0 place-items-center rounded-md text-data transition-colors hover:bg-data/10 hover:text-core pointer-coarse:size-11"
+                >
                   <Gift size={16} />
                 </button>
-                <button type="button" onClick={() => removeBirthday(b)} aria-label={`Remove ${b.name}`} className="p-1 text-faint hover:text-alert">
-                  <Trash2 size={14} />
+                <button
+                  type="button"
+                  onClick={() => removeBirthday(b)}
+                  aria-label={`Remove ${b.name}`}
+                  title="Remove"
+                  className="-ml-1 grid size-9 shrink-0 place-items-center rounded-md text-faint transition-colors hover:bg-alert/10 hover:text-alert pointer-coarse:size-11"
+                >
+                  <Trash2 size={15} />
                 </button>
               </li>
             ))}
