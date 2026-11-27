@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, BookHeart, FolderOpen, Newspaper, NotebookPen, Plus, Search, X } from "lucide-react";
+import { ArrowLeft, BookHeart, FolderOpen, Newspaper, NotebookPen, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Badge, Button, CardSkeleton, cx, Empty, ErrorText, Input, PageHeader, ProjectSelect, Textarea } from "@/components/ui";
+import { Badge, Button, CardSkeleton, cx, Empty, ErrorText, Input, PageHeader, ProjectSelect, RichText, Textarea } from "@/components/ui";
 import { api, fmtDate, type Note, type Project, useFetch } from "@/lib/client-api";
 
 /** A note's preview without Markdown marks (headings, bold, list dashes, link targets). */
@@ -83,6 +83,12 @@ function Notes() {
   const [error, setError] = useState<string | null>(null);
 
   const openId = params.get("open");
+  // An opened note is read first (formatted); Edit switches to the raw editor. New notes start in the editor.
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- another note opens in reading mode
+    setEditing(false);
+  }, [openId]);
   useEffect(() => {
     const n = openId && notes.data?.find((x) => x.id === openId);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync editor with ?open=
@@ -137,6 +143,7 @@ function Notes() {
       await notes.reload();
       setDraft({ id: saved.id, title: saved.title, content: saved.content, project_id: saved.project_id });
       router.replace(`/notes?open=${saved.id}`);
+      setEditing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -267,7 +274,76 @@ function Notes() {
           )}
         </div>
 
-        {draft ? (
+        {draft && current && !editing ? (
+          // Reading: the note formatted (headings, lists, links), not raw Markdown in an edit box.
+          <article className="rounded-xl border border-line bg-panel p-5 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100dvh-3rem)] lg:flex-col lg:self-start">
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(null);
+                router.replace("/notes");
+              }}
+              className="-mt-2 -ml-2 mb-2 inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm text-soft transition-colors hover:bg-raised hover:text-fg lg:hidden"
+            >
+              <ArrowLeft size={15} /> All notes
+            </button>
+            <header className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-faint">
+                  <span className={kindOf(current) === "brief" ? "text-data" : kindOf(current) === "diary" ? "text-ok" : "text-core"}>
+                    {kindOf(current) === "brief" ? "Morning brief" : kindOf(current) === "diary" ? "Diary" : "My note"}
+                  </span>
+                  {current.category && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span className="capitalize">{catLabel(catKey(current.category))}</span>
+                    </>
+                  )}
+                  <span aria-hidden>·</span>
+                  <span>Updated {fmtDate(current.updated_at)}</span>
+                </p>
+                <h2 className="mt-1 text-xl leading-snug font-semibold">{current.title}</h2>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+                  <Pencil size={13} /> Edit
+                </Button>
+                <button type="button" onClick={remove} aria-label="Delete note" title="Delete note" className="grid size-9 place-items-center rounded-md text-faint transition-colors hover:bg-alert/10 hover:text-alert pointer-coarse:size-11">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </header>
+            {/* long notes: the AI's short version first */}
+            {current.summary && current.content.length > 500 && kindOf(current) !== "diary" && (
+              <p className="mt-4 rounded-lg bg-sunken px-3.5 py-3 text-sm leading-relaxed text-soft">
+                <span className="mr-1.5 text-xs font-medium text-faint">In short</span>
+                {current.summary}
+              </p>
+            )}
+            <div className="mt-4 min-h-0 max-w-[70ch] overflow-y-auto text-[15px] leading-relaxed text-soft lg:-mr-2 lg:pr-2">
+              <RichText text={current.content} />
+            </div>
+            {tagsFor(current).length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-1 border-t border-line pt-3">
+                {tagsFor(current).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    title={`Show notes tagged ${t}`}
+                    onClick={() => {
+                      // filter the list by this tag (and show the list: on phones it's hidden while a note is open)
+                      setFilter(t);
+                      setDraft(null);
+                      router.replace("/notes");
+                    }}
+                    className="h-7 rounded-full border border-line px-2.5 text-xs text-soft transition-colors hover:border-line-strong hover:text-fg">
+                    #{t}
+                  </button>
+                ))}
+              </div>
+            )}
+          </article>
+        ) : draft ? (
           <div className="space-y-3 rounded-xl border border-line bg-panel p-4 lg:sticky lg:top-6 lg:self-start">
             <button
               type="button"
@@ -289,6 +365,18 @@ function Notes() {
             <div className="flex flex-wrap items-center gap-2">
               <ProjectSelect projects={projects.data} value={draft.project_id} onChange={(v) => setDraft({ ...draft, project_id: v })} />
               <Button onClick={save} disabled={busy || !draft.content.trim()}>{busy ? "Saving…" : "Save"}</Button>
+              {current && (
+                <Button
+                  variant="quiet"
+                  onClick={() => {
+                    // back to reading, throwing the unsaved changes away
+                    setDraft({ id: current.id, title: current.title, content: current.content, project_id: current.project_id });
+                    setEditing(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              )}
               {draft.id && <Button variant="danger" onClick={remove}>Delete</Button>}
               {current && <span className="ml-auto text-xs text-soft">Updated {fmtDate(current.updated_at)}</span>}
             </div>
