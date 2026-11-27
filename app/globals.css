@@ -1959,3 +1959,23 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
   transform-origin: bottom;
   animation: bar-rise 600ms var(--ease-out) 150ms backwards;
 }
+
+/* Apps: anchored panels (versions, voice commands, more) and the "writing the app" progress line. */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+.pop-in {
+  transform-origin: top right;
+  animation: pop-in 160ms var(--ease-out);
+}
+@keyframes build-line {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+.build-line {
+  animation: build-line 1.4s var(--ease-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop-in { animation: none; }
+  .build-line { animation: none; transform: none; width: 100% !important; opacity: 0.5; }
+}
