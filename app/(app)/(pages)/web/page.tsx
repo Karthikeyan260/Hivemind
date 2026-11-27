@@ -1,9 +1,13 @@
 "use client";
 
-import { Check, CircleAlert, ExternalLink, Globe, Hand, Loader2, MonitorPlay, Play, RotateCcw, Square, Trash2, X } from "lucide-react";
+import { Check, ChevronRight, CircleAlert, ExternalLink, Globe, Hand, Loader2, MonitorPlay, Play, RotateCcw, Square, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Badge, Button, cx, Empty, ErrorText, PageHeader } from "@/components/ui";
+import { Badge, Button, cx, Empty, ErrorText, PageHeader, RichText } from "@/components/ui";
+
+/** 'click a ""' (a link with no text) → "click a link": the browser's raw step names, in words. */
+const ELEMENT: Record<string, string> = { a: "a link", button: "a button", input: "a field", img: "an image", div: "an element", span: "an element" };
+const stepLabel = (did: string) => did.replace(/^(click|tap|hover) (\w+) ""$/, (_, verb: string, tag: string) => `${verb} ${ELEMENT[tag] ?? tag}`);
 import { useVoiceActions } from "@/components/voice/provider";
 import { api, timeAgo, useFetch, WEB_TASK_EVENT } from "@/lib/client-api";
 
@@ -252,8 +256,8 @@ function WebTasks() {
           {tasks.length === 0 && !list.loading && <Empty>No web tasks yet.</Empty>}
           {finishedCount > 0 && (
             <li className="flex justify-end">
-              <button type="button" onClick={clearFinished} className="flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-soft hover:text-alert">
-                <Trash2 size={12} /> Clear finished ({finishedCount})
+              <button type="button" onClick={clearFinished} className="flex h-9 items-center gap-1.5 rounded-md px-2 text-[13px] text-soft transition-colors hover:bg-alert/10 hover:text-alert">
+                <Trash2 size={13} /> Clear finished ({finishedCount})
               </button>
             </li>
           )}
@@ -262,7 +266,7 @@ function WebTasks() {
               <button
                 type="button"
                 onClick={() => router.replace(`/web?task=${t.id}`)}
-                className={cx("w-full rounded-md border p-3 pr-9 text-left", t.id === openId ? "border-core bg-core/5" : "border-line bg-raised hover:border-line-strong")}
+                className={cx("w-full rounded-md border p-3 pr-11 text-left", t.id === openId ? "border-core bg-core/5" : "border-line bg-raised hover:border-line-strong")}
               >
                 <div className="line-clamp-2 text-sm">{t.goal}</div>
                 <div className="mt-2 flex items-center gap-2">
@@ -275,7 +279,7 @@ function WebTasks() {
                 onClick={() => remove(t)}
                 title="Delete this task"
                 aria-label={`Delete task: ${t.goal}`}
-                className="hit absolute right-2 top-2 rounded p-1 text-faint hover:bg-alert/10 hover:text-alert"
+                className="absolute right-1.5 top-1.5 grid size-9 place-items-center rounded-md text-faint transition-colors hover:bg-alert/10 hover:text-alert pointer-coarse:size-11"
               >
                 <Trash2 size={14} />
               </button>
@@ -346,7 +350,10 @@ function WebTasks() {
             {task.result && (
               <div className="rounded-xl border border-ok/40 bg-ok/5 p-4 text-sm">
                 <div className="mb-1 font-mono text-[11px] uppercase tracking-wider text-ok">Result</div>
-                <p className="whitespace-pre-wrap leading-relaxed">{task.result}</p>
+                {/* formatted: lists, and long shop links as short "flipkart.com ↗" links */}
+                <div className="leading-relaxed [&_p]:my-1">
+                  <RichText text={task.result} />
+                </div>
               </div>
             )}
             {task.error && (
@@ -380,7 +387,7 @@ function WebTasks() {
                   </button>
                 )}
                 {shots.length > 1 && !showLive && (
-                  <button type="button" onClick={() => (playing ? setPlaying(false) : replay())} className="flex shrink-0 items-center gap-1 text-data hover:underline">
+                  <button type="button" onClick={() => (playing ? setPlaying(false) : replay())} className="-my-1.5 flex h-8 shrink-0 items-center gap-1 rounded px-1.5 text-data hover:bg-data/10">
                     {playing ? <Square size={11} /> : <Play size={12} />} {playing ? "Stop" : "Replay"}
                   </button>
                 )}
@@ -430,7 +437,14 @@ function WebTasks() {
               )}
             </div>
 
-            <ol className="max-w-3xl space-y-1.5">
+            {/* the step log: open while it works, folded once finished (the result and screenshots matter more then) */}
+            <details key={task.id + (ACTIVE.includes(task.status) ? "-live" : "-done")} open={ACTIVE.includes(task.status)} className="group max-w-3xl">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-sm text-soft hover:text-fg">
+                <ChevronRight size={15} className="transition-transform duration-150 group-open:rotate-90" />
+                Steps <span className="text-faint tabular-nums">({task.steps.length})</span>
+                {task.steps.some((s) => !s.ok) && <span className="text-xs text-alert">· {task.steps.filter((s) => !s.ok).length} had trouble</span>}
+              </summary>
+            <ol className="mt-1 space-y-1.5">
               {task.steps.map((s, i) => (
                 <li key={s.at + "-" + i}>
                   <button
@@ -444,7 +458,7 @@ function WebTasks() {
                   >
                     <span className="w-6 shrink-0 text-right font-mono text-[11px] text-faint">{i + 1}</span>
                     <span className="min-w-0">
-                      <span className={s.ok ? "" : "text-alert"}>{s.did}</span>
+                      <span className={s.ok ? "" : "text-alert"}>{stepLabel(s.did)}</span>
                       {s.note && <span className="text-alert"> · {s.note}</span>}
                       {s.thought && <span className="block text-xs text-soft">{s.thought}</span>}
                     </span>
@@ -457,6 +471,7 @@ function WebTasks() {
                 </li>
               )}
             </ol>
+            </details>
           </div>
         ) : (
           <Empty>Start a task to watch HIVEMIND work in the browser.</Empty>
