@@ -3,7 +3,7 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { RotateCcw } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 
 export type LaneId = "main" | "experience" | "projects" | "current";
@@ -27,10 +27,10 @@ export type Lane = { id: LaneId; label: string; hint: string };
 gsap.registerPlugin(useGSAP);
 
 export const LANE_COLOR: Record<LaneId, string> = { main: "#f0b45a", experience: "#5ec8e8", projects: "#b59cff", current: "#5fe3a1" };
-const ROW = 66;
+// Roomy layout, and a compact one for phones (narrow lanes, the date on its own line under the title).
+const WIDE = { ROW: 66, X0: 26, GAP: 30, R: 7.5 };
+const SLIM = { ROW: 74, X0: 12, GAP: 18, R: 6.5 };
 const TOP = 30;
-const X0 = 26;
-const GAP = 30;
 const STEP = 0.16; // seconds between rows in the build animation
 
 /** Short fake commit hash so it reads like a real git log. */
@@ -47,9 +47,21 @@ const hash = (id: string) => {
 export function GitGraph({ lanes, commits, selected, onSelect }: { lanes: Lane[]; commits: Commit[]; selected: string | null; onSelect: (c: Commit) => void }) {
   const root = useRef<HTMLDivElement>(null);
   const [run, setRun] = useState(0);
+  // narrow box (phones): the slim layout, so titles and dates fit instead of being cut off
+  const [slim, setSlim] = useState(false);
+  // measured before the first paint, so phones never draw (and animate) the wide layout first
+  useLayoutEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    setSlim(el.clientWidth < 480);
+    const ro = new ResizeObserver(([e]) => setSlim(e.contentRect.width < 480));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const { ROW, X0, GAP, R } = slim ? SLIM : WIDE;
   const laneX = (id: LaneId) => X0 + lanes.findIndex((l) => l.id === id) * GAP;
   const y = (row: number) => TOP + row * ROW;
-  const width = X0 + (lanes.length - 1) * GAP + 22;
+  const width = X0 + (lanes.length - 1) * GAP + (slim ? 14 : 22);
   const height = TOP * 2 + (commits.length - 1) * ROW;
 
   // Each branch lane lives from the commit that branches it to the commit that merges it (or to HEAD).
@@ -76,7 +88,7 @@ export function GitGraph({ lanes, commits, selected, onSelect }: { lanes: Lane[]
       return { lane, start, end: mergeAt >= 0 ? mergeAt : Math.min(end, last), d };
     }).filter((p): p is NonNullable<typeof p> => !!p);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lanes, commits]);
+  }, [lanes, commits, slim]);
 
   useGSAP(
     () => {
@@ -99,7 +111,7 @@ export function GitGraph({ lanes, commits, selected, onSelect }: { lanes: Lane[]
         tl.fromTo(li, { opacity: 0, x: -14 }, { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" }, Number(li.dataset.row) * STEP + 0.08);
       });
     },
-    { scope: root, dependencies: [run, commits.length] },
+    { scope: root, dependencies: [run, commits.length, slim] },
   );
 
   return (
@@ -107,13 +119,13 @@ export function GitGraph({ lanes, commits, selected, onSelect }: { lanes: Lane[]
       <button
         type="button"
         onClick={() => setRun((r) => r + 1)}
-        className="absolute -top-9 right-0 flex items-center gap-1 font-mono text-[10px] tracking-widest text-soft hover:text-core"
+        className="absolute -top-11 right-0 flex h-9 items-center gap-1.5 rounded-md px-2 text-xs text-soft transition-colors hover:bg-white/[0.04] hover:text-core"
       >
-        <RotateCcw size={12} /> REPLAY
+        <RotateCcw size={13} /> Replay
       </button>
 
       <div className="relative" style={{ height }}>
-        <svg key={run} width={width} height={height} className="absolute left-0 top-0 overflow-visible" aria-hidden>
+        <svg key={`svg-${run}-${slim}`} width={width} height={height} className="absolute left-0 top-0 overflow-visible" aria-hidden>
           <defs>
             <filter id="gg-glow" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="3.2" result="b" />
@@ -138,7 +150,7 @@ export function GitGraph({ lanes, commits, selected, onSelect }: { lanes: Lane[]
                 {(c.current || c.kind === "now") && (
                   <circle cx={cx0} cy={y(i)} r={13} fill="none" stroke={color} strokeWidth={1.5} className="gg-pulse" style={{ transformOrigin: `${cx0}px ${y(i)}px` }} />
                 )}
-                <circle cx={cx0} cy={y(i)} r={isSel ? 9 : 7.5} fill="#0b1016" stroke={color} strokeWidth={isSel ? 3 : 2.4} filter="url(#gg-glow)" />
+                <circle cx={cx0} cy={y(i)} r={isSel ? R + 1.5 : R} fill="#0b1016" stroke={color} strokeWidth={isSel ? 3 : 2.4} filter="url(#gg-glow)" />
                 <circle cx={cx0} cy={y(i)} r={c.kind === "milestone" ? 2 : 3.2} fill={color} />
                 {c.mergeFrom && <circle cx={cx0} cy={y(i)} r={11.5} fill="none" stroke={color} strokeOpacity={0.45} strokeDasharray="3 3" />}
               </g>
@@ -146,20 +158,22 @@ export function GitGraph({ lanes, commits, selected, onSelect }: { lanes: Lane[]
           })}
         </svg>
 
-        <ol className="absolute top-0" style={{ left: width + 8, right: 0 }}>
+        <ol key={`ol-${run}-${slim}`} className="absolute top-0" style={{ left: width + (slim ? 4 : 8), right: 0 }}>
           {commits.map((c, i) => (
-            <li key={c.id} data-row={i} className="absolute left-0 right-0" style={{ top: y(i) - ROW / 2 + 6, height: ROW - 10 }}>
+            <li key={c.id} data-row={i} className="absolute left-0 right-0" style={{ top: y(i) - ROW / 2 + 5, height: ROW - 10 }}>
               <button
                 type="button"
                 onClick={() => onSelect(c)}
+                aria-current={selected === c.id || undefined}
                 className={cx(
-                  "group flex h-full w-full items-center gap-3 border px-3 text-left transition-colors",
+                  "group flex h-full w-full items-center gap-3 border text-left transition-colors",
+                  slim ? "px-2" : "px-3",
                   selected === c.id ? "border-core/50 bg-core/[0.07]" : "border-transparent hover:border-line hover:bg-white/[0.02]",
                 )}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[10px] text-faint">{hash(c.id)}</span>
+                    {!slim && <span className="font-mono text-[10px] text-faint">{hash(c.id)}</span>}
                     {c.kind === "now" ? (
                       <span className="flex items-center gap-1.5">
                         <span className="rounded-sm px-1.5 py-px font-mono text-[10px] font-semibold tracking-wider text-[#0b1016]" style={{ background: LANE_COLOR.current }}>
@@ -169,11 +183,17 @@ export function GitGraph({ lanes, commits, selected, onSelect }: { lanes: Lane[]
                     ) : (
                       <span className="truncate text-[13.5px] font-medium">{c.title}</span>
                     )}
-                    {c.current && <span className="rounded-sm bg-ok/15 px-1.5 font-mono text-[9.5px] tracking-widest text-ok">PRESENT</span>}
+                    {c.current && <span className="shrink-0 rounded-sm bg-ok/15 px-1.5 text-[11px] font-medium text-ok">Present</span>}
                   </div>
                   {c.subtitle && <div className="truncate text-[12px] text-soft">{c.subtitle}</div>}
+                  {/* slim: the date gets its own line (the right-hand column doesn't fit) */}
+                  {slim && (
+                    <div className="mt-0.5 truncate text-[11px] tabular-nums" style={{ color: LANE_COLOR[c.lane] }}>
+                      {c.period}
+                    </div>
+                  )}
                 </div>
-                <div className="hidden shrink-0 text-right sm:block">
+                <div className={cx("shrink-0 text-right", slim ? "hidden" : "block")}>
                   <div className="font-mono text-[11px]" style={{ color: LANE_COLOR[c.lane] }}>
                     {c.period}
                   </div>

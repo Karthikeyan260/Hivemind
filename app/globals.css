@@ -1067,6 +1067,10 @@ html,
 body {
   overscroll-behavior: none;
 }
+/* Fixed things near the edge (the pet's glow ring) must never make the whole page scroll sideways. */
+html {
+  overflow-x: clip;
+}
 
 /* Custom targeting cursor replaces the system one (fine pointers only; text fields keep an I-beam). */
 @media (pointer: fine) {

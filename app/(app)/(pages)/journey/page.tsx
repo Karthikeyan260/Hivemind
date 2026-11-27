@@ -219,8 +219,9 @@ export default function JourneyPage() {
                 key={v}
                 type="button"
                 onClick={() => setView(v)}
+                aria-pressed={view === v}
                 className={cx(
-                  "flex items-center gap-1.5 border px-3 py-1.5 font-mono text-[10.5px] tracking-widest",
+                  "flex h-10 items-center gap-1.5 border px-4 font-mono text-[11.5px] tracking-widest transition-colors",
                   view === v
                     ? "border-core/60 bg-core/10 text-core"
                     : "border-line text-soft hover:text-fg",
@@ -269,19 +270,21 @@ export default function JourneyPage() {
                   </div>
                 }
               >
-                <div className="overflow-x-auto p-5 pt-12">
-                  <div className="min-w-[520px]">
-                    <GitGraph
-                      lanes={j.lanes}
-                      commits={j.commits}
-                      selected={current?.id ?? null}
-                      onSelect={setPicked}
-                    />
-                  </div>
+                <div className="p-3 pt-12 sm:p-5 sm:pt-12">
+                  <GitGraph
+                    lanes={j.lanes}
+                    commits={j.commits}
+                    selected={current?.id ?? null}
+                    onSelect={(c) => {
+                      setPicked(c);
+                      // phones: the details sit below the whole graph, so bring them into view
+                      if (window.innerWidth < 1024) requestAnimationFrame(() => document.getElementById("commit-details")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+                    }}
+                  />
                 </div>
               </Holo>
 
-              <div className="lg:sticky lg:top-6 lg:self-start">
+              <div id="commit-details" className="scroll-mt-20 lg:sticky lg:top-6 lg:self-start">
                 {current && (
                   <Holo
                     title={current.kind === "now" ? "HEAD" : "Commit details"}
