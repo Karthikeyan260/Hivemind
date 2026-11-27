@@ -3,6 +3,7 @@
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PEER_OPTIONS } from "@/lib/ice";
+import { relayAvailable, relayConnect, relayHost, supabaseBus } from "@/lib/games/relay";
 import { checkHost, proveHost, type PeerKind } from "@/lib/peer-auth";
 
 /**
@@ -28,6 +29,8 @@ const GIVE_UP_MS = 3 * 60_000;
 const KEEP_MS = 45 * 60_000;
 const cleanName = (v: unknown) => String(v ?? "").slice(0, 20).replace(/[^\p{L}\p{M}\p{N} .'-]/gu, "").trim();
 const TRANSIENT = ["network", "disconnected", "server-error", "socket-error", "socket-closed"];
+/** A direct connection not open after this long: switch to the Supabase relay (lib/games/relay). */
+const RELAY_AFTER_MS = 8000;
 
 type Opts<S, A> = {
   role: "host" | "guest";
@@ -158,6 +161,7 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
     // Solo: nobody to connect to. Off: the party connection is used instead.
     if (solo || off) return;
     let alive = true;
+    const startedAt = Date.now();
     const timers = new Set<ReturnType<typeof setTimeout>>();
     const later = (fn: () => void, ms: number) => {
       const t = setTimeout(() => {
@@ -168,6 +172,10 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
     };
     const hostId = `hivemind-${kind}-${room}`;
     let dial: () => void = () => {};
+    // The Supabase relay (lib/games/relay): the host's listener, and when a friend's direct connection won't come up.
+    let relay: { close: () => void } | null = null;
+    let relayTry: { c: DataConnection; at: number } | null = null;
+    const isRelay = (c: DataConnection | null) => !!(c?.metadata as { relay?: boolean } | undefined)?.relay;
 
     const onData = (c: DataConnection, m: Wire<S, A>) => {
       if (!m || typeof m !== "object") return;
@@ -206,7 +214,8 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
           verified.current = true;
           c.send({ t: "hello", name: opts.current.myName, id: myId.current } satisfies Wire<S, A>);
           const p = peer.current;
-          if (p && mic.current) {
+          // Voice needs the direct-connection service; over the relay (service unreachable) the game goes on without it.
+          if (p && p.open && !p.destroyed && mic.current) {
             call.current?.close();
             const mc = p.call(hostId, mic.current);
             call.current = mc;
@@ -256,6 +265,8 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
       const { default: PeerCtor } = await import("peerjs");
       if (!alive) return;
       if (role === "host") {
+        // A friend who can't reach this browser directly comes in over the relay: same checks (wire).
+        if (relayAvailable()) relay = relayHost(supabaseBus(hostId), (c) => wire(c as unknown as DataConnection));
         const open = (attempt: number) => {
           if (!alive) return;
           const p = new PeerCtor(hostId, PEER_OPTIONS);
@@ -295,8 +306,28 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
         const p = new PeerCtor(PEER_OPTIONS);
         peer.current = p;
         let lastDial = 0;
+        const viaRelay = () => {
+          if (!alive) return;
+          // Already knocking over the relay (it gives up by itself after 20 s): leave it be.
+          if (relayTry && relayTry.c === conn.current && !relayTry.c.open && Date.now() - relayTry.at < 22_000) return;
+          const old = conn.current;
+          conn.current = null;
+          old?.close();
+          const c = relayConnect(supabaseBus(hostId)) as unknown as DataConnection;
+          relayTry = { c, at: Date.now() };
+          conn.current = c;
+          wire(c);
+        };
         dial = () => {
-          if (!alive || p.destroyed || p.disconnected || Date.now() - lastDial < 2500) return;
+          if (!alive || Date.now() - lastDial < 2500) return;
+          const cur = conn.current;
+          // On the relay: open, or still knocking: don't cut it off with a new direct try.
+          if (isRelay(cur) && (cur!.open || (relayTry?.c === cur && Date.now() - relayTry.at < 22_000))) return;
+          // The direct-connection service can't be reached at all (blocked network): straight to the relay.
+          if (p.destroyed || p.disconnected || !p.open) {
+            if (relayAvailable() && Date.now() - startedAt > RELAY_AFTER_MS) viaRelay();
+            return;
+          }
           lastDial = Date.now();
           const old = conn.current;
           conn.current = null;
@@ -304,6 +335,8 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
           const c = p.connect(hostId, { reliable: true });
           conn.current = c;
           wire(c);
+          // No direct path after a few seconds (mobile data, strict Wi-Fi): carry the game over the relay instead.
+          if (relayAvailable()) later(() => c === conn.current && !c.open && viaRelay(), RELAY_AFTER_MS);
         };
         p.on("open", dial);
         p.on("disconnected", () => later(() => !p.destroyed && p.disconnected && p.reconnect(), 1000));
@@ -317,7 +350,11 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
               setKnocked(true);
             }
             later(dial, 3000);
-          } else if (TRANSIENT.includes(e.type)) later(() => (!p.destroyed && p.disconnected ? p.reconnect() : dial()), 2000);
+          } else if (TRANSIENT.includes(e.type)) {
+            // Blocked before it ever opened: the game can go over the relay right away.
+            if (!p.open && relayAvailable()) viaRelay();
+            else later(() => (!p.destroyed && p.disconnected ? p.reconnect() : dial()), 2000);
+          }
           else {
             setErr("Couldn't join the game. Check your connection.");
             setStage("error");
@@ -327,7 +364,8 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
     })();
 
     const redial = setInterval(() => {
-      if (role === "guest" && alive && (stageRef.current === "reconnecting" || stageRef.current === "waiting") && !conn.current?.open) dial();
+      // "connecting" too: when the direct-connection service never answers, dial() moves to the relay.
+      if (role === "guest" && alive && (stageRef.current === "reconnecting" || stageRef.current === "waiting" || stageRef.current === "connecting") && !conn.current?.open) dial();
     }, 4000);
 
     return () => {
@@ -343,6 +381,7 @@ export function usePeerGame<S, A>(o: Opts<S, A>) {
       const c = conn.current;
       conn.current = null;
       c?.close();
+      relay?.close();
       peer.current?.destroy();
       mic.current?.getTracks().forEach((t) => t.stop());
     };

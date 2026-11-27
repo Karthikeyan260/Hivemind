@@ -3,6 +3,7 @@
 import type { DataConnection, MediaConnection, Peer } from "peerjs";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { PEER_OPTIONS } from "@/lib/ice";
+import { relayAvailable, relayConnect, relayHost, supabaseBus } from "@/lib/games/relay";
 import { checkHost, proveHost } from "@/lib/peer-auth";
 import { boost as raceBoost, cleanRace, MIN_RACERS, newRace, TICK_MS, tick as raceTick, viewOf as raceView, type Race, type RaceView } from "@/lib/games/pet-race";
 import { callsFirst, CHAT_GAP_MS, claimSeat, cleanChat, cleanId, cleanName, cleanPet, GIFT_GAP_MS, isReaction, REACT_GAP_MS, reservedId } from "@/lib/games/party-rules";
@@ -59,6 +60,8 @@ type Wire =
 export const MAX_PLAYERS = 6;
 const KEEP_MS = 3 * 60 * 60_000;
 const TRANSIENT = ["network", "disconnected", "server-error", "socket-error", "socket-closed"];
+/** A direct connection not open after this long: switch to the Supabase relay (lib/games/relay). */
+const RELAY_AFTER_MS = 8000;
 /** A closed phone or a lost network can take a minute to show as a closed connection: both sides
  * say "still here" every few seconds, and a player silent for longer than this counts as away. */
 const PING_MS = 4000;
@@ -531,6 +534,22 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
     const hostId = `hivemind-party-${room}`;
     let dial: () => void = () => {};
     let knocked = false;
+    // The Supabase relay: the host's listener, or a friend's switch to it when a direct connection won't come up.
+    let relay: { close: () => void } | null = null;
+    let viaRelay: () => void = () => {};
+
+    /** Host: a friend's new connection, direct (PeerJS) or over the relay: the same checks either way. */
+    const accept = (c: DataConnection) => {
+      c.on("data", (d) => onHostData(c, d as Wire));
+      c.on("close", () => {
+        const id = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
+        if (id) lostGuest(id, c);
+      });
+      c.on("error", () => {
+        const id = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
+        if (id) lostGuest(id, c);
+      });
+    };
 
     const onHostData = (c: DataConnection, m: Wire) => {
       if (!m || typeof m !== "object") return;
@@ -642,7 +661,8 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
           setNote("Checked. Joining the lobby…");
           c.send({ t: "hello", name: opts.current.myName, id: me, key: seatKey, peer: peer.current?.id, pet: opts.current.pet ?? undefined } satisfies Wire);
           const p = peer.current;
-          if (p && mic.current) {
+          // Voice needs the direct-connection service; over the relay (service unreachable) the game goes on without it.
+          if (p && p.open && !p.destroyed && mic.current) {
             calls.current.get("host")?.call.close();
             const mc = p.call(hostId, mic.current, { metadata: { id: me } });
             mc.on("stream", (st) => hear("host", mc, st));
@@ -793,22 +813,14 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       const { default: PeerCtor } = await import("peerjs");
       if (!alive) return;
       if (role === "host") {
+        // Friends who can't reach this browser directly come in over the Supabase relay instead (lib/games/relay).
+        if (relayAvailable()) relay = relayHost(supabaseBus(hostId), (c) => accept(c as unknown as DataConnection));
         const open = (attempt: number) => {
           if (!alive) return;
           const p = new PeerCtor(hostId, PEER_OPTIONS);
           peer.current = p;
           p.on("open", () => setStage("lobby"));
-          p.on("connection", (c) => {
-            c.on("data", (d) => onHostData(c, d as Wire));
-            c.on("close", () => {
-              const id = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
-              if (id) lostGuest(id, c);
-            });
-            c.on("error", () => {
-              const id = [...conns.current.entries()].find(([, x]) => x === c)?.[0];
-              if (id) lostGuest(id, c);
-            });
-          });
+          p.on("connection", accept);
           p.on("call", (mc) => {
             const id = cleanId((mc.metadata as { id?: string } | undefined)?.id);
             if (!id || !conns.current.has(id)) return void mc.close();
@@ -844,6 +856,8 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
         dial = () => {
           const p = peer.current;
           if (!alive || !p || p.destroyed || p.disconnected || !p.open || Date.now() - lastDial < 2500 || stageRef.current === "full") return;
+          // Connected already (directly, or over the relay): a dial would only cut it off.
+          if (hostConn.current?.open) return;
           // A connection through a relay can take 10 seconds or more to come up: dialling again every few seconds would cut it off each time, so it never connects.
           const cur = hostConn.current;
           if (cur && !cur.open && !failed.has(cur) && Date.now() - lastDial < CONNECT_MS) return;
@@ -854,6 +868,25 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
           verified.current = false;
           const c = p.connect(hostId, { reliable: true });
           hostConn.current = c;
+          attach(c);
+          // No direct path after a few seconds (mobile data, strict Wi-Fi): carry the game over the Supabase relay instead.
+          if (relayAvailable()) later(() => c === hostConn.current && !c.open && viaRelay(), RELAY_AFTER_MS);
+        };
+        viaRelay = () => {
+          if (!alive || stageRef.current === "full" || stageRef.current === "error") return;
+          const cur = hostConn.current;
+          // Already on the relay (open, or still knocking): leave it be.
+          if (cur && (cur.metadata as { relay?: boolean } | undefined)?.relay && !failed.has(cur)) return;
+          lastDial = Date.now();
+          hostConn.current = null;
+          cur?.close();
+          verified.current = false;
+          setNote(`No direct path to ${opts.current.hostName}'s table on this network. Connecting another way…`);
+          const c = relayConnect(supabaseBus(hostId)) as unknown as DataConnection;
+          hostConn.current = c;
+          attach(c);
+        };
+        const attach = (c: DataConnection) => {
           c.on("data", (d) => onGuestData(c, d as Wire));
           c.on("open", () => {
             setNote(`Found ${opts.current.hostName}'s table. Checking it's really them…`);
@@ -871,7 +904,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
           // Reached the connection service but not the table after a while: say so (usually the friend's network, e.g. mobile data).
           later(() => {
             if (c === hostConn.current && !c.open && !failed.has(c)) setNote(`Still trying to reach ${opts.current.hostName}'s table. This network may be blocking a direct connection: try Wi-Fi instead of mobile data (or the other way round).`);
-          }, 12_000);
+          }, RELAY_AFTER_MS + 12_000);
         };
         // A friend's own link to the relay. If it fails before it ever opened (a busy relay, a
         // network blip as the page loads), start a fresh one: reconnect() only works after an open.
@@ -907,6 +940,8 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
               later(dial, 3000);
             } else if (TRANSIENT.includes(e.type)) {
               setNote("Can't reach the connection service yet. Trying again…");
+              // Blocked before it ever opened: no need to wait, the game can go over the relay right away.
+              if (!p.open && relayAvailable()) viaRelay();
               if (!p.open) {
                 p.destroy();
                 later(() => start(attempt + 1), Math.min(10_000, 1500 * (attempt + 1)));
@@ -921,8 +956,12 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       }
     })();
 
+    const startedAt = Date.now();
     const redial = setInterval(() => {
-      if (role === "guest" && alive && stageRef.current !== "error" && stageRef.current !== "full" && !hostConn.current?.open) dial();
+      if (role !== "guest" || !alive || stageRef.current === "error" || stageRef.current === "full" || hostConn.current?.open) return;
+      // The direct-connection service itself can't be reached (blocked network): go straight to the relay.
+      if (relayAvailable() && !peer.current?.open && Date.now() - startedAt > RELAY_AFTER_MS) viaRelay();
+      else dial();
     }, 4000);
     const beat = setInterval(() => {
       if (!alive) return;
@@ -967,6 +1006,7 @@ export function usePartyNet(o: { role: "host" | "guest"; room: string; myName: s
       allConns.clear();
       hostConn.current?.close();
       hostConn.current = null;
+      relay?.close();
       peer.current?.destroy();
       mic.current?.getTracks().forEach((t) => t.stop());
       void audioCtx.current?.close().catch(() => {});
