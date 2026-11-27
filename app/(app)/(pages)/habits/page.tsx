@@ -79,11 +79,30 @@ function Habits() {
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="font-mono text-[11px] uppercase tracking-[0.2em] text-core">Today</h2>
           {today.length > 0 && (
-            <span className="font-mono text-[11px] text-soft">
+            <span className={cx("font-mono text-[11px]", doneCount === today.length ? "text-ok" : "text-soft")}>
               {doneCount}/{today.length} done
             </span>
           )}
         </div>
+        {today.length > 0 && (
+          <>
+            {/* how far through today you are, at a glance */}
+            <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-raised" role="progressbar" aria-valuenow={doneCount} aria-valuemin={0} aria-valuemax={today.length} aria-label="Today's habits done">
+              <div className="h-full rounded-full bg-ok transition-[width] duration-500 ease-out" style={{ width: `${(doneCount / today.length) * 100}%` }} />
+            </div>
+            {doneCount === today.length && (
+              <p className="mb-3 rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok">
+                All done for today 🎉{" "}
+                <span className="text-ok/80">
+                  {(() => {
+                    const best = Math.max(...today.map((h) => h.streak));
+                    return best >= 2 ? `Your longest streak is ${best} days.` : "Same again tomorrow.";
+                  })()}
+                </span>
+              </p>
+            )}
+          </>
+        )}
         {!habits.data ? (
           <Skeleton lines={3} />
         ) : !today.length ? (
@@ -333,8 +352,8 @@ function AddBirthday({ onAdded }: { onAdded: () => void }) {
         <Input placeholder="Relation (friend, sister…), optional" value={relation} onChange={(e) => setRelation(e.target.value)} aria-label="Relation" />
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <label className="flex items-center gap-2 text-[12.5px] text-soft">
-          <input type="checkbox" checked={withYear} onChange={(e) => setWithYear(e.target.checked)} /> The year is right (show their age)
+        <label className="flex min-h-10 cursor-pointer items-center gap-2.5 text-[13px] text-soft">
+          <input type="checkbox" checked={withYear} onChange={(e) => setWithYear(e.target.checked)} className="size-4 accent-[var(--core)]" /> The year is right (show their age)
         </label>
         <Button type="submit" disabled={busy || !name.trim() || !date}>
           <Plus size={15} /> Save
