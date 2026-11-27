@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, MessageSquare } from "lucide-react";
+import { ArrowLeft, ChevronRight, MessageSquare, Pencil } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -56,7 +56,7 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <Link href="/projects" className="mb-6 inline-flex items-center gap-1.5 text-sm text-soft hover:text-fg">
+      <Link href="/projects" className="-ml-2 mb-4 inline-flex h-10 items-center gap-1.5 rounded-md px-2 text-sm text-soft transition-colors hover:bg-raised hover:text-fg">
         <ArrowLeft size={14} /> Projects
       </Link>
       <PageHeader
@@ -89,8 +89,15 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         ) : (
-          <button onClick={() => (setDesc(p.description ?? ""), setEditing(true))} className="max-w-[65ch] text-left text-[15px] leading-relaxed text-soft hover:text-fg">
+          <button
+            type="button"
+            onClick={() => (setDesc(p.description ?? ""), setEditing(true))}
+            title="Edit the description"
+            className="group max-w-[65ch] text-left text-[15px] leading-relaxed text-soft hover:text-fg"
+          >
             {p.description || "Add a description…"}
+            {/* it's editable: say so (it looked like plain text) */}
+            <Pencil size={13} className="ml-1.5 inline -translate-y-px text-faint opacity-60 transition-opacity group-hover:opacity-100" aria-hidden />
           </button>
         )}
         {p.metadata.reason && <p className="mt-2 font-mono text-[11px] text-faint">HIVEMIND created this {p.metadata.reason}</p>}
@@ -104,7 +111,14 @@ export default function ProjectDetailPage() {
           {p.memories.length > 0 && (
             <Group title="Memories">
               {p.memories.map((m) => (
-                <Row key={m.id} href={`/memories?open=${m.id}`} title={m.title} meta={<Badge>{m.memory_type.replace("_", " ")}</Badge>} body={m.content} />
+                <Row
+                  key={m.id}
+                  href={`/memories?open=${m.id}`}
+                  title={m.title}
+                  // a type badge only when they differ (all "project context" here said nothing)
+                  meta={new Set(p.memories.map((x) => x.memory_type)).size > 1 ? <Badge>{m.memory_type.replace("_", " ")}</Badge> : null}
+                  body={preview(m.content)}
+                />
               ))}
             </Group>
           )}
@@ -132,11 +146,20 @@ export default function ProjectDetailPage() {
   );
 }
 
+/**
+ * Portfolio imports store a "Name: … Cluster: … Year: … Mission: …" dump. The page already shows the
+ * name, cluster and year, so preview the Mission line when there is one; anything else is shown as is.
+ */
+function preview(content: string) {
+  const mission = /\bMission:\s*([\s\S]+?)(?=\s+[A-Z][A-Za-z ]{1,20}:\s|$)/.exec(content);
+  return mission ? mission[1].trim() : content;
+}
+
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h2 className="mb-2 text-sm font-semibold">{title}</h2>
-      <ul className="divide-y divide-line border-y border-line">{children}</ul>
+      <h2 className="mb-2 px-1 text-sm font-semibold">{title}</h2>
+      <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-raised">{children}</ul>
     </section>
   );
 }
@@ -144,12 +167,15 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 function Row({ href, title, meta, body }: { href: string; title: string; meta: React.ReactNode; body: string }) {
   return (
     <li>
-      <Link href={href} className="block px-1 py-3 hover:bg-raised/50">
-        <div className="flex items-center justify-between gap-3">
-          <span className="truncate text-sm font-medium">{title}</span>
-          {meta}
+      <Link href={href} className="group flex items-start gap-3 px-4 py-3 transition-colors duration-150 hover:bg-sunken/60">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <span className="truncate text-sm font-medium group-hover:text-core">{title}</span>
+            {meta}
+          </div>
+          {body && <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-soft">{body}</p>}
         </div>
-        {body && <p className="mt-1 line-clamp-2 text-sm text-soft">{body}</p>}
+        <ChevronRight size={16} className="mt-0.5 shrink-0 text-faint transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden />
       </Link>
     </li>
   );

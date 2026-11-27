@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Film, List, Wand2 } from "lucide-react";
+import { ChevronRight, Film, List, Plus, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -19,6 +19,7 @@ const ProjectReel = dynamic(() => import("@/components/projects/reel").then((m) 
 
 const STATUS_DOT: Record<string, string> = { active: "bg-ok", paused: "bg-core", done: "bg-faint" };
 const FILTERS = ["all", "active", "paused", "done"] as const;
+const itemsLabel = (n: number) => (n === 1 ? "1 item" : `${n} items`);
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -52,6 +53,7 @@ export default function ProjectsPage() {
     try {
       await api("/api/projects", { method: "POST", json: { name } });
       setName("");
+      setAdding(false);
       brain.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -75,6 +77,16 @@ export default function ProjectsPage() {
   }
 
   const projects = (brain.data?.projects ?? []).filter((p) => filter === "all" || p.status === filter);
+  const [adding, setAdding] = useState(false);
+  const counts = Object.fromEntries(FILTERS.map((f) => [f, (brain.data?.projects ?? []).filter((p) => f === "all" || p.status === f).length])) as Record<(typeof FILTERS)[number], number>;
+  // by portfolio cluster, biggest group first; projects without one go last under "Other"
+  const groups = Object.entries(
+    projects.reduce<Record<string, typeof projects>>((m, p) => {
+      const k = p.metadata?.cluster || "Other";
+      (m[k] ??= []).push(p);
+      return m;
+    }, {}),
+  ).sort((a, b) => (a[0] === "Other" ? 1 : b[0] === "Other" ? -1 : b[1].length - a[1].length));
 
   // Voice: everything on this page (the 3D reel registers its own show/tour/demo actions).
   useVoiceActions({
@@ -142,7 +154,7 @@ export default function ProjectsPage() {
             role="tab"
             aria-selected={view === v}
             onClick={() => switchView(v)}
-            className={cx("flex items-center gap-1.5 border px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider", view === v ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}
+            className={cx("flex h-10 items-center gap-1.5 border px-4 font-mono text-[11.5px] uppercase tracking-wider transition-colors", view === v ? "border-core bg-core/15 text-core" : "border-line text-soft hover:text-fg")}
           >
             <Icon size={13} /> {label}
           </button>
@@ -160,23 +172,38 @@ export default function ProjectsPage() {
       ) : (
       <>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1" role="tablist" aria-label="Filter by status">
+        <div className="flex gap-1 rounded-lg bg-sunken p-1" role="tablist" aria-label="Filter by status">
           {FILTERS.map((f) => (
             <button
               key={f}
               role="tab"
               aria-selected={filter === f}
               onClick={() => setFilter(f)}
-              className={cx("rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider", filter === f ? "bg-raised text-fg" : "text-faint hover:text-soft")}
+              className={cx(
+                "flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] capitalize transition-colors pointer-coarse:h-10",
+                filter === f ? "bg-raised font-medium text-fg shadow-sm" : "text-soft hover:text-fg",
+              )}
             >
               {f}
+              <span className="text-[11px] text-faint tabular-nums">{counts[f]}</span>
             </button>
           ))}
         </div>
-        <form onSubmit={create} className="flex gap-2">
-          <Input placeholder="New project name" required value={name} onChange={(e) => setName(e.target.value)} className="w-56" />
-          <Button type="submit" disabled={!!busy || !name.trim()}>Create</Button>
-        </form>
+        {adding ? (
+          <form onSubmit={create} className="flex w-full gap-2 sm:w-auto">
+            <Input autoFocus placeholder="New project name" required value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setAdding(false)} className="min-w-0 flex-1 sm:w-56" />
+            <Button type="submit" disabled={!!busy || !name.trim()}>
+              Create
+            </Button>
+            <Button type="button" variant="quiet" onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+          </form>
+        ) : (
+          <Button type="button" variant="ghost" onClick={() => setAdding(true)}>
+            <Plus size={15} /> New project
+          </Button>
+        )}
       </div>
 
       {!brain.data ? (
@@ -192,25 +219,41 @@ export default function ProjectsPage() {
           )}
         </Empty>
       ) : (
-        <ul className="list-in divide-y divide-line border-y border-line">
-          {projects.map((p) => (
-            <li key={p.id}>
-              <Link href={`/projects/${p.id}`} className="group grid grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1 px-2 py-4 hover:bg-raised/50 sm:grid-cols-[auto_1fr_auto_auto]">
-                <span className={cx("h-2 w-2 rounded-full", STATUS_DOT[p.status] ?? "bg-faint")} aria-label={p.status} />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate font-medium group-hover:text-core">{p.name}</span>
-                    {p.metadata?.auto && <Badge tone="core">auto</Badge>}
-                    {p.metadata?.cluster && <span className="hidden font-mono text-[10.5px] text-faint sm:inline">{p.metadata.cluster}</span>}
-                  </div>
-                  {p.description && <p className="mt-0.5 line-clamp-1 text-sm text-soft">{p.description}</p>}
-                </div>
-                <span className="hidden font-mono text-[11px] text-faint sm:block">{p.metadata?.year ?? ""}</span>
-                <span className="font-mono text-xs tabular-nums text-data">{p.items} items</span>
-              </Link>
-            </li>
+        // grouped by the portfolio's own clusters (Algorithmic Play, LLM & Agents…), biggest first
+        <div className="space-y-7">
+          {groups.map(([cluster, list]) => (
+            <section key={cluster} aria-label={cluster}>
+              <h2 className="mb-2 flex items-baseline gap-2 px-1 text-sm font-medium text-soft">
+                {cluster} <span className="text-xs text-faint tabular-nums">{list.length}</span>
+              </h2>
+              <ul className="list-in divide-y divide-line overflow-hidden rounded-xl border border-line bg-raised">
+                {list.map((p) => (
+                  <li key={p.id}>
+                    <Link href={`/projects/${p.id}`} className="group flex items-start gap-3 px-4 py-3.5 transition-colors duration-150 hover:bg-sunken/60">
+                      <span className={cx("mt-[7px] size-2 shrink-0 rounded-full", STATUS_DOT[p.status] ?? "bg-faint")} aria-hidden />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="font-medium group-hover:text-core">{p.name}</span>
+                          {p.status !== "active" && <span className={cx("rounded-full px-2 py-px text-[11px] capitalize", p.status === "paused" ? "bg-core/12 text-core" : "bg-sunken text-soft")}>{p.status}</span>}
+                          {p.metadata?.auto && <Badge tone="core">auto</Badge>}
+                        </div>
+                        {p.description && <p className="mt-0.5 line-clamp-2 text-sm leading-relaxed text-soft sm:line-clamp-1">{p.description}</p>}
+                        <p className="mt-1 text-xs text-faint tabular-nums sm:hidden">
+                          {[p.metadata?.year, itemsLabel(p.items)].filter(Boolean).join(" · ")}
+                        </p>
+                      </div>
+                      <span className="hidden shrink-0 pt-0.5 text-right text-xs text-faint tabular-nums sm:block">
+                        <span className={p.items ? "text-data" : ""}>{itemsLabel(p.items)}</span>
+                        {p.metadata?.year && <span className="block">{p.metadata.year}</span>}
+                      </span>
+                      <ChevronRight size={16} className="mt-0.5 shrink-0 text-faint transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
       </>
       )}
