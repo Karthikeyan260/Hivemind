@@ -73,9 +73,12 @@ export default function CallsPage() {
                   ))}
                 </Select>
               </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={d.settings.my_voice} onChange={(e) => set({ my_voice: e.target.checked })} />
-                Speak in my cloned voice (Google now needs a paid plan for it; otherwise HIVEMIND&apos;s voice)
+              <label className="flex min-h-10 cursor-pointer items-start gap-2.5 pt-2">
+                <input type="checkbox" checked={d.settings.my_voice} onChange={(e) => set({ my_voice: e.target.checked })} className="mt-0.5 size-4 shrink-0 accent-[var(--core)]" />
+                <span>
+                  Answer in my own cloned voice
+                  <span className="block text-xs text-faint">Needs a paid Google plan; without it HIVEMIND uses its own voice.</span>
+                </span>
               </label>
             </div>
           </section>
@@ -85,19 +88,19 @@ export default function CallsPage() {
             <p className="mb-3 text-soft">Anyone with this link can call you on HIVEMIND from a browser. Put it in your WhatsApp status or email signature.</p>
             <code className="mb-3 block truncate rounded-md bg-raised px-3 py-2 font-mono text-xs text-data">{d.link}</code>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => void navigator.clipboard?.writeText(d.link).then(() => setCopied(true))}>
-                {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
+              <Button onClick={() => void navigator.clipboard?.writeText(d.link).then(() => setCopied(true))}>
+                {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy link"}
               </Button>
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(`Call me on HIVEMIND: ${d.link}`)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-line-strong px-2.5 text-xs hover:border-data hover:text-data"
+                className="inline-flex h-9 items-center gap-1.5 rounded-md border border-line-strong px-3.5 text-sm transition-colors hover:border-data hover:text-data pointer-coarse:h-11"
               >
                 <Send size={13} /> Share on WhatsApp
               </a>
-              <Button size="sm" variant="quiet" onClick={resetLink} title="Stop the old link working">
-                <RefreshCw size={13} /> New link
+              <Button variant="quiet" onClick={resetLink} title="Stop the old link working">
+                <RefreshCw size={14} /> New link
               </Button>
             </div>
           </section>
@@ -107,7 +110,7 @@ export default function CallsPage() {
       <div className="mb-2 flex items-center justify-between">
         <h2 className="font-mono text-[11px] uppercase tracking-wider text-faint">Calls HIVEMIND answered</h2>
         {!!d?.items.length && (
-          <button type="button" onClick={() => remove()} className="font-mono text-[11px] uppercase tracking-wider text-soft hover:text-alert">
+          <button type="button" onClick={() => remove()} className="h-9 rounded-md px-2 text-[13px] text-soft transition-colors hover:bg-alert/10 hover:text-alert">
             Clear all
           </button>
         )}
@@ -138,7 +141,7 @@ export default function CallsPage() {
                   </div>
                   <p className="mt-1 text-sm text-soft">{c.summary || c.reason || "…"}</p>
                   <details className="mt-2 text-sm">
-                    <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-faint">Conversation</summary>
+                    <summary className="flex min-h-9 cursor-pointer items-center text-[13px] text-soft hover:text-fg">Read the conversation</summary>
                     <div className="mt-2 space-y-1.5">
                       {c.lines.map((l, i) => (
                         <p key={i} className={l.who === "caller" ? "text-fg" : "text-soft"}>
@@ -149,7 +152,7 @@ export default function CallsPage() {
                     </div>
                   </details>
                 </div>
-                <button type="button" onClick={() => remove(c.id)} aria-label="Delete" className="text-faint hover:text-alert">
+                <button type="button" onClick={() => remove(c.id)} aria-label="Delete" className="-mt-1.5 -mr-1.5 grid size-9 shrink-0 place-items-center rounded-md text-faint transition-colors hover:bg-alert/10 hover:text-alert pointer-coarse:size-11">
                   <Trash2 size={15} />
                 </button>
               </div>

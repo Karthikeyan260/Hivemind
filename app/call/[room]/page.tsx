@@ -26,6 +26,56 @@ export default function CallPage() {
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
+/**
+ * How loud a stream is right now (0 to 1), read about 15 times a second: the avatar glows when the other
+ * person speaks, and the mute button's ring shows your own mic is picking you up. Nothing is recorded.
+ */
+function useLevel(stream: MediaStream | null) {
+  const [level, setLevel] = useState(0);
+  useEffect(() => {
+    if (!stream || !stream.getAudioTracks().length) return;
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    let ctx: AudioContext;
+    try {
+      ctx = new Ctx();
+    } catch {
+      return;
+    }
+    void ctx.resume().catch(() => {});
+    const src = ctx.createMediaStreamSource(stream);
+    const an = ctx.createAnalyser();
+    an.fftSize = 512;
+    src.connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    let last = 0;
+    let shown = 0;
+    let raf = 0;
+    const tick = (t: number) => {
+      raf = requestAnimationFrame(tick);
+      if (t - last < 66) return;
+      last = t;
+      an.getByteTimeDomainData(buf);
+      let sum = 0;
+      for (const v of buf) sum += ((v - 128) / 128) ** 2;
+      // Speech sits around 0.02-0.2 RMS: stretch it to 0..1, and only re-render on a visible change.
+      const l = Math.min(1, Math.sqrt(sum / buf.length) * 6);
+      if (Math.abs(l - shown) > 0.06) {
+        shown = l;
+        setLevel(l);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      src.disconnect();
+      void ctx.close().catch(() => {});
+      setLevel(0);
+    };
+  }, [stream]);
+  return level;
+}
+
 function Call() {
   const { room } = useParams<{ room: string }>();
   const q = useSearchParams();
@@ -55,6 +105,10 @@ function Call() {
   const [screen, setScreen] = useState<{ mode: "missed" | "always"; wait_s: number } | null>(null);
   const [screening, setScreening] = useState<"no" | "on" | "done">("no");
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
+  // The other person's audio, for the "they're talking" glow.
+  const [remote, setRemote] = useState<MediaStream | null>(null);
+  const theirLevel = useLevel(remote);
+  const myLevel = useLevel(micStream);
 
   const guestLink = typeof window === "undefined" ? "" : `${location.origin}/call/${room}?from=${encodeURIComponent(q.get("from") || "")}`;
 
@@ -68,6 +122,8 @@ function Call() {
 
   const end = useCallback(() => {
     cleanup();
+    setRemote(null);
+    setMicStream(null);
     setStage("ended");
   }, [cleanup]);
 
@@ -112,11 +168,12 @@ function Call() {
   const attach = useCallback(
     (c: MediaConnection) => {
       call.current = c;
-      c.on("stream", (remote) => {
+      c.on("stream", (theirs) => {
         if (audio.current) {
-          audio.current.srcObject = remote;
+          audio.current.srcObject = theirs;
           void audio.current.play().catch(() => {});
         }
+        setRemote(theirs);
         setStage("live");
       });
       c.on("close", end);
@@ -249,17 +306,22 @@ function Call() {
         <button
           type="button"
           onClick={goHome}
-          className="fixed left-4 top-[max(1rem,env(safe-area-inset-top))] flex items-center gap-1 font-mono text-[11px] uppercase tracking-wider text-data"
+          className="fixed top-[max(0.5rem,env(safe-area-inset-top))] left-2 flex h-10 items-center gap-1 rounded-md px-2 font-mono text-[12px] tracking-wider text-data uppercase transition-colors hover:bg-raised"
         >
-          <ChevronLeft size={14} /> {stage === "live" ? "End & back" : "HIVEMIND"}
+          <ChevronLeft size={15} /> {stage === "live" ? "End & back" : "HIVEMIND"}
         </button>
       )}
       <div className="font-mono text-[11px] tracking-[0.3em] text-faint">HIVEMIND · CALL</div>
 
       <div className="flex flex-col items-center gap-4 text-center">
-        <div className={cx("flex size-28 items-center justify-center rounded-full border-2 text-4xl font-semibold uppercase", stage === "live" ? "border-ok text-ok motion-safe:animate-pulse" : "border-data/40 text-data")}>
+        {/* the other person's avatar glows as they speak */}
+        <div
+          className={cx("flex size-28 items-center justify-center rounded-full border-2 text-4xl font-semibold uppercase transition-[box-shadow] duration-100", stage === "live" ? "border-ok text-ok" : "border-data/40 text-data")}
+          style={stage === "live" ? { boxShadow: `0 0 0 ${Math.round(4 + theirLevel * 18)}px oklch(0.8 0.14 150 / ${(0.12 + theirLevel * 0.3).toFixed(2)})` } : undefined}
+        >
           {other.slice(0, 1)}
         </div>
+        {stage === "live" && <p className={cx("-mb-2 text-xs transition-opacity", theirLevel > 0.15 ? "text-ok opacity-100" : "opacity-0")} aria-hidden>{other} is talking</p>}
         <div>
           <div className="text-2xl font-semibold capitalize">{other}</div>
           <div className={cx("mt-1 font-mono text-sm", stage === "error" ? "text-alert" : "text-soft")}>
@@ -315,29 +377,38 @@ function Call() {
         </div>
       )}
 
-      <div className={cx("flex items-center gap-6", !isHost && screening === "on" && stage !== "live" && "hidden")}>
+      {/* each button says what it does underneath */}
+      <div className={cx("flex items-start gap-8", !isHost && screening === "on" && stage !== "live" && "hidden")}>
         {(stage === "ready" || stage === "error" || stage === "ended") && !(stage === "ended" && !isHost) && (
-          <button type="button" onClick={start} aria-label="Start call" className="flex size-16 items-center justify-center rounded-full bg-ok text-black">
-            <Phone size={26} />
+          <button type="button" onClick={start} aria-label="Start call" className="flex flex-col items-center gap-2 text-sm text-soft">
+            <span className="flex size-16 items-center justify-center rounded-full bg-ok text-black shadow-lg transition-transform active:scale-95">
+              <Phone size={26} />
+            </span>
+            {stage === "ready" ? (isHost ? "Start call" : "Call") : "Call again"}
           </button>
         )}
         {(stage === "waiting" || stage === "connecting" || stage === "live") && (
           <>
-            <button
-              type="button"
-              onClick={toggleMute}
-              aria-pressed={muted}
-              aria-label={muted ? "Unmute" : "Mute"}
-              className={cx("flex size-14 items-center justify-center rounded-full border", muted ? "border-alert bg-alert/15 text-alert" : "border-line text-fg")}
-            >
-              {muted ? <MicOff size={22} /> : <Mic size={22} />}
+            <button type="button" onClick={toggleMute} aria-pressed={muted} aria-label={muted ? "Unmute" : "Mute"} className={cx("flex flex-col items-center gap-2 text-sm", muted ? "text-alert" : "text-soft")}>
+              {/* your own mic level rings the button: proof the other side can hear you */}
+              <span
+                className={cx("flex size-16 items-center justify-center rounded-full border-2 transition-[box-shadow,background-color] duration-100 active:scale-95", muted ? "border-alert bg-alert text-white" : "border-line bg-raised text-fg")}
+                style={!muted && myLevel > 0.05 ? { boxShadow: `0 0 0 ${Math.round(2 + myLevel * 8)}px oklch(0.84 0.085 215 / 0.35)` } : undefined}
+              >
+                {muted ? <MicOff size={24} /> : <Mic size={24} />}
+              </span>
+              {muted ? "Muted" : "Mute"}
             </button>
-            <button type="button" onClick={end} aria-label="Hang up" className="flex size-16 items-center justify-center rounded-full bg-alert text-white">
-              <PhoneOff size={26} />
+            <button type="button" onClick={end} aria-label="Hang up" className="flex flex-col items-center gap-2 text-sm text-soft">
+              <span className="flex size-16 items-center justify-center rounded-full bg-alert text-white shadow-lg transition-transform active:scale-95">
+                <PhoneOff size={26} />
+              </span>
+              End
             </button>
           </>
         )}
       </div>
+      {muted && stage === "live" && <p className="-mt-4 text-xs text-alert">You&apos;re muted: {other} can&apos;t hear you.</p>}
 
       {isHost && stage === "ended" && (
         <div className="flex w-full max-w-xs flex-col items-center gap-3">
@@ -349,7 +420,7 @@ function Call() {
                 void saveNote();
               }}
               disabled={saved}
-              className="font-mono text-[11px] uppercase tracking-wider text-data disabled:text-ok"
+              className="w-full rounded-full border border-data/40 py-3 text-sm text-data transition-colors hover:bg-data/10 disabled:border-ok/40 disabled:text-ok"
             >
               {saved ? "Saved to your memories ✓" : "Save this call to memory"}
             </button>
@@ -360,7 +431,7 @@ function Call() {
         </div>
       )}
       {!isHost && stage === "ended" && <p className="text-center text-sm text-soft">You can close this page now.</p>}
-      {!isHost && <p className="max-w-xs text-center text-[11.5px] text-faint">Private browser call. Nothing is recorded. Allow the microphone when asked.</p>}
+      {!isHost && <p className="max-w-xs text-center text-xs leading-relaxed text-faint">Private browser call. Nothing is recorded. Allow the microphone when asked.</p>}
     </main>
   );
 }
