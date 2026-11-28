@@ -132,7 +132,7 @@ export function SnakesGame({ myName, party = null }: { myName: string; /** Game 
 
   const people = party ? here(party.players).length : 1;
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
+    <div data-playing={s ? "" : undefined} className="mx-auto flex w-full max-w-5xl flex-col gap-3">
       {s && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           {s.seats.map((seat, i) => (

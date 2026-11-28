@@ -163,7 +163,7 @@ export function Connect4Game({ myName, party = null }: { myName: string; /** Gam
           : `${turnSeat?.name}'s turn…`;
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-3">
+    <div data-playing={s ? "" : undefined} className="mx-auto flex w-full max-w-xl flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {s?.seats.map((seat, i) => (
           <span key={seat.id} className={cx("flex items-center gap-1.5 rounded-full border px-3 py-1 transition-colors", s.turn === i && !s.over ? "border-core bg-core/10" : "border-line")}>

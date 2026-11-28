@@ -1983,3 +1983,9 @@ html.music-live .border-line-strong { border-color: color-mix(in srgb, var(--col
   .pop-in { animation: none; }
   .build-line { animation: none; transform: none; width: 100% !important; opacity: 0.5; }
 }
+
+/* Games: once a game is on, the page's intro paragraph steps aside so the board and its controls fit on
+   screen (it pushed Ludo's Roll and Bingo's Call below the fold on phones). Title and back link stay. */
+body:has([data-playing]) [data-game-intro] {
+  display: none;
+}

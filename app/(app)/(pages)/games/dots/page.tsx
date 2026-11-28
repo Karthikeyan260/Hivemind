@@ -23,7 +23,7 @@ export default function DotsHost() {
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">Dots &amp; Boxes</h1>
-      <p className="mb-3 text-sm text-soft">Take turns drawing a line between two dots. Close the fourth side of a box to claim it and go again; most boxes wins. Against HIVEMIND on this device, or a friend on their own phone with voice on.</p>
+      <p data-game-intro className="mb-3 text-sm text-soft">Take turns drawing a line between two dots. Close the fourth side of a box to claim it and go again; most boxes wins. Against HIVEMIND on this device, or a friend on their own phone with voice on.</p>
 
       <ModeTabs mode={mode} onChange={setMode} />
 

@@ -229,7 +229,7 @@ export function LudoGame({
                   : `${turnSeat?.name}'s turn…`;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-3" onPointerDown={() => audioRef.current?.srcObject && audioRef.current.paused && void audioRef.current.play().catch(() => {})}>
+    <div data-playing={s ? "" : undefined} className="mx-auto flex w-full max-w-5xl flex-col gap-3" onPointerDown={() => audioRef.current?.srcObject && audioRef.current.paused && void audioRef.current.play().catch(() => {})}>
       <audio ref={audioRef} autoPlay playsInline />
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {s?.seats.map((seat, i) => (
@@ -487,7 +487,8 @@ function Board({ s, me, canMove, onMove }: { s: LudoState; me: string; canMove: 
         disabled={!mine}
         onClick={() => onMove(t.i)}
         aria-label={`${t.color} token ${t.i + 1}${mine ? ", tap to move" : ""}`}
-        className={cx("ludo-anim absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md", isMover ? "z-20" : mine ? "z-10 animate-pulse ring-4 ring-core" : "")}
+        // A token you can move gets a bigger invisible tap area (about 43 px on a phone; the token itself is ~19 px).
+        className={cx("ludo-anim absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md", isMover ? "z-20" : mine ? "z-10 animate-pulse ring-4 ring-core before:absolute before:-inset-3 before:rounded-full before:content-['']" : "")}
         style={{
           left: `calc(${((t.c + 0.5) / 15) * 100}% + ${dx}%)`,
           top: `calc(${((t.r + 0.5) / 15) * 100}% + ${dy}%)`,
@@ -506,7 +507,7 @@ function Board({ s, me, canMove, onMove }: { s: LudoState; me: string; canMove: 
   };
 
   return (
-    <div className="relative aspect-square w-full max-w-[min(100%,74dvh)] self-center overflow-hidden rounded-xl border-2 border-line bg-white shadow-sm">
+    <div className="relative aspect-square w-full max-w-[min(100%,74dvh,calc(100dvh-17rem))] self-center overflow-hidden rounded-xl border-2 border-line bg-white shadow-sm">
       <div className="absolute inset-0 grid" style={{ gridTemplateColumns: "repeat(15, 1fr)", gridTemplateRows: "repeat(15, 1fr)" }}>
         {Array.from({ length: 225 }, (_, n) => {
           const r = Math.floor(n / 15);

@@ -96,7 +96,7 @@ export function Board({
     }
 
   return (
-    <div className="relative aspect-square w-full max-w-[min(100%,78dvh)] select-none overflow-hidden rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.5)] ring-4 ring-[#3d2817]">
+    <div className="relative aspect-square w-full max-w-[min(100%,78dvh,calc(100dvh-19rem))] select-none overflow-hidden rounded-lg shadow-[0_8px_30px_rgba(0,0,0,0.5)] ring-4 ring-[#3d2817]">
       <div className="absolute inset-0 grid grid-cols-8 grid-rows-8">
         {squares.map((sq, i) => {
           const dark = (FILES.indexOf(sq[0]) + Number(sq[1])) % 2 === 0;

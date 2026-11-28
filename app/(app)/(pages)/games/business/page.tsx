@@ -14,7 +14,7 @@ export default function BusinessPage() {
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">Business</h1>
-      <p className="mb-3 text-sm text-soft">
+      <p data-game-intro className="mb-3 text-sm text-soft">
         Buy Indian cities, collect rent, build houses and hotels, and send everyone else bankrupt. Play HIVEMIND&apos;s bots here, or with up to 5 friends at{" "}
         <Link href="/games/party" className="inline-flex items-center gap-1 text-data underline">
           <Users size={13} /> game night

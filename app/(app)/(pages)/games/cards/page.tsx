@@ -23,7 +23,7 @@ export default function CardsHost() {
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">Colour Clash</h1>
-      <p className="mb-3 text-sm text-soft">The colour-matching card game (Uno-style) against HIVEMIND on this device, or online with a friend on their own phone, voice on. Match the colour or number, hit them with +2s and Wild +4s, and don&apos;t forget to shout &ldquo;Last card!&rdquo;. Add two HIVEMIND bots for a 4-player table.</p>
+      <p data-game-intro className="mb-3 text-sm text-soft">The colour-matching card game (Uno-style) against HIVEMIND on this device, or online with a friend on their own phone, voice on. Match the colour or number, hit them with +2s and Wild +4s, and don&apos;t forget to shout &ldquo;Last card!&rdquo;. Add two HIVEMIND bots for a 4-player table.</p>
 
       <ModeTabs mode={mode} onChange={setMode} />
 

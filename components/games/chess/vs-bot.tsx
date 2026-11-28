@@ -258,7 +258,7 @@ export function ChessVsBot({ myName }: { myName: string }) {
   const end = g.result ? resultText(g.result, g.me, names) : null;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+    <div data-playing="" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
       <div className="flex flex-col gap-2">
         <PlayerBar name={`HIVEMIND · ${LEVELS[g.level].label}`} icon={<Bot size={16} />} active={!g.result && turn === opp} thinking={thinking && turn === opp} clock={clockOf(opp)} taken={<Taken pieces={taken[opp]} by={opp} lead={opp === "w" ? lead : -lead} />} />
         <div className="relative">

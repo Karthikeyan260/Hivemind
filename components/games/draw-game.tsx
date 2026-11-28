@@ -900,7 +900,7 @@ export function DrawGame({ role, room, myName, hostName = "Host", onHostAway }: 
   const board = (stage === "playing" || stage === "over" || stage === "reconnecting") && !!round;
 
   return (
-    <div
+    <div data-playing={round ? "" : undefined}
       className="mx-auto flex w-full max-w-5xl flex-col gap-3"
       onPointerDown={() => {
         // Phones only play the friend's voice after a tap on the page.

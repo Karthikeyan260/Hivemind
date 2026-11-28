@@ -274,7 +274,7 @@ export function DotsGame({
                   : `${turnSeat?.name}'s turn…`;
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-3" onPointerDown={() => audioRef.current?.srcObject && audioRef.current.paused && void audioRef.current.play().catch(() => {})}>
+    <div data-playing={s ? "" : undefined} className="mx-auto flex w-full max-w-3xl flex-col gap-3" onPointerDown={() => audioRef.current?.srcObject && audioRef.current.paused && void audioRef.current.play().catch(() => {})}>
       <audio ref={audioRef} autoPlay playsInline />
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {s?.seats.map((seat, i) => (

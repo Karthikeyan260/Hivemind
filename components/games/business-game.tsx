@@ -188,7 +188,7 @@ export function BusinessGame({ myName, party = null }: { myName: string; /** Gam
 
   const people = party ? here(party.players).length : 1;
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
+    <div data-playing={s ? "" : undefined} className="mx-auto flex w-full max-w-5xl flex-col gap-3">
       {s && <Goal s={s} />}
       {!s && !isHost && <p className="text-sm text-soft">Connected! {party?.hostName} is setting up Business.</p>}
 
@@ -694,7 +694,7 @@ function Board({ s, me, sel, onSel, children }: { s: BizState; me: string; sel: 
   const fr = `${CORNER}fr repeat(7, 1fr) ${CORNER}fr`;
 
   return (
-    <div className="@container relative aspect-square w-full max-w-[min(100%,80dvh)] self-center rounded-2xl bg-[#14532d] p-[1.4%] shadow-xl">
+    <div className="@container relative aspect-square w-full max-w-[min(100%,80dvh,calc(100dvh-17rem))] self-center rounded-2xl bg-[#14532d] p-[1.4%] shadow-xl">
       <div className="relative size-full overflow-hidden rounded-lg bg-[#fffaf0]">
         <div className="absolute inset-0 grid" style={{ gridTemplateColumns: fr, gridTemplateRows: fr }}>
           {BOARD.map((q, i) => {

@@ -34,7 +34,7 @@ export default function DrawHost() {
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">Draw & Guess</h1>
-      <p className="mb-3 text-sm text-soft">Take turns drawing; the other guesses by typing or saying it. HIVEMIND watches the drawing and guesses too. 6 rounds, 80 seconds each, with voice on.</p>
+      <p data-game-intro className="mb-3 text-sm text-soft">Take turns drawing; the other guesses by typing or saying it. HIVEMIND watches the drawing and guesses too. 6 rounds, 80 seconds each, with voice on.</p>
 
       {r && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel p-3 text-sm">

@@ -204,7 +204,7 @@ export function BingoGame({ myName, party = null }: { myName: string; /** Game n
   const lastCall = s && s.called.length ? { n: s.called[s.called.length - 1], by: s.seats.find((x) => x.id === s.by[s.called[s.called.length - 1]]) } : null;
   const waiting = s?.seats.filter((x) => !s.ready[x.id]) ?? [];
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
+    <div data-playing={s ? "" : undefined} className="mx-auto flex w-full max-w-5xl flex-col gap-3">
       {!s && !isHost && <p className="text-sm text-soft">Connected! {party?.hostName} is setting up Bingo.</p>}
 
       {isHost && (!s || s.phase === "over") && (

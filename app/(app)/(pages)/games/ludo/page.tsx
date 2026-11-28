@@ -23,7 +23,7 @@ export default function LudoHost() {
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">Ludo</h1>
-      <p className="mb-3 text-sm text-soft">Classic Ludo against HIVEMIND on this device, or online with a friend on their own phone, voice on. Fill the empty seats with HIVEMIND bots for a 4-player game.</p>
+      <p data-game-intro className="mb-3 text-sm text-soft">Classic Ludo against HIVEMIND on this device, or online with a friend on their own phone, voice on. Fill the empty seats with HIVEMIND bots for a 4-player game.</p>
 
       <ModeTabs mode={mode} onChange={setMode} />
 

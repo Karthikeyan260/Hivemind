@@ -363,7 +363,7 @@ export function CardsGame({
         : null;
 
   return (
-    <div
+    <div data-playing={s ? "" : undefined}
       className="mx-auto flex w-full max-w-4xl flex-col gap-3"
       onPointerDown={() =>
         audioRef.current?.srcObject &&

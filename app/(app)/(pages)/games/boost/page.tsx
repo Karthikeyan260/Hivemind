@@ -14,7 +14,7 @@ export default function BoostPage() {
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">Boost 🌹</h1>
-      <p className="mb-3 text-sm text-soft">
+      <p data-game-intro className="mb-3 text-sm text-soft">
         Also called 3 Roses or Allimalli. Everyone writes a name in the theme; three cards of each name are dealt and passed round the table, one at a time. Hold three of a kind and tap BOOST first for 1000 points, then everyone races: 900, 800… Play HIVEMIND&apos;s bots here, or with friends at{" "}
         <Link href="/games/party" className="inline-flex items-center gap-1 text-data underline">
           <Users size={13} /> game night

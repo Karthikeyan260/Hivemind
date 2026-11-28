@@ -34,7 +34,7 @@ export default function ChessPage() {
         <ArrowLeft size={13} /> Games
       </Link>
       <h1 className="mb-1 text-xl font-semibold">Chess</h1>
-      <p className="mb-4 text-sm text-soft">Play HIVEMIND (Beginner to Hard) on this device, or a friend online with a clock, from 1-minute bullet to 15 | 10 rapid.</p>
+      <p data-game-intro className="mb-4 text-sm text-soft">Play HIVEMIND (Beginner to Hard) on this device, or a friend online with a clock, from 1-minute bullet to 15 | 10 rapid.</p>
 
       <div className="mb-4 inline-flex rounded-full border border-line bg-panel p-1">
         {(

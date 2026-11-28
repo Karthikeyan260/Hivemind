@@ -256,7 +256,7 @@ export function BoostGame({ myName, party = null }: { myName: string; /** Game n
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-3">
+    <div data-playing={s ? "" : undefined} className="mx-auto flex w-full max-w-4xl flex-col gap-3">
       {!s && !isHost && <p className="text-sm text-soft">Connected! {party?.hostName} is setting up Boost.</p>}
 
       {isHost && (!s || s.phase === "over") && (
