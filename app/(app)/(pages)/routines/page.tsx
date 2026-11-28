@@ -1,9 +1,9 @@
 "use client";
 
-import { Pencil, Play, Plus, Trash2, Zap } from "lucide-react";
+import { Mic, Pencil, Play, Plus, Trash2, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Button, Empty, ErrorText, Input, PageHeader, Textarea } from "@/components/ui";
+import { useEffect, useRef, useState } from "react";
+import { Button, CardSkeleton, Empty, ErrorText, Input, PageHeader, Textarea } from "@/components/ui";
 import { useVoiceActions } from "@/components/voice/provider";
 import { api, armAsk, timeAgo, useFetch } from "@/lib/client-api";
 
@@ -26,6 +26,11 @@ export default function RoutinesPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const routines = list.data?.routines ?? [];
+  const formRef = useRef<HTMLElement | null>(null);
+  const formFor = draft ? (draft.id ?? "new") : null;
+  useEffect(() => {
+    if (formFor) formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [formFor]);
 
   function run(r: Routine) {
     armAsk(runText(r));
@@ -85,27 +90,42 @@ export default function RoutinesPage() {
       <ErrorText error={error ?? list.error} />
 
       {draft && (
-        <section className="mb-6 space-y-3 rounded-xl border border-core/50 bg-panel p-4 text-sm">
-          <Input placeholder="Name, e.g. Gym mode" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-          <Input placeholder="Other ways you'll say it, comma separated (e.g. going to gym, workout time)" value={draft.triggers} onChange={(e) => setDraft({ ...draft, triggers: e.target.value })} />
-          <Textarea
-            rows={5}
-            placeholder={"One step per line, the way you'd ask HIVEMIND:\nWhat's the weather today?\nPlay a Tamil melody"}
-            value={draft.steps}
-            onChange={(e) => setDraft({ ...draft, steps: e.target.value })}
-          />
+        <section ref={formRef} className="mb-6 scroll-mt-20 space-y-4 rounded-xl border border-core/50 bg-panel p-4 text-sm">
+          <h2 className="font-medium">{draft.id ? `Edit “${draft.name || "routine"}”` : "New routine"}</h2>
           {!draft.id && (
-            <div className="flex flex-wrap gap-2">
-              {IDEAS.map((i) => (
-                <button key={i.name} type="button" onClick={() => setDraft(i)} className="rounded-full border border-line px-3 py-1 text-xs text-soft hover:border-data hover:text-data">
-                  {i.name}
-                </button>
-              ))}
+            <div>
+              <p className="mb-1.5 text-xs text-faint">Start from a template</p>
+              <div className="flex flex-wrap gap-2">
+                {IDEAS.map((i) => (
+                  <button key={i.name} type="button" onClick={() => setDraft(i)} className="min-h-9 rounded-full border border-line px-3.5 py-1.5 text-[13px] text-soft transition-colors hover:border-data hover:text-data pointer-coarse:min-h-10">
+                    {i.name}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-soft">Name</span>
+            <Input placeholder="e.g. Gym mode" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-soft">Phrases that start it</span>
+            <Input placeholder="going to gym, workout time" value={draft.triggers} onChange={(e) => setDraft({ ...draft, triggers: e.target.value })} />
+            <span className="mt-1 block text-xs text-faint">Separate with commas. Its name works too.</span>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-medium text-soft">Steps</span>
+            <Textarea
+              rows={5}
+              placeholder={"What's the weather today?\nPlay a Tamil melody"}
+              value={draft.steps}
+              onChange={(e) => setDraft({ ...draft, steps: e.target.value })}
+            />
+            <span className="mt-1 block text-xs text-faint">One per line, the way you&apos;d ask HIVEMIND.</span>
+          </label>
           <div className="flex gap-2">
             <Button onClick={save} disabled={busy || !draft.name.trim() || !draft.steps.trim()}>
-              Save
+              {busy ? "Saving…" : draft.id ? "Save changes" : "Save routine"}
             </Button>
             <Button variant="quiet" onClick={() => setDraft(null)}>
               Cancel
@@ -115,7 +135,7 @@ export default function RoutinesPage() {
       )}
 
       {!list.data && list.loading ? (
-        <p className="text-sm text-soft">Loading…</p>
+        <CardSkeleton count={2} />
       ) : !routines.length ? (
         <Empty>No routines yet. Make one, or say &quot;when I say gym mode, play workout songs and log my exercise&quot;.</Empty>
       ) : (
@@ -127,22 +147,22 @@ export default function RoutinesPage() {
                 <Zap size={16} className="shrink-0 text-core" />
                 <h2 className="min-w-0 flex-1 truncate font-medium">{r.name}</h2>
                 <div className="flex shrink-0 items-center gap-1">
-                  <Button size="sm" onClick={() => run(r)}>
-                    <Play size={13} /> Run
+                  <Button onClick={() => run(r)}>
+                    <Play size={14} /> Run
                   </Button>
-                  <Button size="sm" variant="quiet" aria-label="Edit" onClick={() => setDraft({ id: r.id, name: r.name, triggers: r.triggers.join(", "), steps: r.steps.join("\n") })}>
-                    <Pencil size={13} />
+                  <Button variant="quiet" aria-label={`Edit ${r.name}`} title="Edit" className="w-9 px-0 pointer-coarse:w-11" onClick={() => setDraft({ id: r.id, name: r.name, triggers: r.triggers.join(", "), steps: r.steps.join("\n") })}>
+                    <Pencil size={15} className="shrink-0" />
                   </Button>
-                  <Button size="sm" variant="quiet" aria-label="Delete" onClick={() => remove(r)}>
-                    <Trash2 size={13} />
+                  <Button variant="quiet" aria-label={`Delete ${r.name}`} title="Delete" className="w-9 px-0 hover:text-alert pointer-coarse:w-11" onClick={() => remove(r)}>
+                    <Trash2 size={15} className="shrink-0" />
                   </Button>
                 </div>
               </div>
               {!!r.triggers.length && (
                 <div className="mt-1.5 flex flex-wrap gap-1.5 pl-6">
                   {r.triggers.map((t) => (
-                    <span key={t} className="rounded-full border border-data/30 bg-data/10 px-2 py-0.5 font-mono text-[10.5px] text-data">
-                      &quot;{t}&quot;
+                    <span key={t} className="inline-flex items-center gap-1 rounded-full border border-data/30 bg-data/10 px-2.5 py-0.5 text-xs text-data">
+                      <Mic size={11} aria-hidden /> “{t}”
                     </span>
                   ))}
                 </div>
@@ -153,8 +173,8 @@ export default function RoutinesPage() {
                 ))}
               </ol>
               {r.last_run && (
-                <p className="mt-2 font-mono text-[10.5px] text-faint">
-                  last run {timeAgo(r.last_run)} · {r.runs} times
+                <p className="mt-2 pl-6 text-xs text-faint">
+                  Run {r.runs} {r.runs === 1 ? "time" : "times"} · last {timeAgo(r.last_run)}
                 </p>
               )}
             </li>
