@@ -61,7 +61,7 @@ export const MAX_PLAYERS = 6;
 const KEEP_MS = 3 * 60 * 60_000;
 const TRANSIENT = ["network", "disconnected", "server-error", "socket-error", "socket-closed"];
 /** A direct connection not open after this long: switch to the Supabase relay (lib/games/relay). */
-const RELAY_AFTER_MS = 8000;
+const RELAY_AFTER_MS = 4000;
 /** A closed phone or a lost network can take a minute to show as a closed connection: both sides
  * say "still here" every few seconds, and a player silent for longer than this counts as away. */
 const PING_MS = 4000;

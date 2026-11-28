@@ -30,7 +30,7 @@ const KEEP_MS = 45 * 60_000;
 const cleanName = (v: unknown) => String(v ?? "").slice(0, 20).replace(/[^\p{L}\p{M}\p{N} .'-]/gu, "").trim();
 const TRANSIENT = ["network", "disconnected", "server-error", "socket-error", "socket-closed"];
 /** A direct connection not open after this long: switch to the Supabase relay (lib/games/relay). */
-const RELAY_AFTER_MS = 8000;
+const RELAY_AFTER_MS = 4000;
 
 type Opts<S, A> = {
   role: "host" | "guest";
