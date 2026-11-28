@@ -9,7 +9,8 @@ export const GAME_NAMES: Record<string, string> = {
   business: "Business",
   bingo: "Bingo",
   connect4: "Connect Four",
+  boost: "Boost (3 Roses)",
 };
-export const GAME_HUES: Record<string, number> = { chess: 200, cards: 330, ludo: 45, draw: 280, dots: 150, snakes: 120, business: 30, bingo: 260, connect4: 220 };
+export const GAME_HUES: Record<string, number> = { chess: 200, cards: 330, ludo: 45, draw: 280, dots: 150, snakes: 120, business: 30, bingo: 260, connect4: 220, boost: 345 };
 /** A game's display name; an unknown id is shown as it is. */
 export const gameName = (id: string) => GAME_NAMES[id] ?? id;

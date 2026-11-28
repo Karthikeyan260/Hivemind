@@ -66,6 +66,7 @@ const PAGE_WORDS: [RegExp, string, string][] = [
   [/^(snakes?( (and|&) ladders?)?|paramapadham)$/, "/games/snakes", "🐍 Snakes & Ladders"],
   [/^(bingo|housie|tambola)$/, "/games/bingo", "🎱 Bingo"],
   [/^(connect ?(4|four)|four in a (row|line))$/, "/games/connect4", "🔴 Connect Four"],
+  [/^(boost|3 roses|three roses|alli ?malli)( game)?$/, "/games/boost", "🌹 Boost"],
   [/^(business|monopoly)( game)?$/, "/games/business", "🏦 Business"],
   [/^(the )?(paattu( quiz)?|song quiz)$/, "/games/paattu", "🎵 Paattu Quiz"],
   [/^(draw (and|&) guess|drawing)$/, "/games/draw", "✏️ Draw & Guess"],

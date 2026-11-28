@@ -1,4 +1,4 @@
-import { Music2, PenLine, CircleDot, Dices, Layers, Crown, Grid3x3, Hash, Users, Spline, Building2, ArrowRight, Play } from "lucide-react";
+import { Music2, PenLine, CircleDot, Flower2, Dices, Layers, Crown, Grid3x3, Hash, Users, Spline, Building2, ArrowRight, Play } from "lucide-react";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { GameRecord } from "@/components/games/game-record";
@@ -13,6 +13,7 @@ const ART = {
   cards: { background: "linear-gradient(115deg, oklch(0.62 0.2 25) 0 25%, oklch(0.8 0.16 90) 25% 50%, oklch(0.65 0.17 150) 50% 75%, oklch(0.6 0.15 250) 75%)" },
   business: { background: "linear-gradient(oklch(1 0 0 / 0.12) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(90deg, oklch(1 0 0 / 0.12) 1px, transparent 1px) 0 0 / 22px 22px, linear-gradient(135deg, oklch(0.5 0.12 160), oklch(0.36 0.08 200))" },
   bingo: { background: "linear-gradient(oklch(1 0 0 / 0.22) 2px, transparent 2px) 0 0 / 20% 20%, linear-gradient(90deg, oklch(1 0 0 / 0.22) 2px, transparent 2px) 0 0 / 20% 20%, linear-gradient(135deg, oklch(0.55 0.14 300), oklch(0.4 0.12 270))" },
+  boost: { background: "repeating-linear-gradient(115deg, oklch(0.55 0.2 15) 0 18px, oklch(0.45 0.18 350) 18px 36px), oklch(0.5 0.2 10)" },
   connect4: { background: "radial-gradient(circle, oklch(0.82 0.16 90) 0 7px, transparent 8px) 0 0 / 26px 26px, radial-gradient(circle, oklch(0.62 0.2 25) 0 7px, transparent 8px) 13px 13px / 26px 26px, oklch(0.42 0.12 255)" },
   snakes: { background: "repeating-linear-gradient(45deg, oklch(0.7 0.15 140 / 0.6) 0 10px, oklch(0.55 0.13 90 / 0.5) 10px 20px), oklch(0.35 0.06 120)" },
   ludo: { background: "conic-gradient(oklch(0.62 0.2 25) 0 25%, oklch(0.65 0.17 150) 0 50%, oklch(0.8 0.16 90) 0 75%, oklch(0.6 0.15 250) 0)" },
@@ -35,6 +36,7 @@ const GAMES: Game[] = [
   { href: "/games/cards", icon: Layers, title: "Colour Clash", who: "vs bot or a friend online", tag: "Match colours and numbers. Last card!", about: "The colour-matching card game (Uno-style) against HIVEMIND, or a friend on their own phone: match colours and numbers, Skip, Reverse, +2, Wild +4, and call Last card! Voice on.", art: ART.cards },
   { href: "/games/business", icon: Building2, title: "Business", who: "vs bot, or at game night", tag: "Buy Agra to Mumbai, build hotels, win.", about: "The Indian property game: buy Agra to Mumbai, collect rent, build houses and hotels, and bankrupt everyone else. Set a round limit for a quicker game.", art: ART.business },
   { href: "/games/bingo", icon: Hash, title: "Bingo", who: "up to 6 players", tag: "Fill your card, spell B-I-N-G-O first.", about: "The pen-and-paper game: fill a 5×5 card with 1–25 your way, take turns calling numbers, and every complete row, column or diagonal earns a letter of B-I-N-G-O. Spell it first to win. Up to 6 players.", art: ART.bingo },
+  { href: "/games/boost", icon: Flower2, title: "Boost", who: "3 or more, vs bots or at game night", tag: "3 Roses / Allimalli: pass the cards, collect three, tap BOOST first.", about: "Everyone writes a name in the theme, three cards each, passed round the table. Hold three of a kind and tap BOOST first for 1000 points; everyone else races to tap. 10 to 20 deals.", art: ART.boost },
   { href: "/games/connect4", icon: CircleDot, title: "Connect Four", who: "vs bot, or at game night", tag: "Four in a row before HIVEMIND does.", about: "Drop discs and line up four in a row before HIVEMIND does. Three levels, from easy to hard; friends can play it at game night.", art: ART.connect4 },
   { href: "/games/snakes", icon: Spline, title: "Snakes & Ladders", who: "up to 6 players", tag: "Climb, slide, land exactly on 100.", about: "The classic: roll, climb the ladders, slide down the snakes, and land exactly on 100 to win. Up to 6 players.", art: ART.snakes },
   { href: "/games/ludo", icon: Dices, title: "Ludo", who: "vs bot or a friend online", tag: "Classic Ludo, 2 to 4 players.", about: "Classic Ludo against HIVEMIND, or a friend on their own phone through your link, voice on. Add two HIVEMIND bots for a full 4-player board, or play quick with 2 tokens each.", art: ART.ludo },

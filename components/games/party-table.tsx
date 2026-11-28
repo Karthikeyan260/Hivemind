@@ -6,6 +6,7 @@ import { ChessVsFriend } from "@/components/games/chess/vs-friend";
 import { DotsGame } from "@/components/games/dots-game";
 import { BingoGame } from "@/components/games/bingo-game";
 import { Connect4Game } from "@/components/games/connect4-game";
+import { BoostGame } from "@/components/games/boost-game";
 import { BusinessGame } from "@/components/games/business-game";
 import { LudoGame } from "@/components/games/ludo-game";
 import { SnakesGame } from "@/components/games/snakes-game";
@@ -35,6 +36,7 @@ const GAMES: { id: PartyGameKind; name: string; emoji: string; min: number; max:
   { id: "chess", name: "Chess", emoji: "♟️", min: 2, max: 6, about: "You pick a friend to play; everyone else watches live.", ready: true },
   { id: "snakes", name: "Snakes & Ladders", emoji: "🐍", min: 1, max: 6, about: "Climb the ladders, dodge the snakes, first to 100 wins. Everyone plays (add HIVEMIND bots if you like).", ready: true },
   { id: "bingo", name: "Bingo", emoji: "🎱", min: 1, max: 6, about: "Fill your 5×5 card with 1–25 your way, take turns calling numbers, and spell B-I-N-G-O with five complete lines first. Add HIVEMIND bots if you like.", ready: true },
+  { id: "boost", name: "Boost", emoji: "🌹", min: 1, max: 6, about: "3 Roses / Allimalli: everyone writes a name in your theme, cards go round the table, hold three of a kind and tap BOOST first for 1000 (then 900, 800…). Add HIVEMIND bots to make three or more.", ready: true },
   { id: "connect4", name: "Connect Four", emoji: "🔴", min: 1, max: 2, about: "Drop discs, four in a row wins. Two play (the first two in the lobby, or you against HIVEMIND); everyone else watches.", ready: true },
   { id: "business", name: "Business", emoji: "🏦", min: 1, max: 6, about: "Buy Indian cities, charge rent, build hotels, bankrupt your friends. Pick a round limit for a quicker game.", ready: true },
 ];
@@ -474,6 +476,8 @@ function GameScreen({ party, game, n, room }: { party: Party; game: PartyGameKin
         <SnakesGame key={`snakes-${n}`} myName={me?.name ?? "You"} party={party} />
       ) : game === "bingo" ? (
         <BingoGame key={`bingo-${n}`} myName={me?.name ?? "You"} party={party} />
+      ) : game === "boost" ? (
+        <BoostGame key={`boost-${n}`} myName={me?.name ?? "You"} party={party} />
       ) : game === "connect4" ? (
         <Connect4Game key={`connect4-${n}`} myName={me?.name ?? "You"} party={party} />
       ) : game === "business" ? (

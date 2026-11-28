@@ -19,8 +19,8 @@ import { callsFirst, CHAT_GAP_MS, claimSeat, cleanChat, cleanId, cleanName, clea
  * friend checks the table is really the owner's (lib/peer-auth). Friends keep a stable id, so a
  * reload or a dropped phone rejoins the same seat. Voice: each friend talks with the owner.
  */
-export type PartyGameKind = "cards" | "ludo" | "dots" | "chess" | "draw" | "snakes" | "business" | "bingo" | "connect4";
-export const PARTY_GAMES: PartyGameKind[] = ["cards", "ludo", "dots", "chess", "draw", "snakes", "business", "bingo", "connect4"];
+export type PartyGameKind = "cards" | "ludo" | "dots" | "chess" | "draw" | "snakes" | "business" | "bingo" | "connect4" | "boost";
+export const PARTY_GAMES: PartyGameKind[] = ["cards", "ludo", "dots", "chess", "draw", "snakes", "business", "bingo", "connect4", "boost"];
 const isGame = (g: unknown): g is PartyGameKind => PARTY_GAMES.includes(g as PartyGameKind);
 /** `peer`: the friend's own connection id, so friends can talk to each other directly (group voice). */
 export type PartyPlayer = { id: string; name: string; online: boolean; host?: boolean; peer?: string; /** Their pet, if they have one (the owner's Nova, or a friend's guest pet). */ pet?: PartyPet; /** Pet races won tonight (a crown each). */ crowns?: number };
