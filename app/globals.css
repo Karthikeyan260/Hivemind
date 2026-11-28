@@ -249,6 +249,16 @@ input[type="radio"] {
   background: oklch(0.26 0.014 250);
   color: oklch(0.95 0 0);
 }
+/* Phones: the map's + / − big enough for a thumb (Leaflet draws them 30 px). */
+@media (pointer: coarse) {
+  /* (more specific than Leaflet's own ".leaflet-touch .leaflet-bar a", which loads after this file) */
+  .hm-map.leaflet-container .leaflet-bar a {
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+    font-size: 20px;
+  }
+}
 .hm-map .leaflet-control-attribution {
   background: oklch(0.16 0.012 250 / 0.75);
   color: oklch(0.7 0.01 250);

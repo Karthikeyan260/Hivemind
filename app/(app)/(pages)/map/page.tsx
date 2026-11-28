@@ -123,10 +123,8 @@ function MapView() {
     const g = layer.current;
     if (!mod || !m || !g) return;
     g.clearLayers();
-    const pts: [number, number][] = [];
     const dot = (lat: number, lng: number, color: string, label: string, r = 7) => {
       mod.circleMarker([lat, lng], { radius: r, color: "#0b1016", weight: 2, fillColor: color, fillOpacity: 1 }).bindTooltip(label).addTo(g);
-      pts.push([lat, lng]);
     };
     for (const d of devices) if (!fix || d.name !== fix.device) dot(d.lat, d.lng, "#a78bfa", `${d.name} · ${timeAgo(d.at)}`, 6);
     if (fix) {
@@ -137,10 +135,19 @@ function MapView() {
     if (route) {
       mod.polyline(route.line, { color: "#f5a524", weight: 5, opacity: 0.9 }).addTo(g);
       dot(route.to.lat, route.to.lng, "#ef4444", route.to.name, 8);
-      route.line.forEach((p) => pts.push(p));
     }
-    if (pts.length > 1) m.fitBounds(mod.latLngBounds(pts), { padding: [30, 30], maxZoom: 17 });
-    else if (pts.length === 1) m.setView(pts[0], 16);
+    // Frame what was asked for: the route, else you and the places found, else you. A device far away
+    // (a phone left at home) is still drawn, but no longer zooms the map out to the whole region.
+    const me: [number, number][] = fix ? [[fix.lat, fix.lng]] : [];
+    const focus: [number, number][] = route
+      ? [...route.line, [route.to.lat, route.to.lng], ...me]
+      : places?.length
+        ? [...me, ...places.map((p) => [p.lat, p.lng] as [number, number])]
+        : me.length
+          ? me
+          : devices.map((d) => [d.lat, d.lng] as [number, number]);
+    if (focus.length > 1) m.fitBounds(mod.latLngBounds(focus), { padding: [36, 36], maxZoom: 17 });
+    else if (focus.length === 1) m.setView(focus[0], 16);
   }, [fix, devices, places, route]);
 
   const go = (q: Record<string, string>) => router.replace(`/map?${new URLSearchParams(q)}`);
@@ -227,8 +234,8 @@ function MapView() {
       <PageHeader eyebrow="Places" title="Map" subtitle="Where you are, your devices, places near you and the way there (OpenStreetMap)." />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="ghost" onClick={() => void locate()}>
-          <LocateFixed size={13} /> Locate me
+        <Button variant="ghost" onClick={() => void locate()}>
+          <LocateFixed size={15} /> Locate me
         </Button>
         {locOff && !fix && (
           <span className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs text-amber-200" role="status">
@@ -246,8 +253,9 @@ function MapView() {
 
       <div className="mb-3 flex flex-wrap gap-1.5">
         {QUICK.map((q) => (
-          <button key={q} type="button" onClick={() => go({ near: q })} className={cx("rounded-full border px-2.5 py-1 text-xs", near === q ? "border-core bg-core/10 text-core" : "border-line text-soft hover:border-data hover:text-data")}>
-            {q}
+          <button key={q} type="button" onClick={() => go({ near: q })} aria-pressed={near === q} className={cx("min-h-9 rounded-full border px-3.5 py-1.5 text-[13px] transition-colors pointer-coarse:min-h-10", near === q ? "border-core bg-core/10 text-core" : "border-line text-soft hover:border-data hover:text-data")}>
+            {/* "atm" reads as ATM; the rest start with a capital */}
+            {q === "atm" ? "ATM" : q[0].toUpperCase() + q.slice(1)}
           </button>
         ))}
       </div>
@@ -281,7 +289,8 @@ function MapView() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         {/* isolate: the map's own layers (z-index 400+) stay inside this box, under the phone's tab bar. */}
-        <div className="relative isolate overflow-hidden rounded-xl border border-line">
+        {/* self-start + sticky: the box stays the map's own height (it used to stretch to the results list, leaving empty space) */}
+        <div className="relative isolate self-start overflow-hidden rounded-xl border border-line lg:sticky lg:top-4">
           <div ref={box} className="hm-map h-[58vh] min-h-[320px] w-full bg-sunken" />
           {busy && (
             <div className="absolute right-3 top-3 z-[500] flex items-center gap-1.5 bg-[#0b1016]/90 px-2 py-1 text-xs text-soft">
@@ -299,20 +308,20 @@ function MapView() {
                 {route.km} km <span className="text-base font-normal text-soft">· {route.minutes} min</span>
               </div>
               <div className="mt-2 flex gap-1.5">
-                <button type="button" onClick={() => go({ to: to!, name: toName, mode: "car" })} className={cx("flex items-center gap-1 rounded-md border px-2 py-1 text-xs", route.mode === "car" ? "border-core text-core" : "border-line text-soft")}>
-                  <Car size={12} /> Car / bike
+                <button type="button" onClick={() => go({ to: to!, name: toName, mode: "car" })} aria-pressed={route.mode === "car"} className={cx("flex h-9 items-center gap-1.5 rounded-md border px-3 text-[13px] transition-colors pointer-coarse:h-10", route.mode === "car" ? "border-core bg-core/10 text-core" : "border-line text-soft hover:text-fg")}>
+                  <Car size={14} /> Car / bike
                 </button>
-                <button type="button" onClick={() => go({ to: to!, name: toName, mode: "walk" })} className={cx("flex items-center gap-1 rounded-md border px-2 py-1 text-xs", route.mode === "walk" ? "border-core text-core" : "border-line text-soft")}>
-                  <Footprints size={12} /> Walk
+                <button type="button" onClick={() => go({ to: to!, name: toName, mode: "walk" })} aria-pressed={route.mode === "walk"} className={cx("flex h-9 items-center gap-1.5 rounded-md border px-3 text-[13px] transition-colors pointer-coarse:h-10", route.mode === "walk" ? "border-core bg-core/10 text-core" : "border-line text-soft hover:text-fg")}>
+                  <Footprints size={14} /> Walk
                 </button>
               </div>
-              <a href={route.navigate} target="_blank" rel="noopener noreferrer" className="mt-3 flex items-center justify-center gap-1.5 rounded-md bg-core px-3 py-2 text-sm font-medium text-core-ink hover:bg-core/85">
-                <Navigation size={14} /> Start navigation
+              <a href={route.navigate} target="_blank" rel="noopener noreferrer" className="mt-3 flex h-11 items-center justify-center gap-1.5 rounded-md bg-core px-3 text-sm font-medium text-core-ink hover:bg-core/85">
+                <Navigation size={15} /> Start navigation
               </a>
-              <ol className="mt-3 max-h-56 space-y-1 overflow-y-auto text-xs">
+              <ol className="mt-3 max-h-64 space-y-1.5 overflow-y-auto text-[13px] leading-snug">
                 {route.steps.map((s, i) => (
                   <li key={i} className="flex gap-2">
-                    <span className="w-4 shrink-0 text-right font-mono text-faint">{i + 1}</span>
+                    <span className="w-5 shrink-0 text-right text-xs text-faint tabular-nums">{i + 1}</span>
                     <span>
                       {s.text}
                       {s.km >= 0.1 && <span className="text-soft"> · {s.km} km</span>}
@@ -329,11 +338,15 @@ function MapView() {
               <ul className="space-y-1.5">
                 {places.map((p) => (
                   <li key={`${p.lat},${p.lng}`}>
-                    <button type="button" onClick={() => go({ to: `${p.lat},${p.lng}`, name: p.name, mode: p.km < 1.5 ? "walk" : "car" })} className="w-full rounded-md p-1.5 text-left text-sm hover:bg-raised">
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-xs text-soft">
-                        {p.km} km · {p.walk_min} min walk · {p.address}
-                      </div>
+                    <button type="button" onClick={() => go({ to: `${p.lat},${p.lng}`, name: p.name, mode: p.km < 1.5 ? "walk" : "car" })} className="group flex w-full items-center gap-2 rounded-md p-2 text-left text-sm transition-colors hover:bg-raised">
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium">{p.name}</span>
+                        <span className="block text-xs text-soft">
+                          {p.km} km · {p.walk_min} min walk · {p.address}
+                        </span>
+                      </span>
+                      {/* tapping a place gives the way there: say so */}
+                      <Navigation size={14} className="shrink-0 text-faint transition-colors group-hover:text-core" aria-hidden />
                     </button>
                   </li>
                 ))}
@@ -354,10 +367,13 @@ function MapView() {
               <div className="mb-2 text-xs text-soft">Your devices</div>
               <ul className="space-y-1 text-sm">
                 {devices.map((d) => (
-                  <li key={d.id} className="flex items-center gap-2">
-                    <Smartphone size={13} className="text-[#a78bfa]" />
-                    <span className="flex-1">{d.name}</span>
-                    <span className="font-mono text-[11px] text-faint">{timeAgo(d.at)}</span>
+                  <li key={d.id}>
+                    {/* tap a device: the map flies to where it last was */}
+                    <button type="button" onClick={() => map.current?.flyTo([d.lat, d.lng], 15)} className="flex min-h-9 w-full items-center gap-2 rounded-md px-1.5 text-left transition-colors hover:bg-raised">
+                      <Smartphone size={14} className="text-[#a78bfa]" />
+                      <span className="flex-1">{d.name}</span>
+                      <span className="text-xs text-faint tabular-nums">{timeAgo(d.at)}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
