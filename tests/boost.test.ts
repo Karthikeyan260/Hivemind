@@ -39,15 +39,24 @@ describe("Boost (3 Roses / Allimalli)", () => {
     expect(cleanName("a".repeat(50))).toHaveLength(20);
   });
 
-  it("HIVEMIND's bots pick different names from the theme; all-bot tables deal at once", () => {
-    const s = newBoost([{ id: "host", name: "K" }, { id: "b1", name: "H1", bot: true }, { id: "b2", name: "H2", bot: true }], { theme: "foods" }, seeded(3));
-    expect(s.names.b1).toBeTruthy();
-    expect(s.names.b2).toBeTruthy();
-    expect(s.names.b1).not.toBe(s.names.b2);
-    expect(s.phase).toBe("names"); // still waiting for the person
-    const started = beginDeal(s, seeded(4)); // the host can start anyway: missing names are filled in
-    expect(started.phase).toBe("pass");
-    expect(Object.keys(started.names)).toHaveLength(3);
+  it("HIVEMIND's bots write last, never taking a name a person wanted, and pick different ones", () => {
+    const table = [{ id: "host", name: "K" }, { id: "b1", name: "H1", bot: true }, { id: "b2", name: "H2", bot: true }];
+    let s = newBoost(table, { theme: "foods" }, seeded(3));
+    expect(s.names).toEqual({}); // nobody has written yet: bots wait for the people
+    expect(s.phase).toBe("names");
+    // every food a bot could pick: the person can still have any of them
+    for (const food of ["Biryani", "Dosa", "Idli"]) expect(boostAct(s, "host", { type: "name", name: food }).names.host).toBe(food);
+    s = boostAct(s, "host", { type: "name", name: "Biryani" });
+    expect(s.phase).toBe("pass"); // the last person wrote: bots write theirs, cards are dealt
+    expect(new Set(Object.values(s.names)).size).toBe(3);
+    expect(s.names.b1).not.toBe("Biryani");
+    expect(s.names.b2).not.toBe("Biryani");
+    // the host can also deal before everyone has written: anyone missing gets a name
+    const early = beginDeal(newBoost(table, { theme: "foods" }, seeded(4)), seeded(5));
+    expect(early.phase).toBe("pass");
+    expect(Object.keys(early.names)).toHaveLength(3);
+    // a table of only bots deals at once
+    expect(newBoost([{ id: "b1", name: "H1", bot: true }, { id: "b2", name: "H2", bot: true }, { id: "b3", name: "H3", bot: true }], {}, seeded(6)).phase).toBe("pass");
   });
 
   it("passes go round the table, one card each turn, and only the player on turn may pass", () => {

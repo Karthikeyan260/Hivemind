@@ -326,8 +326,9 @@ export function BoostGame({ myName, party = null }: { myName: string; /** Game n
                     <b>✅ You wrote “{s.names[me]}”.</b>{" "}
                   </p>
                 )}
-                <p className="text-soft">Waiting for {s.seats.filter((x) => !s.names[x.id]).map((x) => x.name).join(", ") || "the deal"}…</p>
-                {isHost && s.seats.some((x) => !s.names[x.id]) && (
+                {/* bots write theirs after the people, so only people are waited for */}
+                <p className="text-soft">Waiting for {s.seats.filter((x) => !x.bot && !s.names[x.id]).map((x) => x.name).join(", ") || "the deal"}…</p>
+                {isHost && s.seats.some((x) => !x.bot && !s.names[x.id]) && (
                   <button type="button" onClick={() => apply((cur) => beginDeal(cur, rnd))} className="mt-2 min-h-10 rounded-full border-2 border-line px-4 text-sm font-bold active:scale-95">
                     Deal now (HIVEMIND writes for anyone who hasn&apos;t)
                   </button>

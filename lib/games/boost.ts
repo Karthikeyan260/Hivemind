@@ -95,7 +95,7 @@ export function newBoost(players: { id: string; name: string; bot?: boolean }[],
   const seats = players.slice(0, MAX_PLAYERS).map((p, i) => ({ id: p.id, name: p.name, color: BOOST_COLORS[i], bot: !!p.bot }));
   const theme: ThemeId = opts.theme && opts.theme in THEMES ? opts.theme : "heroes";
   const rounds = ROUND_CHOICES.includes(opts.rounds as 10) ? (opts.rounds as number) : 10;
-  let s: BoostState = {
+  const s: BoostState = {
     seats,
     phase: "names",
     theme,
@@ -113,10 +113,13 @@ export function newBoost(players: { id: string; name: string; bot?: boolean }[],
     log: [`Theme: ${THEMES[theme].label}. Everyone, write one name!`],
     seq: 0,
   };
-  // HIVEMIND's bots pick theirs at once (names nobody has taken).
-  for (const x of seats.filter((x) => x.bot)) s = { ...s, names: { ...s.names, [x.id]: botName(s, rand) } };
-  return seats.every((x) => s.names[x.id]) ? deal(s, rand) : s;
+  // HIVEMIND's bots write theirs last, once the people have (so a bot never takes a name a person wanted).
+  // A table of only bots deals at once.
+  return seats.every((x) => x.bot) ? beginDeal(s, rand) : s;
 }
+
+/** Have all the people at the table written a name? (Bots write theirs after.) */
+export const peopleDone = (s: BoostState) => s.seats.every((x) => x.bot || s.names[x.id]);
 
 /** A name from the theme that nobody has written yet. */
 export function botName(s: BoostState, rand: () => number = Math.random): string {
@@ -158,7 +161,8 @@ export function boostAct(s: BoostState, id: string, a: BoostAction): BoostState 
     // Each name must be different: two players writing the same would put six of one card in the deck.
     if (Object.values(s.names).some((n) => key(n) === key(name))) return s;
     const n: BoostState = { ...s, names: { ...s.names, [id]: name }, seq };
-    return n.seats.every((x) => n.names[x.id]) ? deal(n) : note(n, `${nameOf(s, id)} has written a name.`);
+    // The last person to write: the bots write theirs and the cards are dealt.
+    return peopleDone(n) ? beginDeal(n) : note(n, `${nameOf(s, id)} has written a name.`);
   }
   if (a.type === "pass") {
     if (s.phase !== "pass" || s.seats[s.turn]?.id !== id) return s;
